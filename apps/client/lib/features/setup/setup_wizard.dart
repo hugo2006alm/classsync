@@ -412,6 +412,14 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           if (_subjectsId == null || _summariesId == null) {
             throw const FormatException('Select both Notion data sources.');
           }
+          await ref
+              .read(notionClientProvider)
+              .validateDataSources(
+                token: _notionController.text.trim(),
+                subjectsDataSourceId: _subjectsId!,
+                summariesDataSourceId: _summariesId!,
+                metadataEnabled: _addMetadata,
+              );
         case 4:
           if (_relayUrlController.text.trim().isEmpty ||
               _relayTokenController.text.trim().length < 32) {
@@ -421,7 +429,10 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           }
           await ref
               .read(relayClientProvider)
-              .testConnection(_relayUrlController.text.trim());
+              .testConnection(
+                _relayUrlController.text.trim(),
+                token: _relayTokenController.text.trim(),
+              );
         case 6:
           await _finish();
           return;

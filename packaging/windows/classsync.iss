@@ -1,5 +1,7 @@
 #define MyAppName "ClassSync"
-#define MyAppVersion "0.1.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "ClassSync"
 #define MyAppExeName "ClassSync.exe"
 

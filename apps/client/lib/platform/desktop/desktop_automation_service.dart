@@ -65,7 +65,7 @@ class DesktopAutomationService with TrayListener, WindowListener {
 
   Future<void> _updateMenu() async {
     final pending = _jobs.where((job) => !job.status.isTerminal).length;
-    final lastSync = await _database.readCursor('fireflies');
+    final lastSync = await _database.readCursor('sync_run_completed');
     final lastLabel = lastSync == null
         ? 'Last sync: never'
         : 'Last sync: ${lastSync.toLocal().hour.toString().padLeft(2, '0')}:${lastSync.toLocal().minute.toString().padLeft(2, '0')}';

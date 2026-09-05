@@ -1,49 +1,19 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../core/database/classsync_database.dart';
-import '../../core/integrations/fireflies/fireflies_client.dart';
-import '../../core/integrations/gemini/gemini_client.dart';
-import '../../core/integrations/notion/notion_client.dart';
 import '../../core/integrations/relay/relay_client.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
-import '../../domain/sync/sync_coordinator.dart';
-import '../../domain/sync/sync_models.dart';
-import '../../domain/sync/sync_notifier.dart';
 import '../../firebase_options.dart';
+import 'background_sync.dart';
 
 @pragma('vm:entry-point')
 Future<void> classSyncFirebaseBackgroundHandler(RemoteMessage message) async {
-  DartPluginRegistrant.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
-  final database = ClassSyncDatabase();
-  await database.initialize();
-  final settings = await database.readSettings();
-  if (!settings.setupComplete ||
-      !settings.automaticSync ||
-      !settings.backgroundMobileSync) {
-    await database.close();
-    return;
-  }
-  final coordinator = SyncCoordinator(
-    database: database,
-    credentials: SecureCredentialStore(),
-    fireflies: FirefliesClient(),
-    gemini: GeminiClient(),
-    notion: NotionClient(),
-    relay: RelayClient(),
-    notifier: const NoopSyncNotifier(),
-  );
-  try {
-    await coordinator.run(SyncReason.firefliesWebhook);
-  } finally {
-    await database.close();
-  }
+  await enqueueMobileSyncFromPush();
 }
 
 class FirebasePushService {
@@ -100,15 +70,22 @@ class FirebasePushService {
   Future<void> _syncToken() async {
     final settings = _settings;
     final baseUrl = settings?.relayBaseUrl;
-    final deviceToken = await _credentials.read(CredentialKey.relayDeviceToken);
+    final bootstrapToken = await _credentials.read(
+      CredentialKey.relayDeviceToken,
+    );
     if (settings == null ||
         !settings.setupComplete ||
         baseUrl == null ||
         baseUrl.isEmpty ||
-        deviceToken == null ||
-        deviceToken.isEmpty) {
+        bootstrapToken == null ||
+        bootstrapToken.isEmpty) {
       return;
     }
+    final deviceToken = await _relay.ensureDeviceSession(
+      baseUrl: baseUrl,
+      bootstrapToken: bootstrapToken,
+      credentials: _credentials,
+    );
 
     if (!settings.notificationsEnabled) {
       final token =

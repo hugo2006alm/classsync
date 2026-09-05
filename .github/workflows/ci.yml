@@ -5,15 +5,22 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   relay:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 10.18.3
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: pnpm
@@ -24,32 +31,39 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: apps/client
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter analyze
-      - run: flutter test
+      - if: runner.os == 'Linux'
+        run: flutter test --coverage && dart run tool/check_coverage.dart coverage/lcov.info 50
+      - if: runner.os == 'Windows'
+        run: flutter test
+      - if: runner.os == 'macOS'
+        run: flutter test
       - if: runner.os == 'Windows'
         run: flutter build windows --release
       - if: runner.os == 'Linux'
         run: flutter build apk --debug
+      - if: runner.os == 'macOS'
+        run: flutter build macos --release
 
   windows-installer:
     needs: [relay, flutter]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
           cache: true
@@ -57,10 +71,10 @@ jobs:
         working-directory: apps/client
       - run: flutter build windows --release
         working-directory: apps/client
-      - run: choco install innosetup --no-progress -y
+      - run: choco install innosetup --version=6.7.1 --no-progress -y
       - shell: pwsh
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\classsync.iss'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ClassSync-Windows-Installer
           path: dist/*.exe

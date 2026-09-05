@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/providers.dart';
+import '../../core/security/trusted_url_launcher.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
 
@@ -40,7 +40,17 @@ class ClassDetailScreen extends ConsumerWidget {
       actions: [
         if (subject.notionUrl case final url?)
           OutlinedButton.icon(
-            onPressed: () => launchUrl(Uri.parse(url)),
+            onPressed: () async {
+              final opened = await launchTrustedUrl(
+                url,
+                allowedHosts: const {'notion.so'},
+              );
+              if (!opened && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Blocked invalid Notion link.')),
+                );
+              }
+            },
             icon: const Icon(Icons.open_in_new_rounded),
             label: const Text('Open in Notion'),
           ),

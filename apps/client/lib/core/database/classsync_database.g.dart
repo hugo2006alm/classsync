@@ -786,6 +786,17 @@ class $SyncJobsTable extends SyncJobs
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _summaryPartialsJsonMeta =
+      const VerificationMeta('summaryPartialsJson');
+  @override
+  late final GeneratedColumn<String> summaryPartialsJson =
+      GeneratedColumn<String>(
+        'summary_partials_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _notionPageIdMeta = const VerificationMeta(
     'notionPageId',
   );
@@ -908,6 +919,29 @@ class $SyncJobsTable extends SyncJobs
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _leaseOwnerMeta = const VerificationMeta(
+    'leaseOwner',
+  );
+  @override
+  late final GeneratedColumn<String> leaseOwner = GeneratedColumn<String>(
+    'lease_owner',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _leaseExpiresAtMeta = const VerificationMeta(
+    'leaseExpiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> leaseExpiresAt =
+      GeneratedColumn<DateTime>(
+        'lease_expires_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -924,6 +958,7 @@ class $SyncJobsTable extends SyncJobs
     transcriptJson,
     summaryTitle,
     summaryJson,
+    summaryPartialsJson,
     notionPageId,
     notionUrl,
     reprocessMode,
@@ -935,6 +970,8 @@ class $SyncJobsTable extends SyncJobs
     startedAt,
     updatedAt,
     completedAt,
+    leaseOwner,
+    leaseExpiresAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1067,6 +1104,15 @@ class $SyncJobsTable extends SyncJobs
         ),
       );
     }
+    if (data.containsKey('summary_partials_json')) {
+      context.handle(
+        _summaryPartialsJsonMeta,
+        summaryPartialsJson.isAcceptableOrUnknown(
+          data['summary_partials_json']!,
+          _summaryPartialsJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('notion_page_id')) {
       context.handle(
         _notionPageIdMeta,
@@ -1161,6 +1207,21 @@ class $SyncJobsTable extends SyncJobs
         ),
       );
     }
+    if (data.containsKey('lease_owner')) {
+      context.handle(
+        _leaseOwnerMeta,
+        leaseOwner.isAcceptableOrUnknown(data['lease_owner']!, _leaseOwnerMeta),
+      );
+    }
+    if (data.containsKey('lease_expires_at')) {
+      context.handle(
+        _leaseExpiresAtMeta,
+        leaseExpiresAt.isAcceptableOrUnknown(
+          data['lease_expires_at']!,
+          _leaseExpiresAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1226,6 +1287,10 @@ class $SyncJobsTable extends SyncJobs
         DriftSqlType.string,
         data['${effectivePrefix}summary_json'],
       ),
+      summaryPartialsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}summary_partials_json'],
+      ),
       notionPageId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notion_page_id'],
@@ -1270,6 +1335,14 @@ class $SyncJobsTable extends SyncJobs
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
       ),
+      leaseOwner: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}lease_owner'],
+      ),
+      leaseExpiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}lease_expires_at'],
+      ),
     );
   }
 
@@ -1294,6 +1367,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
   final String? transcriptJson;
   final String? summaryTitle;
   final String? summaryJson;
+  final String? summaryPartialsJson;
   final String? notionPageId;
   final String? notionUrl;
   final String? reprocessMode;
@@ -1305,6 +1379,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
   final DateTime? startedAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
+  final String? leaseOwner;
+  final DateTime? leaseExpiresAt;
   const SyncJobRow({
     required this.id,
     required this.firefliesId,
@@ -1320,6 +1396,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     this.transcriptJson,
     this.summaryTitle,
     this.summaryJson,
+    this.summaryPartialsJson,
     this.notionPageId,
     this.notionUrl,
     this.reprocessMode,
@@ -1331,6 +1408,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     this.startedAt,
     required this.updatedAt,
     this.completedAt,
+    this.leaseOwner,
+    this.leaseExpiresAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1369,6 +1448,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     if (!nullToAbsent || summaryJson != null) {
       map['summary_json'] = Variable<String>(summaryJson);
     }
+    if (!nullToAbsent || summaryPartialsJson != null) {
+      map['summary_partials_json'] = Variable<String>(summaryPartialsJson);
+    }
     if (!nullToAbsent || notionPageId != null) {
       map['notion_page_id'] = Variable<String>(notionPageId);
     }
@@ -1395,6 +1477,12 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || completedAt != null) {
       map['completed_at'] = Variable<DateTime>(completedAt);
+    }
+    if (!nullToAbsent || leaseOwner != null) {
+      map['lease_owner'] = Variable<String>(leaseOwner);
+    }
+    if (!nullToAbsent || leaseExpiresAt != null) {
+      map['lease_expires_at'] = Variable<DateTime>(leaseExpiresAt);
     }
     return map;
   }
@@ -1432,6 +1520,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       summaryJson: summaryJson == null && nullToAbsent
           ? const Value.absent()
           : Value(summaryJson),
+      summaryPartialsJson: summaryPartialsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(summaryPartialsJson),
       notionPageId: notionPageId == null && nullToAbsent
           ? const Value.absent()
           : Value(notionPageId),
@@ -1459,6 +1550,12 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       completedAt: completedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(completedAt),
+      leaseOwner: leaseOwner == null && nullToAbsent
+          ? const Value.absent()
+          : Value(leaseOwner),
+      leaseExpiresAt: leaseExpiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(leaseExpiresAt),
     );
   }
 
@@ -1486,6 +1583,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       transcriptJson: serializer.fromJson<String?>(json['transcriptJson']),
       summaryTitle: serializer.fromJson<String?>(json['summaryTitle']),
       summaryJson: serializer.fromJson<String?>(json['summaryJson']),
+      summaryPartialsJson: serializer.fromJson<String?>(
+        json['summaryPartialsJson'],
+      ),
       notionPageId: serializer.fromJson<String?>(json['notionPageId']),
       notionUrl: serializer.fromJson<String?>(json['notionUrl']),
       reprocessMode: serializer.fromJson<String?>(json['reprocessMode']),
@@ -1497,6 +1597,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       startedAt: serializer.fromJson<DateTime?>(json['startedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
+      leaseOwner: serializer.fromJson<String?>(json['leaseOwner']),
+      leaseExpiresAt: serializer.fromJson<DateTime?>(json['leaseExpiresAt']),
     );
   }
   @override
@@ -1521,6 +1623,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       'transcriptJson': serializer.toJson<String?>(transcriptJson),
       'summaryTitle': serializer.toJson<String?>(summaryTitle),
       'summaryJson': serializer.toJson<String?>(summaryJson),
+      'summaryPartialsJson': serializer.toJson<String?>(summaryPartialsJson),
       'notionPageId': serializer.toJson<String?>(notionPageId),
       'notionUrl': serializer.toJson<String?>(notionUrl),
       'reprocessMode': serializer.toJson<String?>(reprocessMode),
@@ -1532,6 +1635,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       'startedAt': serializer.toJson<DateTime?>(startedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
+      'leaseOwner': serializer.toJson<String?>(leaseOwner),
+      'leaseExpiresAt': serializer.toJson<DateTime?>(leaseExpiresAt),
     };
   }
 
@@ -1550,6 +1655,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     Value<String?> transcriptJson = const Value.absent(),
     Value<String?> summaryTitle = const Value.absent(),
     Value<String?> summaryJson = const Value.absent(),
+    Value<String?> summaryPartialsJson = const Value.absent(),
     Value<String?> notionPageId = const Value.absent(),
     Value<String?> notionUrl = const Value.absent(),
     Value<String?> reprocessMode = const Value.absent(),
@@ -1561,6 +1667,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     Value<DateTime?> startedAt = const Value.absent(),
     DateTime? updatedAt,
     Value<DateTime?> completedAt = const Value.absent(),
+    Value<String?> leaseOwner = const Value.absent(),
+    Value<DateTime?> leaseExpiresAt = const Value.absent(),
   }) => SyncJobRow(
     id: id ?? this.id,
     firefliesId: firefliesId ?? this.firefliesId,
@@ -1582,6 +1690,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
         : this.transcriptJson,
     summaryTitle: summaryTitle.present ? summaryTitle.value : this.summaryTitle,
     summaryJson: summaryJson.present ? summaryJson.value : this.summaryJson,
+    summaryPartialsJson: summaryPartialsJson.present
+        ? summaryPartialsJson.value
+        : this.summaryPartialsJson,
     notionPageId: notionPageId.present ? notionPageId.value : this.notionPageId,
     notionUrl: notionUrl.present ? notionUrl.value : this.notionUrl,
     reprocessMode: reprocessMode.present
@@ -1599,6 +1710,10 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     startedAt: startedAt.present ? startedAt.value : this.startedAt,
     updatedAt: updatedAt ?? this.updatedAt,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
+    leaseOwner: leaseOwner.present ? leaseOwner.value : this.leaseOwner,
+    leaseExpiresAt: leaseExpiresAt.present
+        ? leaseExpiresAt.value
+        : this.leaseExpiresAt,
   );
   SyncJobRow copyWithCompanion(SyncJobsCompanion data) {
     return SyncJobRow(
@@ -1638,6 +1753,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       summaryJson: data.summaryJson.present
           ? data.summaryJson.value
           : this.summaryJson,
+      summaryPartialsJson: data.summaryPartialsJson.present
+          ? data.summaryPartialsJson.value
+          : this.summaryPartialsJson,
       notionPageId: data.notionPageId.present
           ? data.notionPageId.value
           : this.notionPageId,
@@ -1665,6 +1783,12 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
       completedAt: data.completedAt.present
           ? data.completedAt.value
           : this.completedAt,
+      leaseOwner: data.leaseOwner.present
+          ? data.leaseOwner.value
+          : this.leaseOwner,
+      leaseExpiresAt: data.leaseExpiresAt.present
+          ? data.leaseExpiresAt.value
+          : this.leaseExpiresAt,
     );
   }
 
@@ -1687,6 +1811,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
           ..write('transcriptJson: $transcriptJson, ')
           ..write('summaryTitle: $summaryTitle, ')
           ..write('summaryJson: $summaryJson, ')
+          ..write('summaryPartialsJson: $summaryPartialsJson, ')
           ..write('notionPageId: $notionPageId, ')
           ..write('notionUrl: $notionUrl, ')
           ..write('reprocessMode: $reprocessMode, ')
@@ -1697,7 +1822,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
           ..write('discoveredAt: $discoveredAt, ')
           ..write('startedAt: $startedAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('completedAt: $completedAt')
+          ..write('completedAt: $completedAt, ')
+          ..write('leaseOwner: $leaseOwner, ')
+          ..write('leaseExpiresAt: $leaseExpiresAt')
           ..write(')'))
         .toString();
   }
@@ -1718,6 +1845,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     transcriptJson,
     summaryTitle,
     summaryJson,
+    summaryPartialsJson,
     notionPageId,
     notionUrl,
     reprocessMode,
@@ -1729,6 +1857,8 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
     startedAt,
     updatedAt,
     completedAt,
+    leaseOwner,
+    leaseExpiresAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1749,6 +1879,7 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
           other.transcriptJson == this.transcriptJson &&
           other.summaryTitle == this.summaryTitle &&
           other.summaryJson == this.summaryJson &&
+          other.summaryPartialsJson == this.summaryPartialsJson &&
           other.notionPageId == this.notionPageId &&
           other.notionUrl == this.notionUrl &&
           other.reprocessMode == this.reprocessMode &&
@@ -1759,7 +1890,9 @@ class SyncJobRow extends DataClass implements Insertable<SyncJobRow> {
           other.discoveredAt == this.discoveredAt &&
           other.startedAt == this.startedAt &&
           other.updatedAt == this.updatedAt &&
-          other.completedAt == this.completedAt);
+          other.completedAt == this.completedAt &&
+          other.leaseOwner == this.leaseOwner &&
+          other.leaseExpiresAt == this.leaseExpiresAt);
 }
 
 class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
@@ -1777,6 +1910,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
   final Value<String?> transcriptJson;
   final Value<String?> summaryTitle;
   final Value<String?> summaryJson;
+  final Value<String?> summaryPartialsJson;
   final Value<String?> notionPageId;
   final Value<String?> notionUrl;
   final Value<String?> reprocessMode;
@@ -1788,6 +1922,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
   final Value<DateTime?> startedAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> completedAt;
+  final Value<String?> leaseOwner;
+  final Value<DateTime?> leaseExpiresAt;
   final Value<int> rowid;
   const SyncJobsCompanion({
     this.id = const Value.absent(),
@@ -1804,6 +1940,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     this.transcriptJson = const Value.absent(),
     this.summaryTitle = const Value.absent(),
     this.summaryJson = const Value.absent(),
+    this.summaryPartialsJson = const Value.absent(),
     this.notionPageId = const Value.absent(),
     this.notionUrl = const Value.absent(),
     this.reprocessMode = const Value.absent(),
@@ -1815,6 +1952,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     this.startedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.completedAt = const Value.absent(),
+    this.leaseOwner = const Value.absent(),
+    this.leaseExpiresAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SyncJobsCompanion.insert({
@@ -1832,6 +1971,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     this.transcriptJson = const Value.absent(),
     this.summaryTitle = const Value.absent(),
     this.summaryJson = const Value.absent(),
+    this.summaryPartialsJson = const Value.absent(),
     this.notionPageId = const Value.absent(),
     this.notionUrl = const Value.absent(),
     this.reprocessMode = const Value.absent(),
@@ -1843,6 +1983,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     this.startedAt = const Value.absent(),
     required DateTime updatedAt,
     this.completedAt = const Value.absent(),
+    this.leaseOwner = const Value.absent(),
+    this.leaseExpiresAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        firefliesId = Value(firefliesId),
@@ -1865,6 +2007,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     Expression<String>? transcriptJson,
     Expression<String>? summaryTitle,
     Expression<String>? summaryJson,
+    Expression<String>? summaryPartialsJson,
     Expression<String>? notionPageId,
     Expression<String>? notionUrl,
     Expression<String>? reprocessMode,
@@ -1876,6 +2019,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     Expression<DateTime>? startedAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? completedAt,
+    Expression<String>? leaseOwner,
+    Expression<DateTime>? leaseExpiresAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1895,6 +2040,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
       if (transcriptJson != null) 'transcript_json': transcriptJson,
       if (summaryTitle != null) 'summary_title': summaryTitle,
       if (summaryJson != null) 'summary_json': summaryJson,
+      if (summaryPartialsJson != null)
+        'summary_partials_json': summaryPartialsJson,
       if (notionPageId != null) 'notion_page_id': notionPageId,
       if (notionUrl != null) 'notion_url': notionUrl,
       if (reprocessMode != null) 'reprocess_mode': reprocessMode,
@@ -1906,6 +2053,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
       if (startedAt != null) 'started_at': startedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (completedAt != null) 'completed_at': completedAt,
+      if (leaseOwner != null) 'lease_owner': leaseOwner,
+      if (leaseExpiresAt != null) 'lease_expires_at': leaseExpiresAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1925,6 +2074,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     Value<String?>? transcriptJson,
     Value<String?>? summaryTitle,
     Value<String?>? summaryJson,
+    Value<String?>? summaryPartialsJson,
     Value<String?>? notionPageId,
     Value<String?>? notionUrl,
     Value<String?>? reprocessMode,
@@ -1936,6 +2086,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     Value<DateTime?>? startedAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? completedAt,
+    Value<String?>? leaseOwner,
+    Value<DateTime?>? leaseExpiresAt,
     Value<int>? rowid,
   }) {
     return SyncJobsCompanion(
@@ -1955,6 +2107,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
       transcriptJson: transcriptJson ?? this.transcriptJson,
       summaryTitle: summaryTitle ?? this.summaryTitle,
       summaryJson: summaryJson ?? this.summaryJson,
+      summaryPartialsJson: summaryPartialsJson ?? this.summaryPartialsJson,
       notionPageId: notionPageId ?? this.notionPageId,
       notionUrl: notionUrl ?? this.notionUrl,
       reprocessMode: reprocessMode ?? this.reprocessMode,
@@ -1966,6 +2119,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
       startedAt: startedAt ?? this.startedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       completedAt: completedAt ?? this.completedAt,
+      leaseOwner: leaseOwner ?? this.leaseOwner,
+      leaseExpiresAt: leaseExpiresAt ?? this.leaseExpiresAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2019,6 +2174,11 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     if (summaryJson.present) {
       map['summary_json'] = Variable<String>(summaryJson.value);
     }
+    if (summaryPartialsJson.present) {
+      map['summary_partials_json'] = Variable<String>(
+        summaryPartialsJson.value,
+      );
+    }
     if (notionPageId.present) {
       map['notion_page_id'] = Variable<String>(notionPageId.value);
     }
@@ -2052,6 +2212,12 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
+    if (leaseOwner.present) {
+      map['lease_owner'] = Variable<String>(leaseOwner.value);
+    }
+    if (leaseExpiresAt.present) {
+      map['lease_expires_at'] = Variable<DateTime>(leaseExpiresAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2077,6 +2243,7 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
           ..write('transcriptJson: $transcriptJson, ')
           ..write('summaryTitle: $summaryTitle, ')
           ..write('summaryJson: $summaryJson, ')
+          ..write('summaryPartialsJson: $summaryPartialsJson, ')
           ..write('notionPageId: $notionPageId, ')
           ..write('notionUrl: $notionUrl, ')
           ..write('reprocessMode: $reprocessMode, ')
@@ -2088,6 +2255,8 @@ class SyncJobsCompanion extends UpdateCompanion<SyncJobRow> {
           ..write('startedAt: $startedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('completedAt: $completedAt, ')
+          ..write('leaseOwner: $leaseOwner, ')
+          ..write('leaseExpiresAt: $leaseExpiresAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4962,6 +5131,7 @@ typedef $$SyncJobsTableCreateCompanionBuilder =
       Value<String?> transcriptJson,
       Value<String?> summaryTitle,
       Value<String?> summaryJson,
+      Value<String?> summaryPartialsJson,
       Value<String?> notionPageId,
       Value<String?> notionUrl,
       Value<String?> reprocessMode,
@@ -4973,6 +5143,8 @@ typedef $$SyncJobsTableCreateCompanionBuilder =
       Value<DateTime?> startedAt,
       required DateTime updatedAt,
       Value<DateTime?> completedAt,
+      Value<String?> leaseOwner,
+      Value<DateTime?> leaseExpiresAt,
       Value<int> rowid,
     });
 typedef $$SyncJobsTableUpdateCompanionBuilder =
@@ -4991,6 +5163,7 @@ typedef $$SyncJobsTableUpdateCompanionBuilder =
       Value<String?> transcriptJson,
       Value<String?> summaryTitle,
       Value<String?> summaryJson,
+      Value<String?> summaryPartialsJson,
       Value<String?> notionPageId,
       Value<String?> notionUrl,
       Value<String?> reprocessMode,
@@ -5002,6 +5175,8 @@ typedef $$SyncJobsTableUpdateCompanionBuilder =
       Value<DateTime?> startedAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> completedAt,
+      Value<String?> leaseOwner,
+      Value<DateTime?> leaseExpiresAt,
       Value<int> rowid,
     });
 
@@ -5107,6 +5282,11 @@ class $$SyncJobsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get summaryPartialsJson => $composableBuilder(
+    column: $table.summaryPartialsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get notionPageId => $composableBuilder(
     column: $table.notionPageId,
     builder: (column) => ColumnFilters(column),
@@ -5159,6 +5339,16 @@ class $$SyncJobsTableFilterComposer
 
   ColumnFilters<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get leaseOwner => $composableBuilder(
+    column: $table.leaseOwner,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5268,6 +5458,11 @@ class $$SyncJobsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get summaryPartialsJson => $composableBuilder(
+    column: $table.summaryPartialsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notionPageId => $composableBuilder(
     column: $table.notionPageId,
     builder: (column) => ColumnOrderings(column),
@@ -5320,6 +5515,16 @@ class $$SyncJobsTableOrderingComposer
 
   ColumnOrderings<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get leaseOwner => $composableBuilder(
+    column: $table.leaseOwner,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -5398,6 +5603,11 @@ class $$SyncJobsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get summaryPartialsJson => $composableBuilder(
+    column: $table.summaryPartialsJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get notionPageId => $composableBuilder(
     column: $table.notionPageId,
     builder: (column) => column,
@@ -5444,6 +5654,16 @@ class $$SyncJobsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get leaseOwner => $composableBuilder(
+    column: $table.leaseOwner,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get leaseExpiresAt => $composableBuilder(
+    column: $table.leaseExpiresAt,
     builder: (column) => column,
   );
 
@@ -5516,6 +5736,7 @@ class $$SyncJobsTableTableManager
                 Value<String?> transcriptJson = const Value.absent(),
                 Value<String?> summaryTitle = const Value.absent(),
                 Value<String?> summaryJson = const Value.absent(),
+                Value<String?> summaryPartialsJson = const Value.absent(),
                 Value<String?> notionPageId = const Value.absent(),
                 Value<String?> notionUrl = const Value.absent(),
                 Value<String?> reprocessMode = const Value.absent(),
@@ -5527,6 +5748,8 @@ class $$SyncJobsTableTableManager
                 Value<DateTime?> startedAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
+                Value<String?> leaseOwner = const Value.absent(),
+                Value<DateTime?> leaseExpiresAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncJobsCompanion(
                 id: id,
@@ -5543,6 +5766,7 @@ class $$SyncJobsTableTableManager
                 transcriptJson: transcriptJson,
                 summaryTitle: summaryTitle,
                 summaryJson: summaryJson,
+                summaryPartialsJson: summaryPartialsJson,
                 notionPageId: notionPageId,
                 notionUrl: notionUrl,
                 reprocessMode: reprocessMode,
@@ -5554,6 +5778,8 @@ class $$SyncJobsTableTableManager
                 startedAt: startedAt,
                 updatedAt: updatedAt,
                 completedAt: completedAt,
+                leaseOwner: leaseOwner,
+                leaseExpiresAt: leaseExpiresAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5573,6 +5799,7 @@ class $$SyncJobsTableTableManager
                 Value<String?> transcriptJson = const Value.absent(),
                 Value<String?> summaryTitle = const Value.absent(),
                 Value<String?> summaryJson = const Value.absent(),
+                Value<String?> summaryPartialsJson = const Value.absent(),
                 Value<String?> notionPageId = const Value.absent(),
                 Value<String?> notionUrl = const Value.absent(),
                 Value<String?> reprocessMode = const Value.absent(),
@@ -5584,6 +5811,8 @@ class $$SyncJobsTableTableManager
                 Value<DateTime?> startedAt = const Value.absent(),
                 required DateTime updatedAt,
                 Value<DateTime?> completedAt = const Value.absent(),
+                Value<String?> leaseOwner = const Value.absent(),
+                Value<DateTime?> leaseExpiresAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SyncJobsCompanion.insert(
                 id: id,
@@ -5600,6 +5829,7 @@ class $$SyncJobsTableTableManager
                 transcriptJson: transcriptJson,
                 summaryTitle: summaryTitle,
                 summaryJson: summaryJson,
+                summaryPartialsJson: summaryPartialsJson,
                 notionPageId: notionPageId,
                 notionUrl: notionUrl,
                 reprocessMode: reprocessMode,
@@ -5611,6 +5841,8 @@ class $$SyncJobsTableTableManager
                 startedAt: startedAt,
                 updatedAt: updatedAt,
                 completedAt: completedAt,
+                leaseOwner: leaseOwner,
+                leaseExpiresAt: leaseExpiresAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -1,0 +1,28 @@
+import 'package:classsync/domain/settings/app_settings.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('nullable integration mappings can be cleared', () {
+    final configured = AppSettings.defaults.copyWith(
+      notionSubjectsDataSourceId: 'subjects',
+      notionSummariesDataSourceId: 'summaries',
+      relayBaseUrl: 'https://relay.example',
+    );
+    final cleared = configured.copyWith(
+      notionSubjectsDataSourceId: null,
+      notionSummariesDataSourceId: null,
+      relayBaseUrl: null,
+    );
+    expect(cleared.notionSubjectsDataSourceId, isNull);
+    expect(cleared.notionSummariesDataSourceId, isNull);
+    expect(cleared.relayBaseUrl, isNull);
+  });
+
+  test('invalid threshold ordering is rejected outside assertions', () {
+    final invalid = AppSettings.defaults.copyWith(
+      reviewThreshold: 0.9,
+      autoClassifyThreshold: 0.8,
+    );
+    expect(invalid.validate, throwsFormatException);
+  });
+}

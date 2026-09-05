@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
+  "triggers": { "crons": ["17 3 * * *"] },
   "vars": {
     "FIREBASE_PROJECT_ID": "classsync-obl1vi0uzz"
   },

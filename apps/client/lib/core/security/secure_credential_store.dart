@@ -4,7 +4,8 @@ enum CredentialKey {
   firefliesApiKey('fireflies_api_key'),
   geminiApiKey('gemini_api_key'),
   notionToken('notion_token'),
-  relayDeviceToken('relay_device_token');
+  relayDeviceToken('relay_device_token'),
+  relayDeviceCredential('relay_device_credential');
 
   const CredentialKey(this.storageKey);
   final String storageKey;

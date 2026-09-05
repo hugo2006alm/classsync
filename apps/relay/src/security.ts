@@ -37,3 +37,31 @@ export function isDeviceAuthorized(request: Request, token: string): boolean {
     : "";
   return token.length >= 32 && constantTimeEqual(supplied, token);
 }
+
+export async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function authenticatedDevice(
+  request: Request,
+  env: import("./types").Env,
+): Promise<string | null> {
+  const id = request.headers.get("x-classsync-device-id") ?? "";
+  const authorization = request.headers.get("authorization") ?? "";
+  const credential = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  if (!/^[a-zA-Z0-9-]{8,80}$/.test(id) || credential.length < 32) return null;
+  const row = await env.DB.prepare(
+    "SELECT id, credential_hash, revoked_at FROM relay_device_auth WHERE id = ?",
+  )
+    .bind(id)
+    .first<import("./types").RelayDeviceAuthRow>();
+  if (!row || row.revoked_at) return null;
+  return constantTimeEqual(await sha256(credential), row.credential_hash)
+    ? row.id
+    : null;
+}

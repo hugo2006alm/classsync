@@ -12,11 +12,35 @@ export interface RelayDeviceRow {
   platform: string;
 }
 
+export interface RelayDeviceAuthRow {
+  id: string;
+  credential_hash: string;
+  revoked_at: string | null;
+}
+
 export interface FirefliesWebhookPayload {
-  event: "meeting.transcribed" | "meeting.summarized";
+  event: "meeting.transcribed";
   timestamp: number;
   meeting_id: string;
   client_reference_id?: string;
+}
+
+export interface ProcessingClaimRow {
+  fireflies_transcript_id: string;
+  device_id: string;
+  lease_expires_at: string;
+  status: string;
+  notion_page_id: string | null;
+  updated_at: string;
+}
+
+export interface PushDeliveryRow {
+  event_id: string;
+  device_id: string;
+  push_token: string;
+  attempt_count: number;
+  fireflies_transcript_id: string;
+  event_type: string;
 }
 
 export interface RelayEventRow {

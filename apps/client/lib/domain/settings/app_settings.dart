@@ -1,5 +1,7 @@
 enum SummaryDetail { concise, balanced, detailed }
 
+const _unsetSetting = Object();
+
 class AppSettings {
   const AppSettings({
     required this.setupComplete,
@@ -91,9 +93,9 @@ class AppSettings {
     String? summaryLanguage,
     SummaryDetail? summaryDetail,
     bool? notionMetadataEnabled,
-    String? notionSubjectsDataSourceId,
-    String? notionSummariesDataSourceId,
-    String? relayBaseUrl,
+    Object? notionSubjectsDataSourceId = _unsetSetting,
+    Object? notionSummariesDataSourceId = _unsetSetting,
+    Object? relayBaseUrl = _unsetSetting,
   }) => AppSettings(
     setupComplete: setupComplete ?? this.setupComplete,
     automaticSync: automaticSync ?? this.automaticSync,
@@ -117,9 +119,52 @@ class AppSettings {
     summaryDetail: summaryDetail ?? this.summaryDetail,
     notionMetadataEnabled: notionMetadataEnabled ?? this.notionMetadataEnabled,
     notionSubjectsDataSourceId:
-        notionSubjectsDataSourceId ?? this.notionSubjectsDataSourceId,
+        identical(notionSubjectsDataSourceId, _unsetSetting)
+        ? this.notionSubjectsDataSourceId
+        : notionSubjectsDataSourceId as String?,
     notionSummariesDataSourceId:
-        notionSummariesDataSourceId ?? this.notionSummariesDataSourceId,
-    relayBaseUrl: relayBaseUrl ?? this.relayBaseUrl,
+        identical(notionSummariesDataSourceId, _unsetSetting)
+        ? this.notionSummariesDataSourceId
+        : notionSummariesDataSourceId as String?,
+    relayBaseUrl: identical(relayBaseUrl, _unsetSetting)
+        ? this.relayBaseUrl
+        : relayBaseUrl as String?,
   );
+
+  void validate() {
+    if (pollingMinutes < 15 || pollingMinutes > 1440) {
+      throw const FormatException('Polling interval must be 15–1440 minutes.');
+    }
+    if (overlapHours < 1 || overlapHours > 168) {
+      throw const FormatException('Recovery overlap must be 1–168 hours.');
+    }
+    if (workerCount < 1 || workerCount > 2) {
+      throw const FormatException('Worker count must be 1 or 2.');
+    }
+    if (reviewThreshold < 0 ||
+        autoClassifyThreshold > 1 ||
+        reviewThreshold > autoClassifyThreshold) {
+      throw const FormatException(
+        'Review threshold must be between 0 and the auto-publish threshold.',
+      );
+    }
+    if (classificationModel.trim().isEmpty || summaryModel.trim().isEmpty) {
+      throw const FormatException('Gemini model names cannot be empty.');
+    }
+    if (diagnosticsRetentionDays < 1 || diagnosticsRetentionDays > 365) {
+      throw const FormatException('Retention must be 1–365 days.');
+    }
+    final relay = relayBaseUrl?.trim();
+    if (relay != null && relay.isNotEmpty) {
+      final uri = Uri.tryParse(relay);
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        throw const FormatException('Relay URL must be a valid HTTPS URL.');
+      }
+    }
+    if (setupComplete &&
+        ((notionSubjectsDataSourceId?.trim().isEmpty ?? true) ||
+            (notionSummariesDataSourceId?.trim().isEmpty ?? true))) {
+      throw const FormatException('Both Notion data sources are required.');
+    }
+  }
 }

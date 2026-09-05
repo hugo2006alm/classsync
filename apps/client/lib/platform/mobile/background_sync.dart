@@ -10,6 +10,7 @@ import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
 
 const _taskName = 'classsync.periodicSync';
+const _pushTaskName = 'classsync.pushSync';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -29,7 +30,11 @@ void callbackDispatcher() {
       }
       await container
           .read(syncCoordinatorProvider)
-          .run(SyncReason.mobileBackground);
+          .run(
+            task == _pushTaskName
+                ? SyncReason.firefliesWebhook
+                : SyncReason.mobileBackground,
+          );
       return true;
     } catch (_) {
       return false;
@@ -38,6 +43,18 @@ void callbackDispatcher() {
       await database.close();
     }
   });
+}
+
+Future<void> enqueueMobileSyncFromPush() async {
+  if (!Platform.isAndroid) return;
+  await Workmanager().registerOneOffTask(
+    _pushTaskName,
+    _pushTaskName,
+    constraints: Constraints(networkType: NetworkType.connected),
+    existingWorkPolicy: ExistingWorkPolicy.keep,
+    backoffPolicy: BackoffPolicy.exponential,
+    backoffPolicyDelay: const Duration(minutes: 10),
+  );
 }
 
 Future<void> configureMobileBackgroundSync(AppSettings settings) async {

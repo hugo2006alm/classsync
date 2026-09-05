@@ -1,5 +1,10 @@
-import 'package:dio/dio.dart';
+import 'dart:convert';
+import 'dart:math';
 
+import 'package:dio/dio.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../security/secure_credential_store.dart';
 import '../integration_exception.dart';
 
 class RelayEvent {
@@ -21,19 +26,49 @@ class RelayClient {
 
   final Dio _dio;
 
-  Future<void> testConnection(String baseUrl) async {
+  Future<void> testConnection(String baseUrl, {required String token}) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        '${_base(baseUrl)}/health',
+        '${_base(baseUrl)}/session',
+        options: Options(headers: {'authorization': 'Bearer $token'}),
       );
-      if (response.data?['status'] != 'ok') {
+      if (response.data?['protocolVersion'] != 2) {
         throw const IntegrationException(
           integration: 'ClassSync Relay',
-          code: 'unhealthy',
-          userMessage: 'ClassSync Relay health check failed.',
-          retryable: true,
+          code: 'protocol_mismatch',
+          userMessage: 'This relay does not support the required protocol.',
+          retryable: false,
         );
       }
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ClassSync Relay', error);
+    }
+  }
+
+  Future<String> ensureDeviceSession({
+    required String baseUrl,
+    required String bootstrapToken,
+    required SecureCredentialStore credentials,
+  }) async {
+    final existing = await credentials.read(
+      CredentialKey.relayDeviceCredential,
+    );
+    if (existing?.isNotEmpty == true) return existing!;
+    const uuid = Uuid();
+    final deviceId = uuid.v4();
+    final random = Random.secure();
+    final secret = base64UrlEncode(
+      List<int>.generate(48, (_) => random.nextInt(256)),
+    );
+    try {
+      await _dio.post<void>(
+        '${_base(baseUrl)}/devices/enroll',
+        data: {'deviceId': deviceId, 'credential': secret},
+        options: Options(headers: {'authorization': 'Bearer $bootstrapToken'}),
+      );
+      final session = '$deviceId.$secret';
+      await credentials.write(CredentialKey.relayDeviceCredential, session);
+      return session;
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
     }
@@ -46,7 +81,7 @@ class RelayClient {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
         '${_base(baseUrl)}/events',
-        options: Options(headers: {'authorization': 'Bearer $token'}),
+        options: Options(headers: _deviceHeaders(token)),
       );
       return (response.data?['events'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -74,7 +109,7 @@ class RelayClient {
     try {
       await _dio.post<void>(
         '${_base(baseUrl)}/events/${Uri.encodeComponent(eventId)}/ack',
-        options: Options(headers: {'authorization': 'Bearer $token'}),
+        options: Options(headers: _deviceHeaders(token)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -90,7 +125,7 @@ class RelayClient {
       await _dio.post<void>(
         '${_base(baseUrl)}/devices/register',
         data: {'pushToken': pushToken, 'platform': 'android'},
-        options: Options(headers: {'authorization': 'Bearer $deviceToken'}),
+        options: Options(headers: _deviceHeaders(deviceToken)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -106,7 +141,58 @@ class RelayClient {
       await _dio.delete<void>(
         '${_base(baseUrl)}/devices/register',
         data: {'pushToken': pushToken, 'platform': 'android'},
-        options: Options(headers: {'authorization': 'Bearer $deviceToken'}),
+        options: Options(headers: _deviceHeaders(deviceToken)),
+      );
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ClassSync Relay', error);
+    }
+  }
+
+  Future<RelayClaim> claim({
+    required String baseUrl,
+    required String token,
+    required String firefliesId,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '${_base(baseUrl)}/claims/${Uri.encodeComponent(firefliesId)}',
+        options: Options(headers: _deviceHeaders(token)),
+      );
+      return RelayClaim(
+        acquired: response.data?['acquired'] == true,
+        completed: response.data?['completed'] == true,
+        notionPageId: response.data?['notionPageId'] as String?,
+      );
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ClassSync Relay', error);
+    }
+  }
+
+  Future<void> completeClaim({
+    required String baseUrl,
+    required String token,
+    required String firefliesId,
+    required String notionPageId,
+  }) async {
+    try {
+      await _dio.post<void>(
+        '${_base(baseUrl)}/claims/${Uri.encodeComponent(firefliesId)}/complete',
+        data: {'notionPageId': notionPageId},
+        options: Options(headers: _deviceHeaders(token)),
+      );
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ClassSync Relay', error);
+    }
+  }
+
+  Future<void> revokeDevice({
+    required String baseUrl,
+    required String token,
+  }) async {
+    try {
+      await _dio.delete<void>(
+        '${_base(baseUrl)}/session',
+        options: Options(headers: _deviceHeaders(token)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -114,4 +200,31 @@ class RelayClient {
   }
 
   String _base(String value) => value.trim().replaceFirst(RegExp(r'/+$'), '');
+
+  Map<String, String> _deviceHeaders(String session) {
+    final separator = session.indexOf('.');
+    if (separator < 1 || separator == session.length - 1) {
+      throw const IntegrationException(
+        integration: 'ClassSync Relay',
+        code: 'device_not_enrolled',
+        userMessage: 'This device must be enrolled with the relay again.',
+        retryable: false,
+      );
+    }
+    return {
+      'authorization': 'Bearer ${session.substring(separator + 1)}',
+      'x-classsync-device-id': session.substring(0, separator),
+    };
+  }
+}
+
+class RelayClaim {
+  const RelayClaim({
+    required this.acquired,
+    required this.completed,
+    this.notionPageId,
+  });
+  final bool acquired;
+  final bool completed;
+  final String? notionPageId;
 }

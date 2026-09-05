@@ -10,6 +10,7 @@ import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
+import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
 import '../shared/page_frame.dart';
 
@@ -287,14 +288,25 @@ class _SettingsBody extends ConsumerWidget {
                   value: settings.autoClassifyThreshold,
                   onChanged: (value) => _save(
                     ref,
-                    settings.copyWith(autoClassifyThreshold: value),
+                    settings.copyWith(
+                      autoClassifyThreshold: value,
+                      reviewThreshold: settings.reviewThreshold > value
+                          ? value
+                          : settings.reviewThreshold,
+                    ),
                   ),
                 ),
                 _ThresholdSlider(
                   label: 'Review threshold',
                   value: settings.reviewThreshold,
-                  onChanged: (value) =>
-                      _save(ref, settings.copyWith(reviewThreshold: value)),
+                  onChanged: (value) => _save(
+                    ref,
+                    settings.copyWith(
+                      reviewThreshold: value > settings.autoClassifyThreshold
+                          ? settings.autoClassifyThreshold
+                          : value,
+                    ),
+                  ),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -369,10 +381,23 @@ class _SettingsBody extends ConsumerWidget {
                   settings.copyWith(cleanCompletedPayloads: value),
                 ),
               ),
+              const Divider(),
+              ListTile(
+                title: const Text('Purge stored lecture content'),
+                subtitle: const Text(
+                  'Remove transcripts, partial AI work, and local summaries. Metadata remains.',
+                ),
+                trailing: OutlinedButton(
+                  onPressed: () => _confirmPurge(context, ref),
+                  child: const Text('Purge'),
+                ),
+              ),
             ],
           ),
         ),
       ),
+      const SizedBox(height: 28),
+      const _Corrections(),
       const SizedBox(height: 28),
       _Diagnostics(settings: settings),
     ],
@@ -382,6 +407,67 @@ class _SettingsBody extends ConsumerWidget {
     await ref.read(settingsControllerProvider).save(value);
     await configureMobileBackgroundSync(value);
   }
+}
+
+class _Corrections extends ConsumerWidget {
+  const _Corrections();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final corrections =
+        ref.watch(classificationCorrectionsProvider).valueOrNull ?? const [];
+    return _SettingsSection(
+      title: 'Classification corrections',
+      description: 'Exact lecture-title matches learned on this device.',
+      child: Card(
+        child: corrections.isEmpty
+            ? const ListTile(title: Text('No learned corrections'))
+            : Column(
+                children: [
+                  for (var index = 0; index < corrections.length; index++) ...[
+                    ListTile(
+                      title: Text(
+                        corrections[index].titlePattern ?? 'Untitled',
+                      ),
+                      subtitle: Text(corrections[index].subjectName),
+                      trailing: IconButton(
+                        tooltip: 'Delete correction',
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        onPressed: () => ref
+                            .read(databaseProvider)
+                            .deleteCorrection(corrections[index].id),
+                      ),
+                    ),
+                    if (index < corrections.length - 1) const Divider(),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+Future<void> _confirmPurge(BuildContext context, WidgetRef ref) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Purge local lecture content?'),
+      content: const Text(
+        'This removes stored transcripts and summaries. Published Notion pages and job metadata remain.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Purge'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true) await ref.read(databaseProvider).purgeStoredContent();
 }
 
 class _SettingsSection extends StatelessWidget {
@@ -545,7 +631,7 @@ class _Diagnostics extends ConsumerWidget {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: () =>
-                      _exportDiagnostics(context, ref, settings, jobs.length),
+                      _exportDiagnostics(context, ref, settings, jobs),
                   icon: const Icon(Icons.download_rounded),
                   label: const Text('Export redacted diagnostics'),
                 ),
@@ -699,13 +785,33 @@ Future<void> _configureRelay(
               try {
                 await ref
                     .read(relayClientProvider)
-                    .testConnection(urlController.text.trim());
-                await ref
-                    .read(credentialStoreProvider)
-                    .write(
-                      CredentialKey.relayDeviceToken,
-                      tokenController.text,
+                    .testConnection(
+                      urlController.text.trim(),
+                      token: tokenController.text.trim(),
                     );
+                final credentialStore = ref.read(credentialStoreProvider);
+                final oldSession = await credentialStore.read(
+                  CredentialKey.relayDeviceCredential,
+                );
+                if (oldSession != null && settings.relayBaseUrl != null) {
+                  try {
+                    await ref
+                        .read(relayClientProvider)
+                        .revokeDevice(
+                          baseUrl: settings.relayBaseUrl!,
+                          token: oldSession,
+                        );
+                  } catch (_) {
+                    // Rotation still succeeds while old relay is unavailable.
+                  }
+                }
+                await credentialStore.delete(
+                  CredentialKey.relayDeviceCredential,
+                );
+                await credentialStore.write(
+                  CredentialKey.relayDeviceToken,
+                  tokenController.text,
+                );
                 await ref
                     .read(settingsControllerProvider)
                     .save(
@@ -732,7 +838,7 @@ Future<void> _exportDiagnostics(
   BuildContext context,
   WidgetRef ref,
   AppSettings settings,
-  int queueEntries,
+  List<SyncJob> jobs,
 ) async {
   final info = await PackageInfo.fromPlatform();
   final output = {
@@ -740,13 +846,27 @@ Future<void> _exportDiagnostics(
     'version': info.version,
     'platform': Platform.operatingSystem,
     'generatedAt': DateTime.now().toUtc().toIso8601String(),
-    'database': 'ready',
-    'queueEntries': queueEntries,
+    'database': {'status': 'ready', 'schemaVersion': 4},
+    'queueEntries': jobs.length,
     'pollingMinutes': settings.pollingMinutes,
     'overlapHours': settings.overlapHours,
     'relayConfigured': settings.relayBaseUrl != null,
     'notionSubjectsMapped': settings.notionSubjectsDataSourceId != null,
     'notionSummariesMapped': settings.notionSummariesDataSourceId != null,
+    'jobs': jobs
+        .take(100)
+        .map(
+          (job) => {
+            'id': job.id,
+            'status': job.status.wireName,
+            'sourceType': job.sourceType,
+            'attemptCount': job.attemptCount,
+            'lastErrorType': job.lastErrorType,
+            'lastErrorMessage': job.lastErrorMessage,
+            'updatedAt': job.updatedAt.toUtc().toIso8601String(),
+          },
+        )
+        .toList(),
   };
   final path = await FilePicker.saveFile(
     dialogTitle: 'Export ClassSync diagnostics',

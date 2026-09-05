@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
+import '../../core/security/trusted_url_launcher.dart';
 import '../../domain/academic/academic_models.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
@@ -44,13 +44,13 @@ class JobDetailScreen extends ConsumerWidget {
           actions: [
             if (job.firefliesUrl case final url?)
               OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse(url)),
+                onPressed: () => _openUrl(context, url, const {'fireflies.ai'}),
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: const Text('Fireflies'),
               ),
             if (job.notionUrl case final url?)
               OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse(url)),
+                onPressed: () => _openUrl(context, url, const {'notion.so'}),
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: const Text('Notion'),
               ),
@@ -107,6 +107,18 @@ class JobDetailScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+Future<void> _openUrl(
+  BuildContext context,
+  String value,
+  Set<String> hosts,
+) async {
+  if (await launchTrustedUrl(value, allowedHosts: hosts)) return;
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Blocked invalid external link.')),
+  );
 }
 
 class _JobContent extends ConsumerWidget {

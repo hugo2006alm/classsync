@@ -44,6 +44,7 @@ class SyncJobs extends Table {
   TextColumn get transcriptJson => text().nullable()();
   TextColumn get summaryTitle => text().nullable()();
   TextColumn get summaryJson => text().nullable()();
+  TextColumn get summaryPartialsJson => text().nullable()();
   TextColumn get notionPageId => text().nullable()();
   TextColumn get notionUrl => text().nullable()();
   TextColumn get reprocessMode => text().nullable()();
@@ -55,6 +56,8 @@ class SyncJobs extends Table {
   DateTimeColumn get startedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  TextColumn get leaseOwner => text().nullable()();
+  DateTimeColumn get leaseExpiresAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -136,7 +139,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -150,6 +153,11 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           settingsRecords,
           settingsRecords.notificationsEnabled,
         );
+      }
+      if (from < 4) {
+        await migrator.addColumn(syncJobs, syncJobs.summaryPartialsJson);
+        await migrator.addColumn(syncJobs, syncJobs.leaseOwner);
+        await migrator.addColumn(syncJobs, syncJobs.leaseExpiresAt);
       }
     },
   );
@@ -175,35 +183,38 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     return row == null ? AppSettings.defaults : _settingsFromRow(row);
   }
 
-  Future<void> saveSettings(
-    AppSettings settings,
-  ) => into(settingsRecords).insertOnConflictUpdate(
-    SettingsRecordsCompanion.insert(
-      id: const Value(1),
-      setupComplete: settings.setupComplete,
-      automaticSync: settings.automaticSync,
-      launchWithWindows: settings.launchWithWindows,
-      syncOnLaunch: settings.syncOnLaunch,
-      backgroundMobileSync: settings.backgroundMobileSync,
-      notificationsEnabled: Value(settings.notificationsEnabled),
-      pollingMinutes: settings.pollingMinutes,
-      overlapHours: settings.overlapHours,
-      workerCount: settings.workerCount,
-      keepTranscripts: settings.keepTranscripts,
-      cleanCompletedPayloads: settings.cleanCompletedPayloads,
-      diagnosticsRetentionDays: settings.diagnosticsRetentionDays,
-      classificationModel: settings.classificationModel,
-      summaryModel: settings.summaryModel,
-      autoClassifyThreshold: settings.autoClassifyThreshold,
-      reviewThreshold: settings.reviewThreshold,
-      summaryLanguage: settings.summaryLanguage,
-      summaryDetail: settings.summaryDetail.name,
-      notionMetadataEnabled: settings.notionMetadataEnabled,
-      notionSubjectsDataSourceId: Value(settings.notionSubjectsDataSourceId),
-      notionSummariesDataSourceId: Value(settings.notionSummariesDataSourceId),
-      relayBaseUrl: Value(settings.relayBaseUrl),
-    ),
-  );
+  Future<void> saveSettings(AppSettings settings) {
+    settings.validate();
+    return into(settingsRecords).insertOnConflictUpdate(
+      SettingsRecordsCompanion.insert(
+        id: const Value(1),
+        setupComplete: settings.setupComplete,
+        automaticSync: settings.automaticSync,
+        launchWithWindows: settings.launchWithWindows,
+        syncOnLaunch: settings.syncOnLaunch,
+        backgroundMobileSync: settings.backgroundMobileSync,
+        notificationsEnabled: Value(settings.notificationsEnabled),
+        pollingMinutes: settings.pollingMinutes,
+        overlapHours: settings.overlapHours,
+        workerCount: settings.workerCount,
+        keepTranscripts: settings.keepTranscripts,
+        cleanCompletedPayloads: settings.cleanCompletedPayloads,
+        diagnosticsRetentionDays: settings.diagnosticsRetentionDays,
+        classificationModel: settings.classificationModel,
+        summaryModel: settings.summaryModel,
+        autoClassifyThreshold: settings.autoClassifyThreshold,
+        reviewThreshold: settings.reviewThreshold,
+        summaryLanguage: settings.summaryLanguage,
+        summaryDetail: settings.summaryDetail.name,
+        notionMetadataEnabled: settings.notionMetadataEnabled,
+        notionSubjectsDataSourceId: Value(settings.notionSubjectsDataSourceId),
+        notionSummariesDataSourceId: Value(
+          settings.notionSummariesDataSourceId,
+        ),
+        relayBaseUrl: Value(settings.relayBaseUrl),
+      ),
+    );
+  }
 
   Stream<List<AcademicSubject>> watchActiveSubjects() =>
       (select(cachedSubjects)
@@ -295,23 +306,134 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     return true;
   }
 
-  Future<List<SyncJob>> readRunnableJobs() async {
+  Future<List<SyncJob>> claimRunnableJobs({
+    required String owner,
+    int limit = 50,
+    Duration leaseDuration = const Duration(minutes: 30),
+  }) => transaction(() async {
     final now = DateTime.now().toUtc();
     final statuses = [
       SyncJobStatus.discovered.wireName,
       SyncJobStatus.queued.wireName,
       SyncJobStatus.failedRetryable.wireName,
     ];
+    final processing = SyncJobStatus.values
+        .where((status) => status.isProcessing)
+        .map((status) => status.wireName)
+        .toList();
     final query = select(syncJobs)
       ..where(
         (row) =>
-            row.status.isIn(statuses) &
-            (row.nextRetryAt.isNull() |
-                row.nextRetryAt.isSmallerOrEqualValue(now)),
+            ((row.status.isIn(statuses) &
+                    (row.nextRetryAt.isNull() |
+                        row.nextRetryAt.isSmallerOrEqualValue(now))) |
+                (row.status.isIn(processing) &
+                    (row.leaseExpiresAt.isNull() |
+                        row.leaseExpiresAt.isSmallerOrEqualValue(now)))) &
+            (row.leaseOwner.isNull() |
+                row.leaseExpiresAt.isNull() |
+                row.leaseExpiresAt.isSmallerOrEqualValue(now)),
       )
-      ..orderBy([(row) => OrderingTerm.asc(row.discoveredAt)]);
-    return (await query.get()).map(_jobFromRow).toList();
+      ..orderBy([(row) => OrderingTerm.asc(row.discoveredAt)])
+      ..limit(limit.clamp(1, 100));
+    final candidates = await query.get();
+    final claimed = <SyncJob>[];
+    for (final candidate in candidates) {
+      final changed =
+          await (update(syncJobs)..where(
+                (row) =>
+                    row.id.equals(candidate.id) &
+                    (row.leaseOwner.isNull() |
+                        row.leaseExpiresAt.isNull() |
+                        row.leaseExpiresAt.isSmallerOrEqualValue(now)),
+              ))
+              .write(
+                SyncJobsCompanion(
+                  leaseOwner: Value(owner),
+                  leaseExpiresAt: Value(now.add(leaseDuration)),
+                  updatedAt: Value(now),
+                ),
+              );
+      if (changed == 1) {
+        final row = await (select(
+          syncJobs,
+        )..where((item) => item.id.equals(candidate.id))).getSingle();
+        claimed.add(_jobFromRow(row));
+      }
+    }
+    return claimed;
+  });
+
+  Future<bool> claimJob({
+    required String id,
+    required String owner,
+    Duration leaseDuration = const Duration(minutes: 30),
+  }) => transaction(() async {
+    final now = DateTime.now().toUtc();
+    final row = await (select(
+      syncJobs,
+    )..where((item) => item.id.equals(id))).getSingleOrNull();
+    if (row == null) return false;
+    final status = SyncJobStatus.fromWire(row.status);
+    final runnable =
+        status == SyncJobStatus.discovered ||
+        status == SyncJobStatus.queued ||
+        (status == SyncJobStatus.failedRetryable &&
+            (row.nextRetryAt == null || !row.nextRetryAt!.isAfter(now))) ||
+        (status.isProcessing &&
+            (row.leaseExpiresAt == null || !row.leaseExpiresAt!.isAfter(now)));
+    if (!runnable ||
+        (row.leaseOwner != null &&
+            row.leaseExpiresAt != null &&
+            row.leaseExpiresAt!.isAfter(now))) {
+      return false;
+    }
+    final changed =
+        await (update(syncJobs)..where(
+              (item) =>
+                  item.id.equals(id) &
+                  (item.leaseOwner.isNull() |
+                      item.leaseExpiresAt.isNull() |
+                      item.leaseExpiresAt.isSmallerOrEqualValue(now)),
+            ))
+            .write(
+              SyncJobsCompanion(
+                leaseOwner: Value(owner),
+                leaseExpiresAt: Value(now.add(leaseDuration)),
+                updatedAt: Value(now),
+              ),
+            );
+    return changed == 1;
+  });
+
+  Future<bool> renewLease(
+    String id,
+    String owner, {
+    Duration duration = const Duration(minutes: 30),
+  }) async {
+    final now = DateTime.now().toUtc();
+    final changed =
+        await (update(
+              syncJobs,
+            )..where((row) => row.id.equals(id) & row.leaseOwner.equals(owner)))
+            .write(
+              SyncJobsCompanion(
+                leaseExpiresAt: Value(now.add(duration)),
+                updatedAt: Value(now),
+              ),
+            );
+    return changed == 1;
   }
+
+  Future<void> releaseLease(String id, String owner) =>
+      (update(syncJobs)
+            ..where((row) => row.id.equals(id) & row.leaseOwner.equals(owner)))
+          .write(
+            const SyncJobsCompanion(
+              leaseOwner: Value(null),
+              leaseExpiresAt: Value(null),
+            ),
+          );
 
   Future<void> setJobStatus(
     String id,
@@ -326,6 +448,12 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         startedAt: status.isProcessing ? Value(now) : const Value.absent(),
         updatedAt: Value(now),
         completedAt: terminal ? Value(now) : const Value.absent(),
+        leaseOwner: status.isProcessing || status == SyncJobStatus.queued
+            ? const Value.absent()
+            : const Value(null),
+        leaseExpiresAt: status.isProcessing || status == SyncJobStatus.queued
+            ? const Value.absent()
+            : const Value(null),
       ),
     );
     await addJobEvent(id, status, message);
@@ -369,14 +497,80 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     );
   }
 
+  Future<void> learnClassificationCorrection(
+    String jobId,
+    AcademicSubject subject,
+  ) async {
+    final job = await readJob(jobId);
+    if (job == null) return;
+    final pattern = job.title.trim().toLowerCase();
+    if (pattern.isEmpty) return;
+    await transaction(() async {
+      await (delete(
+        classificationCorrections,
+      )..where((row) => row.titlePattern.equals(pattern))).go();
+      await into(classificationCorrections).insert(
+        ClassificationCorrectionsCompanion.insert(
+          titlePattern: Value(
+            pattern.length <= 120
+                ? pattern
+                : String.fromCharCodes(pattern.runes.take(120)),
+          ),
+          subjectId: subject.notionId,
+          subjectName: subject.name,
+          createdAt: DateTime.now().toUtc(),
+        ),
+      );
+    });
+  }
+
+  Future<ClassificationCorrectionRow?> matchingCorrection(String title) =>
+      (select(classificationCorrections)
+            ..where(
+              (row) => row.titlePattern.equals(title.trim().toLowerCase()),
+            )
+            ..orderBy([(row) => OrderingTerm.desc(row.createdAt)])
+            ..limit(1))
+          .getSingleOrNull();
+
+  Stream<List<ClassificationCorrectionRow>> watchCorrections() => (select(
+    classificationCorrections,
+  )..orderBy([(row) => OrderingTerm.desc(row.createdAt)])).watch();
+
+  Future<void> deleteCorrection(int id) => (delete(
+    classificationCorrections,
+  )..where((row) => row.id.equals(id))).go();
+
   Future<void> saveSummary(String id, LectureSummary summary) =>
       (update(syncJobs)..where((row) => row.id.equals(id))).write(
         SyncJobsCompanion(
           summaryTitle: Value(summary.title),
           summaryJson: Value(summary.encode()),
+          summaryPartialsJson: const Value(null),
           updatedAt: Value(DateTime.now().toUtc()),
         ),
       );
+
+  Future<List<Map<String, dynamic>>> readSummaryPartials(String id) async {
+    final row = await (select(
+      syncJobs,
+    )..where((item) => item.id.equals(id))).getSingleOrNull();
+    final encoded = row?.summaryPartialsJson;
+    if (encoded == null) return const [];
+    return (jsonDecode(encoded) as List<dynamic>)
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  Future<void> saveSummaryPartials(
+    String id,
+    List<Map<String, dynamic>> partials,
+  ) => (update(syncJobs)..where((row) => row.id.equals(id))).write(
+    SyncJobsCompanion(
+      summaryPartialsJson: Value(jsonEncode(partials)),
+      updatedAt: Value(DateTime.now().toUtc()),
+    ),
+  );
 
   Future<void> saveNotionPage(String id, String pageId, String? url) =>
       (update(syncJobs)..where((row) => row.id.equals(id))).write(
@@ -407,11 +601,16 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
             : const Value.absent(),
         summaryTitle: clearSummary ? const Value(null) : const Value.absent(),
         summaryJson: clearSummary ? const Value(null) : const Value.absent(),
+        summaryPartialsJson: clearSummary
+            ? const Value(null)
+            : const Value.absent(),
         reprocessMode: const Value('replace'),
         nextRetryAt: const Value(null),
         lastErrorType: const Value(null),
         lastErrorMessage: const Value(null),
         completedAt: const Value(null),
+        leaseOwner: const Value(null),
+        leaseExpiresAt: const Value(null),
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
@@ -449,6 +648,8 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         completedAt: retryable
             ? const Value.absent()
             : Value(DateTime.now().toUtc()),
+        leaseOwner: const Value(null),
+        leaseExpiresAt: const Value(null),
       ),
     );
     await addJobEvent(id, status, message);
@@ -458,6 +659,33 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
       (update(syncJobs)..where((row) => row.id.equals(id))).write(
         const SyncJobsCompanion(transcriptJson: Value(null)),
       );
+
+  Future<int> pruneAbandonedPayloads(Duration retention) =>
+      (update(syncJobs)..where(
+            (row) =>
+                row.updatedAt.isSmallerThanValue(
+                  DateTime.now().toUtc().subtract(retention),
+                ) &
+                row.status.isIn([
+                  SyncJobStatus.needsReview.wireName,
+                  SyncJobStatus.failedTerminal.wireName,
+                  SyncJobStatus.corrupt.wireName,
+                ]),
+          ))
+          .write(
+            const SyncJobsCompanion(
+              transcriptJson: Value(null),
+              summaryPartialsJson: Value(null),
+            ),
+          );
+
+  Future<int> purgeStoredContent() => update(syncJobs).write(
+    const SyncJobsCompanion(
+      transcriptJson: Value(null),
+      summaryJson: Value(null),
+      summaryPartialsJson: Value(null),
+    ),
+  );
 
   Future<void> addJobEvent(
     String jobId,
@@ -547,6 +775,9 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     startedAt: row.startedAt,
     updatedAt: row.updatedAt,
     completedAt: row.completedAt,
+    leaseOwner: row.leaseOwner,
+    leaseExpiresAt: row.leaseExpiresAt,
+    summaryPartialsJson: row.summaryPartialsJson,
   );
 
   AppSettings _settingsFromRow(SettingsRow row) => AppSettings(

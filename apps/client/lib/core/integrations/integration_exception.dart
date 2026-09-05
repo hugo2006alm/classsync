@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 class IntegrationException implements Exception {
@@ -23,7 +25,7 @@ class IntegrationException implements Exception {
   static IntegrationException fromDio(String integration, DioException error) {
     final status = error.response?.statusCode;
     final retryAfterHeader = error.response?.headers.value('retry-after');
-    final retryAfterSeconds = int.tryParse(retryAfterHeader ?? '');
+    final retryAfter = _parseRetryAfter(retryAfterHeader);
     if (status == 401 || status == 403) {
       return IntegrationException(
         integration: integration,
@@ -51,9 +53,7 @@ class IntegrationException implements Exception {
         userMessage:
             '$integration is rate limiting ClassSync. It will retry later.',
         retryable: true,
-        retryAfter: retryAfterSeconds == null
-            ? null
-            : Duration(seconds: retryAfterSeconds),
+        retryAfter: retryAfter,
         statusCode: status,
       );
     }
@@ -73,6 +73,21 @@ class IntegrationException implements Exception {
       retryable: retryable,
       statusCode: status,
     );
+  }
+}
+
+Duration? _parseRetryAfter(String? value) {
+  if (value == null) return null;
+  final seconds = int.tryParse(value.trim());
+  if (seconds != null) return Duration(seconds: seconds.clamp(0, 86400));
+  try {
+    final target = HttpDate.parse(value).toUtc();
+    final delay = target.difference(DateTime.now().toUtc());
+    return delay.isNegative
+        ? Duration.zero
+        : Duration(seconds: delay.inSeconds.clamp(0, 86400));
+  } on FormatException {
+    return null;
   }
 }
 

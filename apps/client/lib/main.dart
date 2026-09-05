@@ -12,12 +12,14 @@ import 'core/database/classsync_database.dart';
 import 'core/providers.dart';
 import 'domain/sync/sync_models.dart';
 import 'platform/desktop/desktop_automation_service.dart';
+import 'platform/desktop/single_instance_service.dart';
 import 'platform/mobile/background_sync.dart';
 import 'platform/mobile/firebase_push_service.dart';
 import 'firebase_options.dart';
 
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!SingleInstanceService.acquire()) return;
   if (Platform.isAndroid) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
     FirebaseMessaging.onBackgroundMessage(classSyncFirebaseBackgroundHandler);

@@ -37,6 +37,11 @@ final syncJobsProvider = StreamProvider<List<SyncJob>>(
   (ref) => ref.watch(databaseProvider).watchJobs(),
 );
 
+final classificationCorrectionsProvider =
+    StreamProvider<List<ClassificationCorrectionRow>>(
+      (ref) => ref.watch(databaseProvider).watchCorrections(),
+    );
+
 final syncJobProvider = StreamProvider.family<SyncJob?, String>(
   (ref, id) => ref.watch(databaseProvider).watchJob(id),
 );

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
 import '../../domain/academic/academic_models.dart';
+import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 
 class ClassesScreen extends ConsumerWidget {
@@ -12,6 +13,7 @@ class ClassesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subjects = ref.watch(activeSubjectsProvider);
+    final jobs = ref.watch(syncJobsProvider).valueOrNull ?? const [];
     return PageFrame(
       title: 'Classes',
       subtitle: 'Active subjects from Notion',
@@ -54,8 +56,14 @@ class ClassesScreen extends ConsumerWidget {
                       childAspectRatio: columns == 1 ? 2.1 : 1.55,
                     ),
                     itemCount: items.length,
-                    itemBuilder: (context, index) =>
-                        _ClassCard(subject: items[index]),
+                    itemBuilder: (context, index) => _ClassCard(
+                      subject: items[index],
+                      jobs: jobs
+                          .where(
+                            (job) => job.subjectId == items[index].notionId,
+                          )
+                          .toList(),
+                    ),
                   );
                 },
               ),
@@ -65,8 +73,9 @@ class ClassesScreen extends ConsumerWidget {
 }
 
 class _ClassCard extends StatelessWidget {
-  const _ClassCard({required this.subject});
+  const _ClassCard({required this.subject, required this.jobs});
   final AcademicSubject subject;
+  final List<SyncJob> jobs;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -94,9 +103,9 @@ class _ClassCard extends StatelessWidget {
             Text(subject.semesterLabel),
             const SizedBox(height: 14),
             Text(
-              subject.latestSummaryTitle == null
+              jobs.where((job) => job.summaryTitle != null).isEmpty
                   ? 'No local summaries yet'
-                  : 'Latest: ${subject.latestSummaryTitle}',
+                  : 'Latest: ${jobs.firstWhere((job) => job.summaryTitle != null).summaryTitle}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,

@@ -8,13 +8,14 @@ them with Gemini, and publishes structured study notes to Notion.
 
 ## What is included
 
-- Adaptive Flutter client for Windows, Android, macOS, and iOS.
+- Flutter client for Windows and Android; macOS receives compile coverage but
+  remains preview-only. iOS automation is not configured.
 - Durable Drift/SQLite queue with retries, review states, local cache, manual
   transcript import, and per-job timelines.
 - Fireflies GraphQL pagination plus signed Webhooks V2 ingestion.
 - Gemini structured classification and long-transcript summarization.
-- Notion data-source discovery, subject filtering, schema opt-in, global
-  Fireflies-ID deduplication, and retry-safe chunked page publishing.
+- Notion schema validation, subject filtering, D1-backed global processing
+  claims, and retry-safe ClassSync-owned page sections.
 - Controlled regenerate, reclassify, and republish actions update the existing
   Notion page instead of creating a duplicate.
 - Minimal Cloudflare Worker + D1 relay storing IDs and timestamps only.
@@ -58,14 +59,17 @@ flutter run -d android
 
 The first-run wizard tests Fireflies, Gemini, and Notion; discovers the shared
 Notion data sources; asks before adding the optional `Fireflies ID` property;
-and configures automation. No key is compiled into the app.
+and configures automation. No private Fireflies, Gemini, Notion, relay, or
+Firebase service-account credential is compiled into the app. FlutterFire's
+Firebase API key is a public client identifier and should still be restricted
+to expected apps/APIs in Google Cloud.
 
 Required Notion data-source properties:
 
 - **Lista de Cadeiras:** `Nome` (or `Name`), `Ano`, `Semestre`,
   `Status`; optional `Aliases`, `Professores`, `Horário`.
 - **Histórico de Resumos:** `Nome`, `Data`, `Cadeira`; optional
-  `Fireflies ID`, which enables cross-device idempotency.
+  `Fireflies ID`, which helps reconciliation after interrupted publication.
 
 ## Deploy the relay
 
@@ -83,7 +87,8 @@ pnpm deploy
 
 Register `https://<worker>/webhooks/fireflies` as a Fireflies Webhooks V2
 endpoint for `meeting.transcribed`, using the same webhook secret. Put the
-Worker base URL and device token into ClassSync. Full details are in
+Worker base URL and bootstrap token into ClassSync. Client enrolls one random
+device credential. Full details are in
 [Cloudflare setup](docs/cloudflare.md) and [Fireflies setup](docs/fireflies.md).
 
 ## Verify and package
@@ -102,9 +107,9 @@ After the Windows release build, compile
 `packaging/windows/classsync.iss` with Inno Setup. CI performs checks without
 real credentials and publishes a Windows installer artifact.
 
-Pushing a `v*` tag attaches `ClassSync-Android.apk` and the Windows Setup
-executable to a GitHub Release. Android signing credentials stay in GitHub
-Actions secrets, preserving the signing identity across upgrades.
+Pushing a `v*` tag validates both projects, requires Android and Windows signing
+secrets, builds APK/AAB plus Authenticode-signed Windows installer, generates
+checksums and provenance, then publishes every artifact in one gated job.
 
 ## Privacy and failure behavior
 
@@ -115,8 +120,11 @@ Actions secrets, preserving the signing identity across upgrades.
 - Relay loss falls back to overlap-window Fireflies polling.
 - Ambiguous classes stop in **Needs review**; terminal and retryable failures are
   distinct.
-- Notion pages are created empty and the remote child count acts as a durable
-  checkpoint, preventing duplicate append chunks after an interrupted request.
+- Generated Notion content lives in revision-marked ClassSync-owned toggles.
+  Retries reconcile markers; regeneration never deletes user/template blocks.
+- Transcript and summary checkpoints are plaintext inside OS-protected app data.
+  Completed payloads are removed by default; abandoned content follows retention
+  settings and can be purged manually.
 
 See [background processing](docs/background-processing.md), integration guides
 under [docs](docs), [Firebase setup](docs/firebase.md), and

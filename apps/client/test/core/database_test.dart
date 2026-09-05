@@ -63,6 +63,53 @@ void main() {
     );
     expect(await database.watchJobEvents('job').first, hasLength(2));
   });
+
+  test(
+    'active lease excludes another worker and expired lease recovers',
+    () async {
+      await database.discoverJob(
+        id: 'leased',
+        firefliesId: 'meeting-leased',
+        title: 'Lecture',
+        meetingDate: DateTime.utc(2026),
+      );
+      expect(
+        await database.claimJob(
+          id: 'leased',
+          owner: 'worker-a',
+          leaseDuration: const Duration(minutes: 1),
+        ),
+        isTrue,
+      );
+      expect(await database.claimJob(id: 'leased', owner: 'worker-b'), isFalse);
+      await database.setJobStatus(
+        'leased',
+        SyncJobStatus.summarizing,
+        'Summarizing',
+      );
+      await database.renewLease(
+        'leased',
+        'worker-a',
+        duration: const Duration(seconds: -1),
+      );
+      expect(await database.claimJob(id: 'leased', owner: 'worker-b'), isTrue);
+      expect((await database.readJob('leased'))?.leaseOwner, 'worker-b');
+    },
+  );
+
+  test('unknown persisted status fails closed', () async {
+    await database.discoverJob(
+      id: 'corrupt',
+      firefliesId: 'meeting-corrupt',
+      title: 'Lecture',
+      meetingDate: DateTime.utc(2026),
+    );
+    await database.customStatement(
+      "UPDATE sync_jobs SET status = 'future_unknown' WHERE id = 'corrupt'",
+    );
+    expect((await database.readJob('corrupt'))?.status, SyncJobStatus.corrupt);
+    expect(await database.claimJob(id: 'corrupt', owner: 'worker'), isFalse);
+  });
 }
 
 AcademicSubject _subject(String name, String status) => AcademicSubject(

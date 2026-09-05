@@ -2,7 +2,8 @@
 
 ## Relay unavailable
 
-Verify `/health`, device token, Worker deployment, and D1 migration. Fireflies polling continues while relay is down.
+Verify authenticated `/session`, bootstrap token, Worker deployment, and D1
+migrations. Fireflies polling continues while relay is down.
 
 ## Fireflies returns no meetings
 

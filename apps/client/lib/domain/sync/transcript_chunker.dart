@@ -1,9 +1,21 @@
 class TranscriptChunker {
-  const TranscriptChunker({this.maxCharacters = 48000});
+  const TranscriptChunker({
+    this.maxCharacters = 48000,
+    this.maxInputCharacters = 1200000,
+    this.maxChunks = 25,
+  });
 
   final int maxCharacters;
+  final int maxInputCharacters;
+  final int maxChunks;
 
   List<String> chunk(String input) {
+    if (input.length > maxInputCharacters) {
+      throw FormatException(
+        'Transcript is too large (${input.length} characters). '
+        'The supported limit is $maxInputCharacters characters.',
+      );
+    }
     if (input.length <= maxCharacters) return [input];
     final lines = input.split('\n');
     final chunks = <String>[];
@@ -28,6 +40,12 @@ class TranscriptChunker {
       }
     }
     if (buffer.isNotEmpty) chunks.add(buffer.toString());
+    if (chunks.length > maxChunks) {
+      throw FormatException(
+        'Transcript needs ${chunks.length} AI chunks; the safe limit is '
+        '$maxChunks. Split this recording before importing it.',
+      );
+    }
     return chunks;
   }
 }

@@ -19,4 +19,13 @@ void main() {
     expect(chunks.length, 2);
     expect(chunks.join().replaceAll('\n', ''), 'firstsecondthird');
   });
+
+  test('rejects input above explicit cost bound', () {
+    const chunker = TranscriptChunker(
+      maxCharacters: 10,
+      maxInputCharacters: 20,
+      maxChunks: 2,
+    );
+    expect(() => chunker.chunk('xxxxxxxxxxxxxxxxxxxxx'), throwsFormatException);
+  });
 }

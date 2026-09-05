@@ -32,9 +32,10 @@ token and calls FCM HTTP v1. Never commit the service-account JSON.
 
 ## Behavior
 
-- Foreground message: starts the shared sync engine.
+- Foreground message: starts shared sync engine.
 - Notification tap: starts sync and opens ClassSync.
-- Background data delivery: runs the shared pipeline when Android permits.
+- Background delivery: quickly enqueues unique WorkManager job; worker claims and
+  resumes durable pipeline.
 - WorkManager plus Fireflies overlap polling remains recovery.
 
 Android may defer background work. Force-stopping ClassSync prevents delivery
