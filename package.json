@@ -1,0 +1,11 @@
+{
+  "name": "classsync",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "relay:dev": "pnpm --dir apps/relay dev",
+    "relay:test": "pnpm --dir apps/relay test",
+    "relay:check": "pnpm --dir apps/relay check"
+  }
+}

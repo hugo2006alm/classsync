@@ -1,0 +1,22 @@
+{
+  "name": "@classsync/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "db:migrate:local": "wrangler d1 migrations apply classsync-relay --local",
+    "db:migrate:remote": "wrangler d1 migrations apply classsync-relay --remote",
+    "types": "wrangler types src/worker-configuration.d.ts",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run && wrangler deploy --dry-run --outdir dist"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "vitest": "^4.1.0",
+    "wrangler": "latest"
+  }
+}

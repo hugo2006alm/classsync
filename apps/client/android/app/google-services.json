@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "266359233672",
+    "project_id": "classsync-obl1vi0uzz",
+    "storage_bucket": "classsync-obl1vi0uzz.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:266359233672:android:a818f82761b4505a8ed33d",
+        "android_client_info": {
+          "package_name": "app.classsync.classsync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCv0Ub-T19vlrpbVOGKMtqKmc54YH-nJh8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
