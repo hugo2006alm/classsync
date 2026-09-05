@@ -2,15 +2,16 @@
 
 `SyncCoordinator.run(reason)` performs the same sequence for every trigger:
 
-1. Read pending relay events.
-2. Query Fireflies from durable cursor minus overlap.
-3. Merge and deduplicate by Fireflies transcript ID.
-4. Persist jobs before fetching full transcripts.
-5. Fetch transcript and refresh active Notion subjects.
-6. Classify against active subjects only.
-7. Generate or reuse structured summary.
+1. Independently read relay events and poll Fireflies recovery window.
+2. Persist/deduplicate jobs, then acknowledge relay event for this device.
+3. Refresh Notion subjects when available; cached active subjects remain usable.
+4. Atomically claim runnable or stale-processing row with SQLite lease.
+5. Fetch/reuse transcript, then acquire D1 cross-device processing claim.
+6. Classify or apply exact local correction.
+7. Generate bounded chunks, persisting partial checkpoints.
 8. Pause for review when thresholds require it.
-9. Query Notion by `Fireflies ID`, then create or resume existing page.
-10. Acknowledge relay event after durable local discovery.
+9. Reconcile Notion `Fireflies ID`, publish revision-marked owned chunks, and
+   preserve all user/template blocks.
+10. Complete D1 claim with Notion page ID and finish local job.
 
 Retryable failures use exponential backoff with jitter and `Retry-After`. Configuration failures stop until settings change.

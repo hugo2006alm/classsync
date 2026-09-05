@@ -50,7 +50,8 @@ class SyncCoordinator {
        _relay = relay,
        _retryPolicy = retryPolicy,
        _uuid = uuid,
-       _notifier = notifier;
+       _notifier = notifier,
+       _owner = uuid.v4();
 
   final ClassSyncDatabase _database;
   final SecureCredentialStore _credentials;
@@ -61,8 +62,10 @@ class SyncCoordinator {
   final RetryPolicy _retryPolicy;
   final Uuid _uuid;
   final SyncNotifier _notifier;
+  final String _owner;
 
   Future<SyncRunResult> run(SyncReason reason) async {
+    await _database.saveCursor('sync_run_started', DateTime.now().toUtc());
     final settings = await _database.readSettings();
     if (!settings.setupComplete) {
       throw const IntegrationException(
@@ -72,14 +75,16 @@ class SyncCoordinator {
         retryable: false,
       );
     }
-    final firefliesKey = await _requiredCredential(
-      CredentialKey.firefliesApiKey,
-    );
     var discovered = 0;
     var relayAvailable = true;
 
     final relayEvents = <RelayEvent>[];
-    final relayToken = await _credentials.read(CredentialKey.relayDeviceToken);
+    String? relayToken;
+    try {
+      relayToken = await _relaySession(settings);
+    } on IntegrationException {
+      relayAvailable = false;
+    }
     if (settings.relayBaseUrl != null && relayToken?.isNotEmpty == true) {
       try {
         relayEvents.addAll(
@@ -115,29 +120,41 @@ class SyncCoordinator {
       }
     }
 
-    final cursor = await _database.readCursor('fireflies');
-    final from = (cursor ?? DateTime.now().toUtc()).subtract(
-      Duration(hours: settings.overlapHours),
-    );
-    final transcriptRefs = await _fireflies.listTranscripts(
-      apiKey: firefliesKey,
-      from: from,
-    );
-    for (final transcript in transcriptRefs) {
-      final inserted = await _database.discoverJob(
-        id: _uuid.v5(Namespace.url.value, 'fireflies:${transcript.id}'),
-        firefliesId: transcript.id,
-        title: transcript.title,
-        meetingDate: transcript.date,
-        firefliesUrl: transcript.url,
+    try {
+      final firefliesKey = await _requiredCredential(
+        CredentialKey.firefliesApiKey,
       );
-      if (inserted) discovered += 1;
+      final cursor = await _database.readCursor('fireflies');
+      final from = (cursor ?? DateTime.now().toUtc()).subtract(
+        Duration(hours: settings.overlapHours),
+      );
+      final transcriptRefs = await _fireflies.listTranscripts(
+        apiKey: firefliesKey,
+        from: from,
+      );
+      for (final transcript in transcriptRefs) {
+        final inserted = await _database.discoverJob(
+          id: _uuid.v5(Namespace.url.value, 'fireflies:${transcript.id}'),
+          firefliesId: transcript.id,
+          title: transcript.title,
+          meetingDate: transcript.date,
+          firefliesUrl: transcript.url,
+        );
+        if (inserted) discovered += 1;
+      }
+      await _database.saveCursor('fireflies', DateTime.now().toUtc());
+    } on IntegrationException {
+      // Discovery is a recovery path. Durable local work must continue when
+      // Fireflies is temporarily unavailable.
     }
-    await _database.saveCursor('fireflies', DateTime.now().toUtc());
 
-    await refreshActiveSubjects();
+    try {
+      await refreshActiveSubjects();
+    } on IntegrationException {
+      if ((await _database.readActiveSubjects()).isEmpty) rethrow;
+    }
 
-    final runnable = await _database.readRunnableJobs();
+    final runnable = await _database.claimRunnableJobs(owner: _owner);
     var processed = 0;
     var failed = 0;
     final workerCount = settings.workerCount.clamp(1, 2);
@@ -157,6 +174,10 @@ class SyncCoordinator {
     await _database.pruneDiagnostics(
       Duration(days: settings.diagnosticsRetentionDays),
     );
+    await _database.pruneAbandonedPayloads(
+      Duration(days: settings.diagnosticsRetentionDays),
+    );
+    await _database.saveCursor('sync_run_completed', DateTime.now().toUtc());
     return SyncRunResult(
       discovered: discovered,
       processed: processed,
@@ -194,6 +215,12 @@ class SyncCoordinator {
     if (trimmed.isEmpty) {
       throw const FormatException('Transcript cannot be empty.');
     }
+    if (trimmed.length > GeminiClient.maxTranscriptCharacters) {
+      throw FormatException(
+        'Transcript is too large (${trimmed.length} characters). The safe '
+        'limit is ${GeminiClient.maxTranscriptCharacters}. Split it first.',
+      );
+    }
     final id = _uuid.v4();
     final sourceId = 'manual:$id';
     final date = lectureDate ?? DateTime.now();
@@ -216,13 +243,16 @@ class SyncCoordinator {
       SyncJobStatus.queued,
       'Manual transcript queued',
     );
+    if (await _database.claimJob(id: id, owner: _owner)) {
+      await _processJob(id, await _database.readSettings());
+    }
     return id;
   }
 
   Future<void> confirmSubject(String jobId, AcademicSubject subject) async {
+    await _database.learnClassificationCorrection(jobId, subject);
     await _database.saveManualSubject(jobId, subject);
-    final settings = await _database.readSettings();
-    await _processJob(jobId, settings, forcePublish: true);
+    await _claimAndProcess(jobId, forcePublish: true);
   }
 
   Future<void> retryJob(String jobId) async {
@@ -231,7 +261,7 @@ class SyncCoordinator {
       SyncJobStatus.queued,
       'Manual retry requested',
     );
-    await _processJob(jobId, await _database.readSettings());
+    await _claimAndProcess(jobId);
   }
 
   Future<void> reclassifyJob(String jobId) => _reprocess(jobId, 'reclassify');
@@ -254,10 +284,18 @@ class SyncCoordinator {
       );
     }
     await _database.prepareReprocess(jobId, mode);
-    await _processJob(
+    await _claimAndProcess(jobId, forcePublish: mode != 'reclassify');
+  }
+
+  Future<bool> _claimAndProcess(
+    String jobId, {
+    bool forcePublish = false,
+  }) async {
+    if (!await _database.claimJob(id: jobId, owner: _owner)) return false;
+    return _processJob(
       jobId,
       await _database.readSettings(),
-      forcePublish: mode != 'reclassify',
+      forcePublish: forcePublish,
     );
   }
 
@@ -269,16 +307,21 @@ class SyncCoordinator {
     try {
       var job = await _database.readJob(jobId);
       if (job == null) return false;
+      if (job.leaseOwner != _owner) return false;
       final firefliesKey = job.sourceType == 'manual'
           ? null
           : await _requiredCredential(CredentialKey.firefliesApiKey);
       final geminiKey = await _requiredCredential(CredentialKey.geminiApiKey);
       final notionToken = await _requiredCredential(CredentialKey.notionToken);
+      final relaySession = job.sourceType == 'manual'
+          ? null
+          : await _relaySession(settings);
 
       LectureTranscript transcript;
       if (job.transcriptJson case final stored?) {
         transcript = LectureTranscript.fromStoredJson(stored);
       } else {
+        await _renewLease(jobId);
         await _database.setJobStatus(
           jobId,
           SyncJobStatus.fetchingTranscript,
@@ -294,6 +337,32 @@ class SyncCoordinator {
       var subjects = await _database.readActiveSubjects();
       if (subjects.isEmpty) subjects = await refreshActiveSubjects();
 
+      if (relaySession != null && job.sourceType != 'manual') {
+        final claim = await _relay.claim(
+          baseUrl: settings.relayBaseUrl!,
+          token: relaySession,
+          firefliesId: job.firefliesId,
+        );
+        if (claim.completed && claim.notionPageId != null) {
+          await _database.saveNotionPage(jobId, claim.notionPageId!, null);
+          await _database.setJobStatus(
+            jobId,
+            SyncJobStatus.duplicate,
+            'Another device already published this lecture',
+            terminal: true,
+          );
+          return true;
+        }
+        if (!claim.acquired) {
+          throw const IntegrationException(
+            integration: 'ClassSync Relay',
+            code: 'claim_busy',
+            userMessage: 'Another ClassSync device is processing this lecture.',
+            retryable: true,
+          );
+        }
+      }
+
       ClassificationResult? classification;
       if (job.classificationCandidatesJson case final encoded?) {
         classification = ClassificationResult.fromJson(
@@ -307,17 +376,39 @@ class SyncCoordinator {
             .firstOrNull;
       }
       if (classification == null && subject == null) {
+        await _renewLease(jobId);
         await _database.setJobStatus(
           jobId,
           SyncJobStatus.classifying,
           'Classifying against active Notion classes',
         );
-        classification = await _gemini.classify(
-          apiKey: geminiKey,
-          model: settings.classificationModel,
-          transcript: transcript,
-          subjects: subjects,
-        );
+        final correction = await _database.matchingCorrection(transcript.title);
+        final correctedSubject = correction == null
+            ? null
+            : subjects
+                  .where((item) => item.notionId == correction.subjectId)
+                  .firstOrNull;
+        classification = correctedSubject == null
+            ? await _gemini.classify(
+                apiKey: geminiKey,
+                model: settings.classificationModel,
+                transcript: transcript,
+                subjects: subjects,
+              )
+            : ClassificationResult(
+                decision: ClassificationDecision.match,
+                subjectId: correctedSubject.notionId,
+                subjectName: correctedSubject.name,
+                confidence: 1,
+                candidates: [
+                  ClassificationCandidate(
+                    subjectId: correctedSubject.notionId,
+                    subjectName: correctedSubject.name,
+                    confidence: 1,
+                  ),
+                ],
+                reasoningSummary: const ['Local correction matched title'],
+              );
         await _database.saveClassification(jobId, classification);
         if (classification.decision == ClassificationDecision.notALecture) {
           await _database.setJobStatus(
@@ -342,32 +433,41 @@ class SyncCoordinator {
           SyncJobStatus.needsReview,
           'No valid class could be selected',
         );
-        await _notifier.needsReview(jobId);
+        if (settings.notificationsEnabled) await _notifier.needsReview(jobId);
         return true;
       }
 
       job = await _database.readJob(jobId);
+      if (job == null) return false;
       LectureSummary summary;
-      if (job?.summaryJson case final encoded?) {
+      if (job.summaryJson case final encoded?) {
         summary = LectureSummary.decode(encoded);
       } else {
+        await _renewLease(jobId);
+        await _renewRemoteClaim(job, settings, relaySession);
         await _database.setJobStatus(
           jobId,
           SyncJobStatus.summarizing,
           'Generating structured study summary',
         );
-        summary = await _gemini.summarize(
+        summary = await _gemini.summarizeResumable(
           apiKey: geminiKey,
           model: settings.summaryModel,
           transcript: transcript,
           subject: subject,
           settings: settings,
+          completedPartials: await _database.readSummaryPartials(jobId),
+          onCheckpoint: (partials) async {
+            await _database.saveSummaryPartials(jobId, partials);
+            await _renewLease(jobId);
+            await _renewRemoteClaim(job!, settings, relaySession);
+          },
         );
         await _database.saveSummary(jobId, summary);
       }
 
       final confidence =
-          classification?.confidence ?? job?.classificationConfidence ?? 1.0;
+          classification?.confidence ?? job.classificationConfidence ?? 1.0;
       final policyAction = classification == null
           ? ClassificationAction.autoPublish
           : ClassificationPolicy(
@@ -384,7 +484,7 @@ class SyncCoordinator {
               ? 'Classification below review threshold'
               : 'Class confirmation required before publishing',
         );
-        await _notifier.needsReview(jobId);
+        if (settings.notificationsEnabled) await _notifier.needsReview(jobId);
         return true;
       }
 
@@ -404,11 +504,14 @@ class SyncCoordinator {
         'Publishing to Notion',
       );
       job = await _database.readJob(jobId);
-      if (job?.notionPageId == null && settings.notionMetadataEnabled) {
+      if (job == null) return false;
+      await _renewLease(jobId);
+      await _renewRemoteClaim(job, settings, relaySession);
+      if (job.notionPageId == null && settings.notionMetadataEnabled) {
         final existing = await _notion.findSummaryByFirefliesId(
           token: notionToken,
           dataSourceId: summariesId,
-          firefliesId: job!.firefliesId,
+          firefliesId: job.firefliesId,
         );
         if (existing != null) {
           await _database.saveNotionPage(jobId, existing.id, existing.url);
@@ -425,17 +528,18 @@ class SyncCoordinator {
             'Existing Notion summary linked; duplicate prevented',
             terminal: true,
           );
+          await _completeRemoteClaim(job, settings, relaySession, existing.id);
           if (settings.cleanCompletedPayloads && !settings.keepTranscripts) {
             await _database.clearTranscriptPayload(jobId);
           }
           return true;
         }
       }
-      if (job?.notionPageId == null) {
+      if (job.notionPageId == null) {
         final page = await _notion.createSummaryPage(
           token: notionToken,
           dataSourceId: summariesId,
-          firefliesId: job!.firefliesId,
+          firefliesId: job.firefliesId,
           lectureDate: transcript.date,
           subjectId: subject.notionId,
           summary: summary,
@@ -443,8 +547,9 @@ class SyncCoordinator {
         );
         await _database.saveNotionPage(jobId, page.id, page.url);
         job = await _database.readJob(jobId);
+        if (job == null) return false;
       }
-      if (job!.reprocessMode == 'replace') {
+      if (job.reprocessMode == 'replace') {
         await _notion.replaceSummaryPage(
           token: notionToken,
           pageId: job.notionPageId!,
@@ -471,7 +576,15 @@ class SyncCoordinator {
         'Published to Notion',
         terminal: true,
       );
-      await _notifier.success(jobId, subject.name);
+      await _completeRemoteClaim(
+        job,
+        settings,
+        relaySession,
+        job.notionPageId!,
+      );
+      if (settings.notificationsEnabled) {
+        await _notifier.success(jobId, subject.name);
+      }
       if (settings.cleanCompletedPayloads && !settings.keepTranscripts) {
         await _database.clearTranscriptPayload(jobId);
       }
@@ -493,6 +606,67 @@ class SyncCoordinator {
     }
   }
 
+  Future<void> _renewLease(String jobId) async {
+    if (!await _database.renewLease(jobId, _owner)) {
+      throw const IntegrationException(
+        integration: 'ClassSync',
+        code: 'lease_lost',
+        userMessage:
+            'This sync job was taken over by another ClassSync worker.',
+        retryable: true,
+      );
+    }
+  }
+
+  Future<String?> _relaySession(AppSettings settings) async {
+    final baseUrl = settings.relayBaseUrl;
+    final bootstrap = await _credentials.read(CredentialKey.relayDeviceToken);
+    if (baseUrl == null || baseUrl.isEmpty || bootstrap?.isNotEmpty != true) {
+      return null;
+    }
+    return _relay.ensureDeviceSession(
+      baseUrl: baseUrl,
+      bootstrapToken: bootstrap!,
+      credentials: _credentials,
+    );
+  }
+
+  Future<void> _renewRemoteClaim(
+    SyncJob job,
+    AppSettings settings,
+    String? session,
+  ) async {
+    if (session == null || job.sourceType == 'manual') return;
+    final claim = await _relay.claim(
+      baseUrl: settings.relayBaseUrl!,
+      token: session,
+      firefliesId: job.firefliesId,
+    );
+    if (!claim.acquired) {
+      throw const IntegrationException(
+        integration: 'ClassSync Relay',
+        code: 'claim_lost',
+        userMessage: 'Another ClassSync device took over this lecture.',
+        retryable: true,
+      );
+    }
+  }
+
+  Future<void> _completeRemoteClaim(
+    SyncJob job,
+    AppSettings settings,
+    String? session,
+    String notionPageId,
+  ) async {
+    if (session == null || job.sourceType == 'manual') return;
+    await _relay.completeClaim(
+      baseUrl: settings.relayBaseUrl!,
+      token: session,
+      firefliesId: job.firefliesId,
+      notionPageId: notionPageId,
+    );
+  }
+
   Future<void> _recordFailure(String jobId, IntegrationException error) async {
     final current = await _database.readJob(jobId);
     final nextAttempt = (current?.attemptCount ?? 0) + 1;
@@ -507,7 +681,9 @@ class SyncCoordinator {
       retryable: retryable,
       nextRetryAt: retryable ? DateTime.now().toUtc().add(delay) : null,
     );
-    await _notifier.failure(jobId, error.userMessage);
+    if ((await _database.readSettings()).notificationsEnabled) {
+      await _notifier.failure(jobId, error.userMessage);
+    }
   }
 
   Future<String> _requiredCredential(CredentialKey key) async {
@@ -519,6 +695,7 @@ class SyncCoordinator {
           CredentialKey.geminiApiKey => 'Gemini',
           CredentialKey.notionToken => 'Notion',
           CredentialKey.relayDeviceToken => 'ClassSync Relay',
+          CredentialKey.relayDeviceCredential => 'ClassSync Relay',
         },
         code: 'not_configured',
         userMessage: 'Required integration is not configured.',

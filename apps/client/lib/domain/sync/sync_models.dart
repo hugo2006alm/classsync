@@ -12,7 +12,8 @@ enum SyncJobStatus {
   duplicate,
   success,
   failedRetryable,
-  failedTerminal;
+  failedTerminal,
+  corrupt;
 
   String get wireName => switch (this) {
     SyncJobStatus.fetchingTranscript => 'fetching_transcript',
@@ -24,7 +25,7 @@ enum SyncJobStatus {
 
   static SyncJobStatus fromWire(String value) => values.firstWhere(
     (status) => status.wireName == value,
-    orElse: () => SyncJobStatus.discovered,
+    orElse: () => SyncJobStatus.corrupt,
   );
 
   bool get isProcessing => const {
@@ -39,6 +40,7 @@ enum SyncJobStatus {
     SyncJobStatus.duplicate,
     SyncJobStatus.success,
     SyncJobStatus.failedTerminal,
+    SyncJobStatus.corrupt,
   }.contains(this);
 }
 
@@ -174,6 +176,9 @@ class SyncJob {
     this.lastErrorMessage,
     this.startedAt,
     this.completedAt,
+    this.leaseOwner,
+    this.leaseExpiresAt,
+    this.summaryPartialsJson,
   });
 
   final String id;
@@ -201,6 +206,9 @@ class SyncJob {
   final DateTime? startedAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
+  final String? leaseOwner;
+  final DateTime? leaseExpiresAt;
+  final String? summaryPartialsJson;
 }
 
 class JobTimelineEvent {

@@ -183,18 +183,52 @@ void main() {
       cursor.subtract(const Duration(hours: 48)),
     );
   });
+
+  test('discovery outages do not block a durable manual job', () async {
+    await database.replaceSubjects([notion.subject]);
+    await database.discoverJob(
+      id: 'manual-job',
+      firefliesId: 'manual:job',
+      title: 'Search algorithms',
+      meetingDate: DateTime.utc(2026, 9, 5),
+      sourceType: 'manual',
+    );
+    await database.saveTranscript(
+      'manual-job',
+      LectureTranscript(
+        firefliesId: 'manual:job',
+        title: 'Search algorithms',
+        date: DateTime.utc(2026, 9, 5),
+        sentences: const [TranscriptSentence(text: 'A star search')],
+      ),
+    );
+    await database.setJobStatus('manual-job', SyncJobStatus.queued, 'Queued');
+    fireflies.failList = true;
+    notion.failQuery = true;
+
+    final result = await coordinator.run(SyncReason.manual);
+
+    expect(result.processed, 1);
+    expect(
+      (await database.readJob('manual-job'))?.status,
+      SyncJobStatus.success,
+    );
+  });
 }
 
 class _FakeCredentials extends SecureCredentialStore {
   @override
   Future<String?> read(CredentialKey key) async => switch (key) {
     CredentialKey.relayDeviceToken => '0123456789abcdef0123456789abcdef',
+    CredentialKey.relayDeviceCredential =>
+      'device-test.0123456789abcdef0123456789abcdef',
     _ => 'test-key',
   };
 }
 
 class _FakeFireflies extends FirefliesClient {
   DateTime? lastFrom;
+  var failList = false;
   final transcript = LectureTranscript(
     firefliesId: 'meeting-1',
     title: 'Search algorithms',
@@ -213,6 +247,14 @@ class _FakeFireflies extends FirefliesClient {
     required String apiKey,
     required DateTime from,
   }) async {
+    if (failList) {
+      throw const IntegrationException(
+        integration: 'Fireflies',
+        code: 'offline',
+        userMessage: 'offline',
+        retryable: true,
+      );
+    }
     lastFrom = from;
     return [
       FirefliesTranscriptRef(
@@ -279,6 +321,23 @@ class _FakeGemini extends GeminiClient {
       conclusions: ['Escolher o algoritmo conforme o problema.'],
     );
   }
+
+  @override
+  Future<LectureSummary> summarizeResumable({
+    required String apiKey,
+    required String model,
+    required LectureTranscript transcript,
+    required AcademicSubject subject,
+    required AppSettings settings,
+    List<Map<String, dynamic>> completedPartials = const [],
+    Future<void> Function(List<Map<String, dynamic>> partials)? onCheckpoint,
+  }) => summarize(
+    apiKey: apiKey,
+    model: model,
+    transcript: transcript,
+    subject: subject,
+    settings: settings,
+  );
 }
 
 class _FakeNotion extends NotionClient {
@@ -294,12 +353,23 @@ class _FakeNotion extends NotionClient {
   var createCalls = 0;
   var contentCalls = 0;
   var failNextContentAppend = false;
+  var failQuery = false;
 
   @override
   Future<List<AcademicSubject>> queryActiveSubjects({
     required String token,
     required String dataSourceId,
-  }) async => [subject];
+  }) async {
+    if (failQuery) {
+      throw const IntegrationException(
+        integration: 'Notion',
+        code: 'offline',
+        userMessage: 'offline',
+        retryable: true,
+      );
+    }
+    return [subject];
+  }
 
   @override
   Future<NotionPageRef?> findSummaryByFirefliesId({
@@ -363,6 +433,21 @@ class _FakeNotion extends NotionClient {
 class _FakeRelay extends RelayClient {
   List<RelayEvent> events = const [];
   final acknowledged = <String>[];
+
+  @override
+  Future<RelayClaim> claim({
+    required String baseUrl,
+    required String token,
+    required String firefliesId,
+  }) async => const RelayClaim(acquired: true, completed: false);
+
+  @override
+  Future<void> completeClaim({
+    required String baseUrl,
+    required String token,
+    required String firefliesId,
+    required String notionPageId,
+  }) async {}
 
   @override
   Future<List<RelayEvent>> pendingEvents({

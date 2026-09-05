@@ -144,17 +144,38 @@ class FirefliesClient {
       final body = response.data ?? const <String, dynamic>{};
       final errors = body['errors'];
       if (errors is List && errors.isNotEmpty) {
-        final message = (errors.first as Map?)?['message']?.toString() ?? '';
+        final first = errors.first as Map?;
+        final message = first?['message']?.toString() ?? '';
+        final extensions = first?['extensions'] as Map?;
+        final providerCode =
+            extensions?['code']?.toString().toLowerCase() ?? '';
+        final normalized = '$providerCode $message'.toLowerCase();
+        final notReady =
+            normalized.contains('not ready') ||
+            normalized.contains('processing') ||
+            normalized.contains('temporarily') ||
+            normalized.contains('internal');
         final terminal =
-            message.toLowerCase().contains('auth') ||
-            message.toLowerCase().contains('permission');
+            normalized.contains('auth') ||
+            normalized.contains('permission') ||
+            normalized.contains('forbidden') ||
+            normalized.contains('not found') ||
+            normalized.contains('invalid') ||
+            normalized.contains('plan') ||
+            normalized.contains('limit');
         throw IntegrationException(
           integration: 'Fireflies',
-          code: terminal ? 'invalid_credentials' : 'graphql_error',
+          code: terminal
+              ? 'graphql_terminal'
+              : notReady
+              ? 'transcript_not_ready'
+              : 'graphql_error',
           userMessage: terminal
-              ? 'Fireflies refused access. Check the API key.'
-              : 'Fireflies could not return this transcript yet.',
-          retryable: !terminal,
+              ? 'Fireflies rejected this request. Check access, plan, and transcript ID.'
+              : notReady
+              ? 'Fireflies has not finished this transcript yet.'
+              : 'Fireflies returned an unexpected GraphQL error.',
+          retryable: notReady,
         );
       }
       return (body['data'] as Map<String, dynamic>?) ?? const {};

@@ -29,7 +29,8 @@ Features depend on domain contracts. Integration adapters depend on Dio and secu
 - Notion: canonical subjects and published summaries.
 - Fireflies: canonical transcript source.
 - Local SQLite: operational queue, cache, preferences, diagnostics, corrections.
-- Cloudflare D1: unacknowledged transcript-ready identifiers only.
+- Cloudflare D1: transcript-ready IDs, per-device acknowledgements, hashed
+  device identity, processing claims, and bounded push-delivery metadata.
 - OS secure storage: all credentials.
 
 See ADRs under `docs/architecture/` for trade-offs.

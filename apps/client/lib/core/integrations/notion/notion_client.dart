@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:dio/dio.dart';
 
 import '../../../../domain/academic/academic_models.dart';
@@ -135,6 +133,67 @@ class NotionClient {
     }
   }
 
+  Future<void> validateDataSources({
+    required String token,
+    required String subjectsDataSourceId,
+    required String summariesDataSourceId,
+    required bool metadataEnabled,
+  }) async {
+    try {
+      final responses = await Future.wait([
+        _dio.get<Map<String, dynamic>>(
+          '/data_sources/${Uri.encodeComponent(subjectsDataSourceId)}',
+          options: _options(token),
+        ),
+        _dio.get<Map<String, dynamic>>(
+          '/data_sources/${Uri.encodeComponent(summariesDataSourceId)}',
+          options: _options(token),
+        ),
+      ]);
+      final subjects =
+          responses[0].data?['properties'] as Map<String, dynamic>? ?? const {};
+      final summaries =
+          responses[1].data?['properties'] as Map<String, dynamic>? ?? const {};
+      final problems = <String>[];
+      if (!_hasType(subjects, const ['Nome', 'Name'], 'title')) {
+        problems.add('subjects: Nome/Name must be a title property');
+      }
+      if (!_hasType(subjects, const ['Status'], 'status')) {
+        problems.add('subjects: Status must be a status property');
+      }
+      for (final entry in const {
+        'Nome': 'title',
+        'Data': 'date',
+        'Cadeira': 'relation',
+      }.entries) {
+        if (!_hasType(summaries, [entry.key], entry.value)) {
+          problems.add('summaries: ${entry.key} must be ${entry.value}');
+        }
+      }
+      final relation = summaries['Cadeira'] as Map<String, dynamic>?;
+      final relationConfig = relation?['relation'] as Map<String, dynamic>?;
+      final relationTarget = relationConfig?['data_source_id']?.toString();
+      if (relationTarget != null && relationTarget != subjectsDataSourceId) {
+        problems.add('summaries: Cadeira relation targets wrong data source');
+      }
+      if (metadataEnabled &&
+          summaries.containsKey('Fireflies ID') &&
+          !_hasType(summaries, const ['Fireflies ID'], 'rich_text')) {
+        problems.add('summaries: Fireflies ID must be rich_text');
+      }
+      if (problems.isNotEmpty) {
+        throw IntegrationException(
+          integration: 'Notion',
+          code: 'schema_mismatch',
+          userMessage: 'Notion schema mismatch: ${problems.join('; ')}.',
+          retryable: false,
+        );
+      }
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('Notion', error);
+    }
+  }
+
   Future<NotionPageRef?> findSummaryByFirefliesId({
     required String token,
     required String dataSourceId,
@@ -173,6 +232,7 @@ class NotionClient {
     required LectureSummary summary,
     required bool includeMetadata,
   }) async {
+    _validateMetadata(firefliesId: firefliesId, summary: summary);
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/pages',
@@ -208,6 +268,7 @@ class NotionClient {
     required String? firefliesUrl,
     required bool includeMetadata,
   }) async {
+    _validateMetadata(firefliesId: firefliesId, summary: summary);
     try {
       await _dio.patch<void>(
         '/pages/${Uri.encodeComponent(pageId)}',
@@ -222,13 +283,6 @@ class NotionClient {
         },
         options: _options(token),
       );
-      final childIds = await _childIds(token: token, pageId: pageId);
-      for (final childId in childIds) {
-        await _dio.delete<void>(
-          '/blocks/${Uri.encodeComponent(childId)}',
-          options: _options(token),
-        );
-      }
       await ensureSummaryContent(
         token: token,
         pageId: pageId,
@@ -236,15 +290,23 @@ class NotionClient {
         lectureDate: lectureDate,
         firefliesUrl: firefliesUrl,
       );
+      final revision = _contentRevision(summary, lectureDate, firefliesUrl);
+      final children = await _children(token: token, pageId: pageId);
+      for (final block in children) {
+        final marker = _ownedMarker(block);
+        if (marker == null || marker.revision == revision) continue;
+        await _dio.delete<void>(
+          '/blocks/${Uri.encodeComponent(block['id'] as String)}',
+          options: _options(token),
+        );
+      }
     } on DioException catch (error) {
       throw IntegrationException.fromDio('Notion', error);
     }
   }
 
-  /// Completes a page body without duplicating a chunk after a lost response.
-  ///
-  /// The page is created empty, so its current top-level child count is a
-  /// durable remote checkpoint. Each retry resumes at that count.
+  /// Completes only the ClassSync-owned page section. User and template blocks
+  /// are never treated as checkpoints and are never mutated.
   Future<void> ensureSummaryContent({
     required String token,
     required String pageId,
@@ -257,31 +319,53 @@ class NotionClient {
       lectureDate: lectureDate,
       firefliesUrl: firefliesUrl,
     );
+    final revision = _contentRevision(summary, lectureDate, firefliesUrl);
     try {
-      var offset = await _childCount(token: token, pageId: pageId);
-      while (offset < blocks.length) {
+      final children = await _children(token: token, pageId: pageId);
+      final completed = children
+          .map(_ownedMarker)
+          .whereType<_OwnedMarker>()
+          .where((marker) => marker.revision == revision)
+          .map((marker) => marker.chunk)
+          .toSet();
+      final chunks = <List<Map<String, dynamic>>>[];
+      for (var offset = 0; offset < blocks.length; offset += 99) {
+        chunks.add(blocks.skip(offset).take(99).toList());
+      }
+      for (var index = 0; index < chunks.length; index += 1) {
+        if (completed.contains(index)) continue;
         await _dio.patch<void>(
           '/blocks/${Uri.encodeComponent(pageId)}/children',
           data: {
             'position': {'type': 'end'},
-            'children': blocks.skip(offset).take(100).toList(),
+            'children': [
+              {
+                'object': 'block',
+                'type': 'toggle',
+                'toggle': {
+                  'rich_text': [
+                    _text(
+                      'ClassSync generated · $revision · ${index + 1}/${chunks.length}',
+                    ),
+                  ],
+                  'children': chunks[index],
+                },
+              },
+            ],
           },
           options: _options(token),
         );
-        // Re-read the remote checkpoint. If the response was lost after Notion
-        // committed the append, the next retry observes the committed blocks.
-        offset = await _childCount(token: token, pageId: pageId);
       }
     } on DioException catch (error) {
       throw IntegrationException.fromDio('Notion', error);
     }
   }
 
-  Future<int> _childCount({
+  Future<List<Map<String, dynamic>>> _children({
     required String token,
     required String pageId,
   }) async {
-    var count = 0;
+    final blocks = <Map<String, dynamic>>[];
     String? cursor;
     do {
       final response = await _dio.get<Map<String, dynamic>>(
@@ -290,33 +374,13 @@ class NotionClient {
         options: _options(token),
       );
       final data = response.data ?? const {};
-      count += (data['results'] as List<dynamic>? ?? const []).length;
-      cursor = data['has_more'] == true ? data['next_cursor'] as String? : null;
-    } while (cursor != null);
-    return count;
-  }
-
-  Future<List<String>> _childIds({
-    required String token,
-    required String pageId,
-  }) async {
-    final ids = <String>[];
-    String? cursor;
-    do {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/blocks/${Uri.encodeComponent(pageId)}/children',
-        queryParameters: {'page_size': 100, 'start_cursor': ?cursor},
-        options: _options(token),
-      );
-      final data = response.data ?? const {};
-      ids.addAll(
+      blocks.addAll(
         (data['results'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map((block) => block['id'] as String),
+            .whereType<Map<String, dynamic>>(),
       );
       cursor = data['has_more'] == true ? data['next_cursor'] as String? : null;
     } while (cursor != null);
-    return ids;
+    return blocks;
   }
 
   AcademicSubject subjectFromPage(Map<String, dynamic> page) {
@@ -335,6 +399,80 @@ class NotionClient {
       professors: _propertyStringList(properties['Professores']),
       scheduleHints: _propertyStringList(properties['Horário']),
       lastSyncedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  List<Map<String, dynamic>> renderSummaryBlocks({
+    required LectureSummary summary,
+    required DateTime lectureDate,
+    String? firefliesUrl,
+  }) => _summaryBlocks(
+    summary: summary,
+    lectureDate: lectureDate,
+    firefliesUrl: firefliesUrl,
+  );
+}
+
+bool _hasType(
+  Map<String, dynamic> properties,
+  List<String> names,
+  String type,
+) => names.any((name) {
+  final property = properties[name];
+  return property is Map<String, dynamic> && property['type'] == type;
+});
+
+class _OwnedMarker {
+  const _OwnedMarker(this.revision, this.chunk);
+  final String revision;
+  final int chunk;
+}
+
+_OwnedMarker? _ownedMarker(Map<String, dynamic> block) {
+  if (block['type'] != 'toggle') return null;
+  final toggle = block['toggle'] as Map<String, dynamic>?;
+  final text = _richText(toggle?['rich_text']);
+  if (text == null) return null;
+  final match = RegExp(
+    r'^ClassSync generated · ([0-9a-f]{16}) · (\d+)\/\d+$',
+  ).firstMatch(text);
+  if (match == null) return null;
+  return _OwnedMarker(match.group(1)!, int.parse(match.group(2)!) - 1);
+}
+
+String _contentRevision(
+  LectureSummary summary,
+  DateTime lectureDate,
+  String? firefliesUrl,
+) {
+  final value =
+      '${summary.encode()}|${lectureDate.toUtc().toIso8601String()}|${firefliesUrl ?? ''}';
+  var hash = 0xcbf29ce484222325;
+  for (final byte in value.codeUnits) {
+    hash ^= byte;
+    hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
+  }
+  return hash.toRadixString(16).padLeft(16, '0');
+}
+
+void _validateMetadata({
+  required String firefliesId,
+  required LectureSummary summary,
+}) {
+  if (firefliesId.length > 2000) {
+    throw const IntegrationException(
+      integration: 'Notion',
+      code: 'metadata_too_long',
+      userMessage: 'The Fireflies identifier exceeds Notion limits.',
+      retryable: false,
+    );
+  }
+  if (summary.title.length > 2000) {
+    throw const IntegrationException(
+      integration: 'Notion',
+      code: 'title_too_long',
+      userMessage: 'The generated title exceeds Notion limits.',
+      retryable: false,
     );
   }
 }
@@ -369,19 +507,19 @@ List<Map<String, dynamic>> _summaryBlocks({
   required String? firefliesUrl,
 }) {
   final blocks = <Map<String, dynamic>>[
-    _heading('Contexto e Objetivos da Aula', level: 1),
+    ..._headings('Contexto e Objetivos da Aula', level: 1),
     ..._paragraphs(summary.context),
-    ...summary.objectives.map(_bullet),
+    ...summary.objectives.expand(_bullets),
   ];
   for (final section in summary.sections) {
-    blocks.add(_heading(section.title, level: 2));
+    blocks.addAll(_headings(section.title, level: 2));
     blocks.addAll(_paragraphs(section.content));
-    blocks.addAll(section.keyPoints.map(_bullet));
+    blocks.addAll(section.keyPoints.expand(_bullets));
     for (final example in section.examples) {
-      blocks.add(_callout('Exemplo: $example', '💡'));
+      blocks.addAll(_callouts('Exemplo: $example', '💡'));
     }
     for (final formula in section.formulas) {
-      blocks.add(_equation(formula));
+      blocks.addAll(_equations(formula));
     }
     for (final code in section.code) {
       for (final segment in _splitText(code, 1900)) {
@@ -390,18 +528,20 @@ List<Map<String, dynamic>> _summaryBlocks({
     }
   }
   if (summary.examHints.isNotEmpty) {
-    blocks.add(_heading('Pistas para avaliação', level: 2));
-    blocks.addAll(summary.examHints.map((hint) => _callout(hint, '🎯')));
+    blocks.addAll(_headings('Pistas para avaliação', level: 2));
+    blocks.addAll(summary.examHints.expand((hint) => _callouts(hint, '🎯')));
   }
   if (summary.uncertainties.isNotEmpty) {
-    blocks.add(_heading('Incertezas da transcrição', level: 2));
+    blocks.addAll(_headings('Incertezas da transcrição', level: 2));
     blocks.addAll(
-      summary.uncertainties.map((uncertainty) => _callout(uncertainty, '⚠️')),
+      summary.uncertainties.expand(
+        (uncertainty) => _callouts(uncertainty, '⚠️'),
+      ),
     );
   }
   blocks
-    ..add(_heading('Conclusões e Pontos-Chave', level: 1))
-    ..addAll(summary.conclusions.map(_bullet))
+    ..addAll(_headings('Conclusões e Pontos-Chave', level: 1))
+    ..addAll(summary.conclusions.expand(_bullets))
     ..add({'object': 'block', 'type': 'divider', 'divider': {}})
     ..add(
       _paragraph(
@@ -412,15 +552,20 @@ List<Map<String, dynamic>> _summaryBlocks({
   return blocks;
 }
 
-Map<String, dynamic> _heading(String value, {required int level}) {
+List<Map<String, dynamic>> _headings(String value, {required int level}) {
+  final parts = _splitText(value, 1900);
+  if (parts.isEmpty) return const [];
   final type = 'heading_$level';
-  return {
-    'object': 'block',
-    'type': type,
-    type: {
-      'rich_text': [_text(value)],
+  return [
+    {
+      'object': 'block',
+      'type': type,
+      type: {
+        'rich_text': [_text(parts.first)],
+      },
     },
-  };
+    ...parts.skip(1).map(_paragraph),
+  ];
 }
 
 List<Map<String, dynamic>> _paragraphs(String value) =>
@@ -434,28 +579,47 @@ Map<String, dynamic> _paragraph(String value, {String? url}) => {
   },
 };
 
-Map<String, dynamic> _bullet(String value) => {
-  'object': 'block',
-  'type': 'bulleted_list_item',
-  'bulleted_list_item': {
-    'rich_text': [_text(value)],
-  },
-};
+List<Map<String, dynamic>> _bullets(String value) => _splitText(value, 1900)
+    .map(
+      (segment) => {
+        'object': 'block',
+        'type': 'bulleted_list_item',
+        'bulleted_list_item': {
+          'rich_text': [_text(segment)],
+        },
+      },
+    )
+    .toList();
 
-Map<String, dynamic> _callout(String value, String emoji) => {
-  'object': 'block',
-  'type': 'callout',
-  'callout': {
-    'icon': {'type': 'emoji', 'emoji': emoji},
-    'rich_text': [_text(value)],
-  },
-};
+List<Map<String, dynamic>> _callouts(String value, String emoji) =>
+    _splitText(value, 1900)
+        .map(
+          (segment) => {
+            'object': 'block',
+            'type': 'callout',
+            'callout': {
+              'icon': {'type': 'emoji', 'emoji': emoji},
+              'rich_text': [_text(segment)],
+            },
+          },
+        )
+        .toList();
 
-Map<String, dynamic> _equation(String value) => {
-  'object': 'block',
-  'type': 'equation',
-  'equation': {'expression': value.substring(0, min(value.length, 1000))},
-};
+List<Map<String, dynamic>> _equations(String value) {
+  if (value.runes.length <= 1000) {
+    return [
+      {
+        'object': 'block',
+        'type': 'equation',
+        'equation': {'expression': value},
+      },
+    ];
+  }
+  return _splitText(
+    value,
+    1900,
+  ).map((segment) => _code('Formula: $segment')).toList();
+}
 
 Map<String, dynamic> _code(String value) => {
   'object': 'block',
@@ -469,7 +633,7 @@ Map<String, dynamic> _code(String value) => {
 Map<String, dynamic> _text(String value, {String? url}) => {
   'type': 'text',
   'text': {
-    'content': value.substring(0, min(value.length, 2000)),
+    'content': value,
     if (url != null) 'link': {'url': url},
   },
 };
@@ -478,15 +642,19 @@ List<String> _splitText(String input, int maxLength) {
   final normalized = input.trim();
   if (normalized.isEmpty) return const [];
   final output = <String>[];
-  var remaining = normalized;
-  while (remaining.length > maxLength) {
-    var split = remaining.lastIndexOf('\n', maxLength);
-    if (split < maxLength ~/ 2) split = remaining.lastIndexOf(' ', maxLength);
-    if (split < 1) split = maxLength;
-    output.add(remaining.substring(0, split).trim());
-    remaining = remaining.substring(split).trimLeft();
+  final buffer = <int>[];
+  var codeUnits = 0;
+  for (final rune in normalized.runes) {
+    final width = rune > 0xffff ? 2 : 1;
+    if (buffer.isNotEmpty && codeUnits + width > maxLength) {
+      output.add(String.fromCharCodes(buffer));
+      buffer.clear();
+      codeUnits = 0;
+    }
+    buffer.add(rune);
+    codeUnits += width;
   }
-  if (remaining.isNotEmpty) output.add(remaining);
+  if (buffer.isNotEmpty) output.add(String.fromCharCodes(buffer));
   return output;
 }
 

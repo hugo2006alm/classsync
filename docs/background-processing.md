@@ -2,12 +2,20 @@
 
 ## Windows
 
-Launch-at-login starts ClassSync with a background flag. The window stays hidden, tray remains active, and the shared coordinator performs startup recovery plus periodic polling. Closing the window hides it; Quit stops the process.
+Launch-at-login starts ClassSync with background flag. Named Windows mutex keeps
+one process; later launches activate existing window. Shared coordinator uses
+SQLite leases for startup recovery and periodic polling.
 
 ## Android
 
-WorkManager provides best-effort periodic discovery. Manual Sync persists work before processing. Android may defer or stop background work; queued jobs resume next launch. Long foreground processing must display a notification.
+FCM background callback only enqueues unique WorkManager work. Workers use
+durable leases and stage checkpoints; manual imports process immediately.
+Android may defer/stop work, so app-resume recovery continues unfinished jobs.
+Foreground-service promotion is not yet implemented; oversized transcripts are
+rejected and AI work is bounded to reduce execution risk.
 
 ## iOS and macOS
 
-Code remains compatible, but iOS execution is opportunistic. ClassSync never promises guaranteed long-running background work.
+macOS has network-client entitlement and CI compile coverage, but remains
+preview-only. iOS Firebase/background modes are not configured. No iOS
+background-automation claim is made.

@@ -16,6 +16,8 @@ class GeminiClient {
           createDio(baseUrl: 'https://generativelanguage.googleapis.com');
 
   final Dio _dio;
+  static const maxTranscriptCharacters = 1200000;
+  static const maxClassificationCharacters = 24000;
 
   Future<void> testConnection({
     required String apiKey,
@@ -103,7 +105,28 @@ ${_classificationSample(transcript)}
     required AcademicSubject subject,
     required AppSettings settings,
   }) async {
-    final chunks = const TranscriptChunker().chunk(transcript.plainText);
+    return summarizeResumable(
+      apiKey: apiKey,
+      model: model,
+      transcript: transcript,
+      subject: subject,
+      settings: settings,
+    );
+  }
+
+  Future<LectureSummary> summarizeResumable({
+    required String apiKey,
+    required String model,
+    required LectureTranscript transcript,
+    required AcademicSubject subject,
+    required AppSettings settings,
+    List<Map<String, dynamic>> completedPartials = const [],
+    Future<void> Function(List<Map<String, dynamic>> partials)? onCheckpoint,
+  }) async {
+    final chunks = const TranscriptChunker(
+      maxInputCharacters: maxTranscriptCharacters,
+      maxChunks: 25,
+    ).chunk(transcript.plainText);
     if (chunks.length == 1) {
       final json = await _summaryRequest(
         apiKey: apiKey,
@@ -116,8 +139,9 @@ ${_classificationSample(transcript)}
       return LectureSummary.fromJson(json);
     }
 
-    final partials = <Map<String, dynamic>>[];
-    for (var index = 0; index < chunks.length; index += 1) {
+    final partials = <Map<String, dynamic>>[...completedPartials];
+    if (partials.length > chunks.length) partials.clear();
+    for (var index = partials.length; index < chunks.length; index += 1) {
       partials.add(
         await _summaryRequest(
           apiKey: apiKey,
@@ -128,16 +152,27 @@ ${_classificationSample(transcript)}
           synthesis: false,
         ),
       );
+      await onCheckpoint?.call(List.unmodifiable(partials));
     }
-    final synthesis = await _summaryRequest(
-      apiKey: apiKey,
-      model: model,
-      subject: subject,
-      settings: settings,
-      text: jsonEncode(partials),
-      synthesis: true,
-    );
-    return LectureSummary.fromJson(synthesis);
+    var level = partials;
+    while (level.length > 1) {
+      final next = <Map<String, dynamic>>[];
+      for (var offset = 0; offset < level.length; offset += 5) {
+        final batch = level.skip(offset).take(5).toList();
+        next.add(
+          await _summaryRequest(
+            apiKey: apiKey,
+            model: model,
+            subject: subject,
+            settings: settings,
+            text: jsonEncode(batch),
+            synthesis: true,
+          ),
+        );
+      }
+      level = next;
+    }
+    return LectureSummary.fromJson(level.single);
   }
 
   Future<Map<String, dynamic>> _summaryRequest({
@@ -172,7 +207,7 @@ $text
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/v1beta/models/${Uri.encodeComponent(model)}:generateContent',
-        queryParameters: {'key': apiKey},
+        options: Options(headers: {'x-goog-api-key': apiKey}),
         data: {
           'contents': [
             {
@@ -184,6 +219,7 @@ $text
           ],
           'generationConfig': {
             'temperature': 0.2,
+            'maxOutputTokens': 8192,
             'responseMimeType': 'application/json',
             'responseJsonSchema': schema,
           },
@@ -220,17 +256,26 @@ $text
 
 String _classificationSample(LectureTranscript transcript) {
   final sentences = transcript.sentences;
-  if (sentences.length <= 120) return transcript.plainText;
+  if (sentences.length <= 120 &&
+      transcript.plainText.length <= GeminiClient.maxClassificationCharacters) {
+    return transcript.plainText;
+  }
   final selected = <TranscriptSentence>[
     ...sentences.take(40),
     ...sentences.skip(max(0, sentences.length ~/ 2 - 20)).take(40),
     ...sentences.skip(max(0, sentences.length - 40)),
   ];
-  return selected
+  final sample = selected
       .map(
         (sentence) => '${sentence.speakerName ?? 'Speaker'}: ${sentence.text}',
       )
       .join('\n');
+  return _takeRunes(sample, GeminiClient.maxClassificationCharacters);
+}
+
+String _takeRunes(String value, int limit) {
+  if (value.runes.length <= limit) return value;
+  return String.fromCharCodes(value.runes.take(limit));
 }
 
 const _classificationSchema = <String, dynamic>{

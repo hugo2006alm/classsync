@@ -1,4 +1,5 @@
 import 'package:classsync/core/integrations/notion/notion_client.dart';
+import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -42,5 +43,30 @@ void main() {
     expect(subject.semester, '1º Semestre');
     expect(subject.status, 'In progress');
     expect(subject.aliases, ['IA']);
+  });
+
+  test('renderer preserves long Unicode list content without truncation', () {
+    final longPoint = '${List.filled(2001, 'x').join()}🚀tail';
+    final blocks = NotionClient().renderSummaryBlocks(
+      summary: LectureSummary(
+        title: 'Lecture',
+        context: 'Context',
+        objectives: [longPoint],
+        sections: const [],
+        conclusions: const [],
+      ),
+      lectureDate: DateTime.utc(2026),
+    );
+    final bullets = blocks
+        .where((block) => block['type'] == 'bulleted_list_item')
+        .map((block) {
+          final body = block['bulleted_list_item'] as Map<String, dynamic>;
+          final richText = body['rich_text'] as List<dynamic>;
+          final text = richText.single as Map<String, dynamic>;
+          return (text['text'] as Map<String, dynamic>)['content'] as String;
+        })
+        .join();
+    expect(bullets, longPoint);
+    expect(bullets.runes.last, 'l'.runes.single);
   });
 }

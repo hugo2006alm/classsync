@@ -1,16 +1,59 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../domain/sync/sync_models.dart';
 import '../features/setup/setup_wizard.dart';
 import 'router/app_router.dart';
 import 'theme/classsync_theme.dart';
 
-class ClassSyncApp extends ConsumerWidget {
+class ClassSyncApp extends ConsumerStatefulWidget {
   const ClassSyncApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ClassSyncApp> createState() => _ClassSyncAppState();
+}
+
+class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
+    with WidgetsBindingObserver {
+  DateTime? _lastResumeSync;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final now = DateTime.now();
+    if (_lastResumeSync != null &&
+        now.difference(_lastResumeSync!) < const Duration(seconds: 30)) {
+      return;
+    }
+    final settings = ref.read(settingsProvider).valueOrNull;
+    if (settings == null ||
+        !settings.setupComplete ||
+        !settings.automaticSync) {
+      return;
+    }
+    _lastResumeSync = now;
+    unawaited(
+      ref.read(syncControllerProvider.notifier).run(SyncReason.appResume),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     return settings.when(
       loading: () => _materialApp(const _LaunchScreen()),

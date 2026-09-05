@@ -16,6 +16,12 @@ val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val buildingRelease = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (buildingRelease && !keystorePropertiesFile.exists()) {
+    error("Release signing is required. Configure android/key.properties.")
+}
 
 android {
     namespace = "app.classsync.classsync"
@@ -56,10 +62,8 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }

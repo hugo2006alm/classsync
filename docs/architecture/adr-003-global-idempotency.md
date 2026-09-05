@@ -1,4 +1,4 @@
-# ADR-003: Notion metadata for global idempotency
+# ADR-003: D1 processing claims for global idempotency
 
 ## Status
 
@@ -10,10 +10,16 @@ Windows and Android may process the same Fireflies transcript independently. Loc
 
 ## Decision
 
-Offer an additive `Fireflies ID` property during setup, after explicit confirmation. Query it before page creation and persist `notion_page_id` immediately after creation.
+Relay issues hashed per-device credentials. Before Gemini or Notion work, a
+device atomically acquires a time-bounded D1 claim keyed by Fireflies transcript
+ID. Owner renews claim at long-stage checkpoints and completes it with final
+Notion page ID. Another device defers, takes over expired claim, or reconciles
+completed page ID. `Fireflies ID` query remains recovery check, not uniqueness
+primitive.
 
 ## Trade-offs
 
-- Positive: stable cross-device identity and safe retries.
-- Negative: requires one schema addition.
-- Mitigation: app continues with weaker local-only deduplication if user declines.
+- Positive: one publisher across Windows/Android plus recoverable ownership.
+- Negative: global guarantee depends on relay availability/configuration.
+- Mitigation: local SQLite lease still prevents same-device/process overlap;
+  Notion metadata reconciles response loss. Manual imports stay device-local.
