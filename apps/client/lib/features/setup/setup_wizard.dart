@@ -213,7 +213,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           items: [
             'Open the API keys page.',
             'Create or copy a Gemini API key.',
-            'Paste it below. You can change the model later in Settings → AI.',
+            'Paste it below. ClassSync checks available models without generating content.',
+            'If the preferred model is unavailable, the next supported model is selected automatically.',
           ],
         ),
         const SizedBox(height: 16),
@@ -236,7 +237,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 controller: _modelController,
                 decoration: const InputDecoration(
                   labelText: 'Gemini model',
-                  helperText: 'Change only if your API key cannot access it.',
+                  helperText:
+                      'ClassSync falls back automatically when this model is unavailable.',
                 ),
               ),
             ],
@@ -516,12 +518,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               _modelController.text.trim().isEmpty) {
             throw const FormatException('Enter Gemini API key and model.');
           }
-          await ref
+          final selectedModel = await ref
               .read(geminiClientProvider)
               .testConnection(
                 apiKey: _geminiController.text.trim(),
                 model: _modelController.text.trim(),
               );
+          _modelController.text = selectedModel;
         case 3:
           if (_dataSources.isEmpty) await _discoverNotion();
           if (_subjectsId == null || _summariesId == null) {

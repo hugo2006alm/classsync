@@ -18,23 +18,45 @@ class GeminiClient {
   final Dio _dio;
   static const maxTranscriptCharacters = 1200000;
   static const maxClassificationCharacters = 24000;
+  static const fallbackModels = <String>[
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash-lite',
+  ];
 
-  Future<void> testConnection({
+  final Map<String, String> _resolvedModels = {};
+  Set<String>? _availableModels;
+  DateTime? _availableModelsExpiresAt;
+
+  /// Validates the key without spending a generate-content request.
+  ///
+  /// Returns the requested model, or the highest-ranked available fallback.
+  Future<String> testConnection({
     required String apiKey,
     required String model,
   }) async {
-    await _generate(
+    final selected = await _discoverAvailableModel(
       apiKey: apiKey,
-      model: model,
-      prompt: 'Return JSON with ok=true.',
-      schema: const {
-        'type': 'object',
-        'properties': {
-          'ok': {'type': 'boolean'},
-        },
-        'required': ['ok'],
-      },
+      requestedModel: model,
+      forceRefresh: true,
+      strict: true,
     );
+    if (selected == null) {
+      throw const IntegrationException(
+        integration: 'Gemini',
+        code: 'model_unavailable',
+        userMessage:
+            'No supported Gemini text model is available for this API key.',
+        retryable: false,
+      );
+    }
+    _resolvedModels[model] = selected;
+    return selected;
   }
 
   Future<ClassificationResult> classify({
@@ -204,54 +226,237 @@ $text
     required String prompt,
     required Map<String, dynamic> schema,
   }) async {
-    try {
-      final response = await _dio.post<Map<String, dynamic>>(
-        '/v1beta/models/${Uri.encodeComponent(model)}:generateContent',
-        options: Options(headers: {'x-goog-api-key': apiKey}),
-        data: {
-          'contents': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': prompt},
-              ],
-            },
-          ],
-          'generationConfig': {
-            'temperature': 0.2,
-            'maxOutputTokens': 8192,
-            'responseMimeType': 'application/json',
-            'responseJsonSchema': schema,
-          },
-        },
-      );
-      final candidates = response.data?['candidates'] as List<dynamic>?;
-      final content = candidates?.firstOrNull as Map<String, dynamic>?;
-      final parts =
-          (content?['content'] as Map<String, dynamic>?)?['parts']
-              as List<dynamic>?;
-      final text =
-          (parts?.firstOrNull as Map<String, dynamic>?)?['text'] as String?;
-      if (text == null || text.isEmpty) {
+    final attempted = <String>{};
+    var candidates = _modelCandidates(model).toList();
+    DioException? lastError;
+    var transientFallbackUsed = false;
+
+    while (candidates.isNotEmpty && attempted.length < 3) {
+      final candidate = candidates.first;
+      candidates = candidates.skip(1).toList();
+      if (!attempted.add(candidate)) continue;
+      try {
+        final result = await _generateOnce(
+          apiKey: apiKey,
+          model: candidate,
+          prompt: prompt,
+          schema: schema,
+        );
+        _resolvedModels[model] = candidate;
+        return result;
+      } on DioException catch (error) {
+        lastError = error;
+        final fallbackKind = _fallbackKind(error);
+        if (fallbackKind == _FallbackKind.none) {
+          throw _geminiException(error);
+        }
+        if (fallbackKind == _FallbackKind.transient) {
+          if (transientFallbackUsed) throw _geminiException(error);
+          transientFallbackUsed = true;
+        } else {
+          final discovered = await _discoverAvailableModel(
+            apiKey: apiKey,
+            requestedModel: model,
+            excludedModels: attempted,
+            forceRefresh: true,
+          );
+          if (discovered != null && !attempted.contains(discovered)) {
+            candidates = [
+              discovered,
+              ...candidates.where((item) => item != discovered),
+            ];
+          }
+        }
+      } on FormatException {
         throw const IntegrationException(
           integration: 'Gemini',
-          code: 'empty_response',
-          userMessage: 'Gemini returned no structured content.',
+          code: 'invalid_json',
+          userMessage: 'Gemini returned invalid structured content.',
           retryable: true,
         );
       }
-      return jsonDecode(text) as Map<String, dynamic>;
-    } on DioException catch (error) {
-      throw IntegrationException.fromDio('Gemini', error);
-    } on FormatException {
+    }
+
+    throw lastError == null
+        ? const IntegrationException(
+            integration: 'Gemini',
+            code: 'model_unavailable',
+            userMessage: 'No working Gemini summary model is available.',
+            retryable: false,
+          )
+        : _geminiException(lastError);
+  }
+
+  Future<Map<String, dynamic>> _generateOnce({
+    required String apiKey,
+    required String model,
+    required String prompt,
+    required Map<String, dynamic> schema,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1beta/models/${Uri.encodeComponent(model)}:generateContent',
+      options: Options(headers: {'x-goog-api-key': apiKey}),
+      data: {
+        'contents': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': prompt},
+            ],
+          },
+        ],
+        'generationConfig': {
+          'maxOutputTokens': 8192,
+          'responseMimeType': 'application/json',
+          'responseJsonSchema': schema,
+        },
+      },
+    );
+    final candidates = response.data?['candidates'] as List<dynamic>?;
+    final content = candidates?.firstOrNull as Map<String, dynamic>?;
+    final parts =
+        (content?['content'] as Map<String, dynamic>?)?['parts']
+            as List<dynamic>?;
+    final text =
+        (parts?.firstOrNull as Map<String, dynamic>?)?['text'] as String?;
+    if (text == null || text.isEmpty) {
       throw const IntegrationException(
         integration: 'Gemini',
-        code: 'invalid_json',
-        userMessage: 'Gemini returned invalid structured content.',
+        code: 'empty_response',
+        userMessage: 'Gemini returned no structured content.',
         retryable: true,
       );
     }
+    return jsonDecode(text) as Map<String, dynamic>;
   }
+
+  Iterable<String> _modelCandidates(String requestedModel) sync* {
+    final requested = requestedModel.trim();
+    final resolved = _resolvedModels[requested];
+    if (resolved != null) yield resolved;
+    yield requested;
+    final requestedIndex = fallbackModels.indexOf(requested);
+    final fallbacks = requestedIndex < 0
+        ? fallbackModels
+        : fallbackModels.skip(requestedIndex + 1);
+    yield* fallbacks;
+  }
+
+  Future<String?> _discoverAvailableModel({
+    required String apiKey,
+    required String requestedModel,
+    Set<String> excludedModels = const {},
+    bool forceRefresh = false,
+    bool strict = false,
+  }) async {
+    final now = DateTime.now().toUtc();
+    if (forceRefresh ||
+        _availableModels == null ||
+        !(_availableModelsExpiresAt?.isAfter(now) ?? false)) {
+      try {
+        final response = await _dio.get<Map<String, dynamic>>(
+          '/v1beta/models',
+          queryParameters: const {'pageSize': 100},
+          options: Options(headers: {'x-goog-api-key': apiKey}),
+        );
+        final models = response.data?['models'] as List<dynamic>? ?? const [];
+        _availableModels = models
+            .whereType<Map<String, dynamic>>()
+            .where((entry) {
+              final methods = entry['supportedGenerationMethods'];
+              return methods is List && methods.contains('generateContent');
+            })
+            .map((entry) => entry['name'] as String?)
+            .whereType<String>()
+            .map((name) => name.replaceFirst('models/', ''))
+            .toSet();
+        _availableModelsExpiresAt = now.add(const Duration(hours: 6));
+      } on DioException catch (error) {
+        final mapped = _geminiException(error);
+        if (strict ||
+            mapped.code == 'invalid_credentials' ||
+            mapped.code == 'rate_limited') {
+          throw mapped;
+        }
+      }
+    }
+
+    final available = _availableModels ?? const <String>{};
+    for (final candidate in _modelCandidates(requestedModel)) {
+      if (!excludedModels.contains(candidate) &&
+          available.contains(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+}
+
+enum _FallbackKind { none, permanent, transient }
+
+_FallbackKind _fallbackKind(DioException error) {
+  final statusCode = error.response?.statusCode;
+  final apiStatus = _apiErrorField(error, 'status')?.toUpperCase();
+  final message = _apiErrorField(error, 'message')?.toLowerCase() ?? '';
+  if (statusCode == 404 || apiStatus == 'NOT_FOUND') {
+    return _FallbackKind.permanent;
+  }
+  if (statusCode == 400 &&
+      message.contains('model') &&
+      (message.contains('not found') ||
+          message.contains('not supported') ||
+          message.contains('unavailable'))) {
+    return _FallbackKind.permanent;
+  }
+  if (statusCode == 503 || apiStatus == 'UNAVAILABLE') {
+    return _FallbackKind.transient;
+  }
+  return _FallbackKind.none;
+}
+
+IntegrationException _geminiException(DioException error) {
+  final mapped = IntegrationException.fromDio('Gemini', error);
+  if (mapped.code != 'rate_limited') return mapped;
+  final retryAfter = mapped.retryAfter ?? _retryDelayFromBody(error);
+  final safeDelay =
+      retryAfter == null || retryAfter < const Duration(minutes: 1)
+      ? const Duration(minutes: 1)
+      : retryAfter;
+  return IntegrationException(
+    integration: 'Gemini',
+    code: 'rate_limited',
+    userMessage:
+        'Gemini quota is busy. ClassSync will wait before trying again.',
+    retryable: true,
+    retryAfter: safeDelay,
+    statusCode: mapped.statusCode,
+  );
+}
+
+String? _apiErrorField(DioException error, String field) {
+  final data = error.response?.data;
+  if (data is! Map) return null;
+  final payload = data['error'];
+  if (payload is! Map) return null;
+  return payload[field]?.toString();
+}
+
+Duration? _retryDelayFromBody(DioException error) {
+  final data = error.response?.data;
+  if (data is! Map || data['error'] is! Map) return null;
+  final details = (data['error'] as Map)['details'];
+  if (details is! List) return null;
+  for (final detail in details.whereType<Map>()) {
+    final value = detail['retryDelay']?.toString();
+    final match = value == null
+        ? null
+        : RegExp(r'^(\d+(?:\.\d+)?)s$').firstMatch(value);
+    if (match != null) {
+      final seconds = double.parse(match.group(1)!);
+      return Duration(milliseconds: (seconds * 1000).ceil());
+    }
+  }
+  return null;
 }
 
 String _classificationSample(LectureTranscript transcript) {
