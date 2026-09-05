@@ -1,0 +1,109 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/providers.dart';
+import '../../domain/academic/academic_models.dart';
+import '../shared/page_frame.dart';
+
+class ClassesScreen extends ConsumerWidget {
+  const ClassesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subjects = ref.watch(activeSubjectsProvider);
+    return PageFrame(
+      title: 'Classes',
+      subtitle: 'Active subjects from Notion',
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () =>
+              ref.read(syncCoordinatorProvider).refreshActiveSubjects(),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Refresh'),
+        ),
+      ],
+      child: subjects.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stack) => EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Could not load classes',
+          message: error.toString(),
+        ),
+        data: (items) => items.isEmpty
+            ? const EmptyState(
+                icon: Icons.school_outlined,
+                title: 'No active classes found',
+                message:
+                    'Mark current subjects In progress in Notion, then refresh.',
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth >= 1100
+                      ? 3
+                      : constraints.maxWidth >= 680
+                      ? 2
+                      : 1;
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: columns == 1 ? 2.1 : 1.55,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) =>
+                        _ClassCard(subject: items[index]),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+}
+
+class _ClassCard extends StatelessWidget {
+  const _ClassCard({required this.subject});
+  final AcademicSubject subject;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: () => context.go('/classes/${subject.notionId}'),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.menu_book_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const Spacer(),
+                const Icon(Icons.arrow_forward_rounded, size: 20),
+              ],
+            ),
+            const Spacer(),
+            Text(subject.name, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(subject.semesterLabel),
+            const SizedBox(height: 14),
+            Text(
+              subject.latestSummaryTitle == null
+                  ? 'No local summaries yet'
+                  : 'Latest: ${subject.latestSummaryTitle}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}

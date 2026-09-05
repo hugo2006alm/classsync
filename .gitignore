@@ -1,0 +1,20 @@
+# ClassSync workspace
+.idea/
+.vscode/
+*.log
+.DS_Store
+
+# Node / Cloudflare
+node_modules/
+.wrangler/
+coverage/
+dist/
+apps/relay/.dev.vars
+
+# Secrets and local build configuration
+*.jks
+*.keystore
+key.properties
+apps/relay/wrangler.local.jsonc
+*service-account*.json
+*serviceAccount*.json

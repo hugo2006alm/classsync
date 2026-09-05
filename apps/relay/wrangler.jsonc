@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "classsync-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "classsync-obl1vi0uzz"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "classsync-relay",
+      "database_id": "b86a68a1-3037-4c5e-82f3-86a6a69cec08",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
