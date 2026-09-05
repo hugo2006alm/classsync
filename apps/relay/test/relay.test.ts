@@ -219,6 +219,39 @@ describe("ClassSync Relay", () => {
     expect(response.status).toBe(401);
   });
 
+  it("acknowledges a signed Fireflies test event without storing it", async () => {
+    const database = new MemoryD1();
+    const body = JSON.stringify({
+      event: "test",
+      message: "Fireflies webhook test",
+    });
+    const response = await fetch(
+      new Request("https://relay.test/webhooks/fireflies", {
+        method: "POST",
+        headers: { "x-hub-signature": await signature(body) },
+        body,
+      }),
+      testEnv(database),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ accepted: true, test: true });
+    expect(database.rows).toHaveLength(0);
+  });
+
+  it("rejects an unsigned Fireflies test event", async () => {
+    const body = JSON.stringify({ event: "test" });
+    const response = await fetch(
+      new Request("https://relay.test/webhooks/fireflies", {
+        method: "POST",
+        body,
+      }),
+      testEnv(),
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it("deduplicates delivery and supports authenticated acknowledgement", async () => {
     const database = new MemoryD1();
     const env = testEnv(database);
