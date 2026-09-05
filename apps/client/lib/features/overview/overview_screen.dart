@@ -70,14 +70,17 @@ class OverviewScreen extends ConsumerWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 980 ? 4 : 2;
-              return GridView.count(
-                crossAxisCount: columns,
+              return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: columns == 4 ? 2.1 : 2.4,
-                children: [
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: 150,
+                ),
+                itemCount: 4,
+                itemBuilder: (context, index) => [
                   MetricCard(
                     label: 'Active classes',
                     value: '${subjects.length}',
@@ -99,7 +102,7 @@ class OverviewScreen extends ConsumerWidget {
                     icon: Icons.notifications_active_rounded,
                     emphasis: attention + failures > 0,
                   ),
-                ],
+                ][index],
               );
             },
           ),
@@ -225,8 +228,9 @@ class _ActiveClasses extends StatelessWidget {
                   title: Text(subjects[index].name),
                   subtitle: Text(subjects[index].semesterLabel),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () =>
-                      context.go('/classes/${subjects[index].notionId}'),
+                  onTap: () => context.go(
+                    '/classes/${Uri.encodeComponent(subjects[index].notionId)}',
+                  ),
                 ),
                 if (index < subjects.take(5).length - 1) const Divider(),
               ],

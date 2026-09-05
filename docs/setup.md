@@ -1,5 +1,14 @@
 # ClassSync first-run setup
 
+## Updating without setting up again
+
+Install a newer ClassSync build directly over the existing installation. The
+local database, preferences, Notion mappings, and credentials in secure storage
+remain in place because the Android package ID and Windows installer AppId stay
+the same. Do not uninstall the app or clear its storage before updating. Android
+also requires the update to use the same signing certificate as the installed
+build.
+
 ClassSync opens a seven-step setup guide on its first launch. You need four
 credentials: a Fireflies API key, a Gemini API key, a Notion integration token,
 and the ClassSync device API token.

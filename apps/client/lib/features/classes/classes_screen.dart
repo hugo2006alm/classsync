@@ -53,7 +53,7 @@ class ClassesScreen extends ConsumerWidget {
                       crossAxisCount: columns,
                       crossAxisSpacing: 14,
                       mainAxisSpacing: 14,
-                      childAspectRatio: columns == 1 ? 2.1 : 1.55,
+                      mainAxisExtent: columns == 1 ? 210 : 230,
                     ),
                     itemCount: items.length,
                     itemBuilder: (context, index) => _ClassCard(
@@ -81,7 +81,8 @@ class _ClassCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     clipBehavior: Clip.antiAlias,
     child: InkWell(
-      onTap: () => context.go('/classes/${subject.notionId}'),
+      onTap: () =>
+          context.go('/classes/${Uri.encodeComponent(subject.notionId)}'),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

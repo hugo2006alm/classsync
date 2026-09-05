@@ -1,5 +1,6 @@
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
+import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,22 @@ void main() {
     final active = await database.readActiveSubjects();
 
     expect(active.map((subject) => subject.name), ['active']);
+  });
+
+  test('initialization preserves completed setup settings', () async {
+    final configured = AppSettings.defaults.copyWith(
+      setupComplete: true,
+      notionSubjectsDataSourceId: 'subjects-source',
+      notionSummariesDataSourceId: 'summaries-source',
+    );
+    await database.saveSettings(configured);
+
+    await database.initialize();
+    final restored = await database.readSettings();
+
+    expect(restored.setupComplete, isTrue);
+    expect(restored.notionSubjectsDataSourceId, 'subjects-source');
+    expect(restored.notionSummariesDataSourceId, 'summaries-source');
   });
 
   test('deduplicates jobs by Fireflies ID', () async {
