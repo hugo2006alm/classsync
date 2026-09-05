@@ -3,6 +3,9 @@ enum SummaryDetail { concise, balanced, detailed }
 const _unsetSetting = Object();
 
 class AppSettings {
+  static const productionRelayBaseUrl =
+      'https://classsync-relay.classsync-relay.workers.dev';
+
   const AppSettings({
     required this.setupComplete,
     required this.automaticSync,
@@ -48,6 +51,7 @@ class AppSettings {
     summaryLanguage: 'Português (Portugal)',
     summaryDetail: SummaryDetail.detailed,
     notionMetadataEnabled: true,
+    relayBaseUrl: productionRelayBaseUrl,
   );
 
   final bool setupComplete;

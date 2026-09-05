@@ -23,6 +23,15 @@ class PageFrame extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 5,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondary,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,6 +78,15 @@ class SectionHeader extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 12),
     child: Row(
       children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.secondary,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 9),
         Expanded(
           child: Text(title, style: Theme.of(context).textTheme.titleLarge),
         ),
@@ -145,19 +163,37 @@ class MetricCard extends StatelessWidget {
       color: emphasis ? scheme.secondaryContainer : null,
       child: Padding(
         padding: const EdgeInsets.all(18),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              icon,
-              color: emphasis ? scheme.onSecondaryContainer : scheme.primary,
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: emphasis
+                    ? scheme.onSecondaryContainer.withValues(alpha: 0.1)
+                    : scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: emphasis
+                      ? scheme.onSecondaryContainer
+                      : scheme.onPrimaryContainer,
+                ),
+              ),
             ),
             const Spacer(),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(value, style: Theme.of(context).textTheme.headlineSmall),
-                Text(label, style: Theme.of(context).textTheme.bodySmall),
-              ],
+            Text(value, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: emphasis
+                    ? scheme.onSecondaryContainer
+                    : scheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

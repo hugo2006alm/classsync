@@ -59,7 +59,9 @@ flutter run -d android
 
 The first-run wizard tests Fireflies, Gemini, and Notion; discovers the shared
 Notion data sources; asks before adding the optional `Fireflies ID` property;
-and configures automation. No private Fireflies, Gemini, Notion, relay, or
+uses the hosted production relay URL by default; and configures automation.
+See the [step-by-step setup guide](docs/setup.md). No private Fireflies, Gemini,
+Notion, relay, or
 Firebase service-account credential is compiled into the app. FlutterFire's
 Firebase API key is a public client identifier and should still be restricted
 to expected apps/APIs in Google Cloud.
