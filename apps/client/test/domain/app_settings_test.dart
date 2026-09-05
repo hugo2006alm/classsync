@@ -2,6 +2,13 @@ import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('production relay is available without manual URL entry', () {
+    expect(
+      AppSettings.defaults.relayBaseUrl,
+      AppSettings.productionRelayBaseUrl,
+    );
+  });
+
   test('nullable integration mappings can be cleared', () {
     final configured = AppSettings.defaults.copyWith(
       notionSubjectsDataSourceId: 'subjects',

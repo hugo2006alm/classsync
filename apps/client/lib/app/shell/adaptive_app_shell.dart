@@ -47,34 +47,35 @@ class AdaptiveAppShell extends StatelessWidget {
           ),
         );
       }
-      final extended = constraints.maxWidth >= 1080;
+      final extended = constraints.maxWidth >= 1040;
       return Scaffold(
         body: Row(
           children: [
-            SafeArea(
-              right: false,
-              child: NavigationRail(
-                extended: extended,
-                minExtendedWidth: 248,
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) =>
-                    context.go(_destinations[index].path),
-                leading: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 20, 12, 28),
-                  child: _BrandMark(showName: extended),
+            ColoredBox(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              child: SafeArea(
+                right: false,
+                child: NavigationRail(
+                  backgroundColor: Colors.transparent,
+                  extended: extended,
+                  minExtendedWidth: 260,
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) =>
+                      context.go(_destinations[index].path),
+                  leading: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 22, 12, 34),
+                    child: _BrandMark(showName: extended),
+                  ),
+                  destinations: _destinations
+                      .map(
+                        (destination) => NavigationRailDestination(
+                          icon: Icon(destination.icon),
+                          label: Text(destination.label),
+                        ),
+                      )
+                      .toList(),
                 ),
-                destinations: _destinations
-                    .map(
-                      (destination) => NavigationRailDestination(
-                        icon: Icon(destination.icon),
-                        label: Text(destination.label),
-                      ),
-                    )
-                    .toList(),
               ),
-            ),
-            VerticalDivider(
-              color: Theme.of(context).colorScheme.outlineVariant,
             ),
             Expanded(child: SafeArea(left: false, child: child)),
           ],
@@ -96,20 +97,29 @@ class _BrandMark extends StatelessWidget {
       children: [
         DecoratedBox(
           decoration: BoxDecoration(
-            color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
+            color: scheme.primary,
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Icon(
-              Icons.auto_stories_rounded,
-              color: scheme.onPrimaryContainer,
-            ),
+            child: Icon(Icons.auto_stories_rounded, color: scheme.onPrimary),
           ),
         ),
         if (showName) ...[
           const SizedBox(width: 12),
-          Text('ClassSync', style: Theme.of(context).textTheme.titleLarge),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('ClassSync', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'STUDY DESK',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.secondary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ],
       ],
     );

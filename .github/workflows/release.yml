@@ -99,15 +99,23 @@ jobs:
         run: flutter pub get
       - working-directory: apps/client
         run: flutter build windows --release
-      - name: Import signing certificate
+      - name: Prepare Windows signing
+        id: windows_signing
         shell: pwsh
         env:
           CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if (-not $env:CERTIFICATE_BASE64 -or -not $env:CERTIFICATE_PASSWORD) { throw 'Windows signing secrets are required.' }
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\classsync.pfx", [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+          $available = [bool]$env:CERTIFICATE_BASE64 -and [bool]$env:CERTIFICATE_PASSWORD
+          "available=$($available.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF.StartsWith('refs/tags/') -and -not $available) {
+            throw 'Windows signing secrets are required for tagged releases.'
+          }
+          if ($available) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\classsync.pfx", [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+          }
       - name: Sign app executable
+        if: steps.windows_signing.outputs.available == 'true'
         shell: pwsh
         env:
           CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -121,12 +129,15 @@ jobs:
           $version = ((Select-String '^version:' apps\client\pubspec.yaml).Line.Split()[1]).Split('+')[0]
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" packaging\windows\classsync.iss
       - name: Sign installer
+        if: steps.windows_signing.outputs.available == 'true'
         shell: pwsh
         env:
           CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          $installer = (Get-ChildItem dist -Filter 'ClassSync-Setup-*.exe' | Select-Object -Single).FullName
+          $installers = @(Get-ChildItem dist -Filter 'ClassSync-Setup-*.exe')
+          if ($installers.Count -ne 1) { throw "Expected one installer, found $($installers.Count)." }
+          $installer = $installers[0].FullName
           & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:RUNNER_TEMP\classsync.pfx" /p $env:CERTIFICATE_PASSWORD $installer
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
