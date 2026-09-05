@@ -80,12 +80,28 @@ class _SettingsBody extends ConsumerWidget {
                       ref,
                       name: 'Gemini',
                       key: CredentialKey.geminiApiKey,
-                      tester: (value) => ref
-                          .read(geminiClientProvider)
-                          .testConnection(
-                            apiKey: value,
-                            model: settings.classificationModel,
-                          ),
+                      tester: (value) async {
+                        final selectedModel = await ref
+                            .read(geminiClientProvider)
+                            .testConnection(
+                              apiKey: value,
+                              model: settings.classificationModel,
+                            );
+                        if (selectedModel != settings.classificationModel) {
+                          await ref
+                              .read(settingsControllerProvider)
+                              .save(
+                                settings.copyWith(
+                                  classificationModel: selectedModel,
+                                  summaryModel:
+                                      settings.summaryModel ==
+                                          settings.classificationModel
+                                      ? selectedModel
+                                      : settings.summaryModel,
+                                ),
+                              );
+                        }
+                      },
                     ),
                   ),
                 ),
@@ -256,6 +272,7 @@ class _SettingsBody extends ConsumerWidget {
                   initialValue: settings.classificationModel,
                   decoration: const InputDecoration(
                     labelText: 'Classification model',
+                    helperText: 'Falls back automatically if unavailable.',
                   ),
                   onFieldSubmitted: (value) => _save(
                     ref,
@@ -278,7 +295,10 @@ class _SettingsBody extends ConsumerWidget {
                 TextFormField(
                   key: ValueKey(settings.summaryModel),
                   initialValue: settings.summaryModel,
-                  decoration: const InputDecoration(labelText: 'Summary model'),
+                  decoration: const InputDecoration(
+                    labelText: 'Summary model',
+                    helperText: 'Uses the next supported model if necessary.',
+                  ),
                   onFieldSubmitted: (value) =>
                       _save(ref, settings.copyWith(summaryModel: value.trim())),
                 ),
