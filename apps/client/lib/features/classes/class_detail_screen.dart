@@ -13,7 +13,31 @@ class ClassDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subjects = ref.watch(activeSubjectsProvider).valueOrNull ?? const [];
+    final subjectsValue = ref.watch(activeSubjectsProvider);
+    if (subjectsValue.isLoading) {
+      return const PageFrame(
+        title: 'Opening class',
+        child: SizedBox(
+          height: 240,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    if (subjectsValue.hasError) {
+      return PageFrame(
+        title: 'Class unavailable',
+        child: EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Could not load this class',
+          message: subjectsValue.error.toString(),
+          action: FilledButton(
+            onPressed: () => context.go('/classes'),
+            child: const Text('Back to classes'),
+          ),
+        ),
+      );
+    }
+    final subjects = subjectsValue.valueOrNull ?? const [];
     final subject = subjects
         .where((item) => item.notionId == subjectId)
         .firstOrNull;
@@ -58,26 +82,29 @@ class ClassDetailScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: MetricCard(
-                  label: 'Local summaries',
-                  value:
-                      '${jobs.where((job) => job.summaryJson != null).length}',
-                  icon: Icons.auto_stories_rounded,
+          SizedBox(
+            height: 150,
+            child: Row(
+              children: [
+                Expanded(
+                  child: MetricCard(
+                    label: 'Local summaries',
+                    value:
+                        '${jobs.where((job) => job.summaryJson != null).length}',
+                    icon: Icons.auto_stories_rounded,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: MetricCard(
-                  label: 'Needs review',
-                  value:
-                      '${jobs.where((job) => job.status.name == 'needsReview').length}',
-                  icon: Icons.help_rounded,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MetricCard(
+                    label: 'Needs review',
+                    value:
+                        '${jobs.where((job) => job.status.name == 'needsReview').length}',
+                    icon: Icons.help_rounded,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 28),
           const SectionHeader('Recent summaries'),

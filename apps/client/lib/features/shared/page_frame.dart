@@ -15,56 +15,82 @@ class PageFrame extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => CustomScrollView(
-    slivers: [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 5,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.secondary,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.headlineLarge,
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (actions.isNotEmpty) ...[
-                const SizedBox(width: 16),
-                Wrap(spacing: 8, runSpacing: 8, children: actions),
-              ],
-            ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final compact = constraints.maxWidth < 600;
+      final horizontalPadding = compact ? 18.0 : 24.0;
+      final heading = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 5,
+            height: 54,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondary,
+              borderRadius: BorderRadius.circular(99),
+            ),
           ),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.all(24),
-        sliver: SliverToBoxAdapter(child: child),
-      ),
-    ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.headlineLarge),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle!,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      );
+
+      return CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                compact ? 22 : 28,
+                horizontalPadding,
+                0,
+              ),
+              child: compact
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        heading,
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          Wrap(spacing: 8, runSpacing: 8, children: actions),
+                        ],
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: heading),
+                        if (actions.isNotEmpty) ...[
+                          const SizedBox(width: 16),
+                          Wrap(spacing: 8, runSpacing: 8, children: actions),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.all(horizontalPadding),
+            sliver: SliverToBoxAdapter(child: child),
+          ),
+        ],
+      );
+    },
   );
 }
 
@@ -159,45 +185,52 @@ class MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: emphasis ? scheme.secondaryContainer : null,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: emphasis
-                    ? scheme.onSecondaryContainer.withValues(alpha: 0.1)
-                    : scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: emphasis
-                      ? scheme.onSecondaryContainer
-                      : scheme.onPrimaryContainer,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 180;
+        return Card(
+          color: emphasis ? scheme.secondaryContainer : null,
+          child: Padding(
+            padding: EdgeInsets.all(compact ? 14 : 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: emphasis
+                        ? scheme.onSecondaryContainer.withValues(alpha: 0.1)
+                        : scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      icon,
+                      size: 20,
+                      color: emphasis
+                          ? scheme.onSecondaryContainer
+                          : scheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
-              ),
+                const Spacer(),
+                Text(value, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: emphasis
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-            const Spacer(),
-            Text(value, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: emphasis
-                    ? scheme.onSecondaryContainer
-                    : scheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

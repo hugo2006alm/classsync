@@ -30,7 +30,8 @@ class AcademicSubject {
   final String? latestSummaryTitle;
 
   bool get isActive => status.toLowerCase() == 'in progress';
-  String get semesterLabel => '$year · $semester';
+  String get displayYear => _displayAcademicYear(year);
+  String get semesterLabel => '$displayYear · $semester';
 }
 
 class AcademicSemester {
@@ -39,7 +40,7 @@ class AcademicSemester {
   final String year;
   final String semester;
 
-  String get label => '$year · $semester';
+  String get label => '${_displayAcademicYear(year)} · $semester';
 
   static AcademicSemester? derive(Iterable<AcademicSubject> subjects) {
     final active = subjects.where((subject) => subject.isActive).toList();
@@ -53,6 +54,17 @@ class AcademicSemester {
         ? AcademicSemester(year: first.year, semester: first.semester)
         : null;
   }
+}
+
+String _displayAcademicYear(String source) {
+  final value = source.trim();
+  if (value.isEmpty ||
+      RegExp(r'\bano\b', caseSensitive: false).hasMatch(value)) {
+    return value;
+  }
+  if (RegExp(r'^\d+[ºª]$').hasMatch(value)) return '$value Ano';
+  if (RegExp(r'^\d+$').hasMatch(value)) return '$valueº Ano';
+  return value;
 }
 
 class TranscriptSentence {

@@ -268,7 +268,9 @@ class _SettingsBody extends ConsumerWidget {
             child: Column(
               children: [
                 TextFormField(
-                  key: ValueKey(settings.classificationModel),
+                  key: ValueKey(
+                    'classification-model:${settings.classificationModel}',
+                  ),
                   initialValue: settings.classificationModel,
                   decoration: const InputDecoration(
                     labelText: 'Classification model',
@@ -281,7 +283,7 @@ class _SettingsBody extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  key: ValueKey(settings.summaryLanguage),
+                  key: ValueKey('summary-language:${settings.summaryLanguage}'),
                   initialValue: settings.summaryLanguage,
                   decoration: const InputDecoration(
                     labelText: 'Summary language',
@@ -293,7 +295,7 @@ class _SettingsBody extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                  key: ValueKey(settings.summaryModel),
+                  key: ValueKey('summary-model:${settings.summaryModel}'),
                   initialValue: settings.summaryModel,
                   decoration: const InputDecoration(
                     labelText: 'Summary model',

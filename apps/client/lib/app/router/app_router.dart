@@ -29,8 +29,11 @@ final routerProvider = Provider<GoRouter>(
             routes: [
               GoRoute(
                 path: ':subjectId',
-                builder: (context, state) => ClassDetailScreen(
-                  subjectId: state.pathParameters['subjectId']!,
+                pageBuilder: (context, state) => NoTransitionPage(
+                  key: state.pageKey,
+                  child: ClassDetailScreen(
+                    subjectId: state.pathParameters['subjectId']!,
+                  ),
                 ),
               ),
             ],
