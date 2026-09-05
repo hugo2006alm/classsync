@@ -23,6 +23,9 @@ bootstrap token once in ClassSync. Client creates random per-device credential;
 Worker stores only its SHA-256 hash. Lost device can be revoked by setting
 `revoked_at` in `relay_device_auth`.
 
+Fireflies' signed synthetic Test Webhook receives `200` but is not stored or
+sent to devices. Production `meeting.transcribed` deliveries receive `202`.
+
 The relay stores no transcript, prompt, summary, or Notion content.
 FCM tokens are stored only for authenticated Android devices. See
 `docs/firebase.md`.

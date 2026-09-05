@@ -30,6 +30,12 @@ function validPayload(value: unknown): value is FirefliesWebhookPayload {
   );
 }
 
+function isFirefliesTestPayload(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const event = (value as Record<string, unknown>).event;
+  return event === "test" || event === "webhook.test";
+}
+
 async function receiveWebhook(
   request: Request,
   env: Env,
@@ -58,6 +64,11 @@ async function receiveWebhook(
     payload = JSON.parse(rawBody);
   } catch {
     return json({ error: "invalid_json" }, 400);
+  }
+  // Fireflies' Test Webhook uses a signed synthetic event without a meeting.
+  // Acknowledge it, but never persist or deliver it as production work.
+  if (isFirefliesTestPayload(payload)) {
+    return json({ accepted: true, test: true });
   }
   if (!validPayload(payload)) return json({ error: "invalid_payload" }, 400);
   const timestampMs = payload.timestamp < 10_000_000_000
