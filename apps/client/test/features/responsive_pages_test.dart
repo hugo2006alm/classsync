@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:classsync/app/theme/classsync_theme.dart';
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/providers.dart';
+import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
@@ -67,6 +70,30 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('credential tiles stay neutral until secure storage responds', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final credentials = _ControlledCredentialStore();
+
+    await tester.pumpWidget(
+      _app(database, const SettingsScreen(), credentialStore: credentials),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Checking secure storage…'), findsNWidgets(4));
+    credentials.complete(CredentialKey.firefliesApiKey, false);
+    credentials.complete(CredentialKey.geminiApiKey, true);
+    credentials.complete(CredentialKey.notionToken, true);
+    credentials.complete(CredentialKey.relayDeviceToken, false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connected'), findsNWidgets(2));
+    expect(find.text('Not configured'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
   testWidgets('class detail renders an informative empty state on phone', (
     tester,
   ) async {
@@ -100,9 +127,13 @@ Widget _app(
   ClassSyncDatabase database,
   Widget screen, {
   List<AcademicSubject> subjects = const [],
+  SecureCredentialStore? credentialStore,
 }) => ProviderScope(
   overrides: [
     databaseProvider.overrideWithValue(database),
+    credentialStoreProvider.overrideWithValue(
+      credentialStore ?? _ImmediateCredentialStore(),
+    ),
     activeSubjectsProvider.overrideWith(
       (ref) => Stream<List<AcademicSubject>>.value(subjects),
     ),
@@ -132,3 +163,21 @@ final _subject = AcademicSubject(
   status: 'In progress',
   lastSyncedAt: DateTime.utc(2026, 9, 5),
 );
+
+class _ImmediateCredentialStore extends SecureCredentialStore {
+  @override
+  Future<bool> isConfigured(CredentialKey key) async => false;
+}
+
+class _ControlledCredentialStore extends SecureCredentialStore {
+  final _completers = {
+    for (final key in CredentialKey.values) key: Completer<bool>(),
+  };
+
+  @override
+  Future<bool> isConfigured(CredentialKey key) => _completers[key]!.future;
+
+  void complete(CredentialKey key, bool value) {
+    _completers[key]!.complete(value);
+  }
+}

@@ -17,6 +17,9 @@ final databaseProvider = Provider<ClassSyncDatabase>(
 );
 
 final credentialStoreProvider = Provider((ref) => SecureCredentialStore());
+final credentialConfiguredProvider = FutureProvider.family<bool, CredentialKey>(
+  (ref, key) => ref.watch(credentialStoreProvider).isConfigured(key),
+);
 final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());

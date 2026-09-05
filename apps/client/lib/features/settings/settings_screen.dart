@@ -530,43 +530,43 @@ class _IntegrationTile extends ConsumerWidget {
   final VoidCallback onConfigure;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          CircleAvatar(child: Icon(icon)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: Theme.of(context).textTheme.titleMedium),
-                FutureBuilder<bool>(
-                  future: ref
-                      .read(credentialStoreProvider)
-                      .isConfigured(credential),
-                  builder: (context, snapshot) => Text(
-                    snapshot.data == true ? 'Connected' : 'Not configured',
-                    style: TextStyle(
-                      color: snapshot.data == true
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(credentialConfiguredProvider(credential));
+    final scheme = Theme.of(context).colorScheme;
+    final (label, color) = status.when(
+      data: (configured) => configured
+          ? ('Connected', scheme.primary)
+          : ('Not configured', scheme.error),
+      loading: () => ('Checking secure storage…', scheme.onSurfaceVariant),
+      error: (error, stack) =>
+          ('Could not check secure storage', scheme.onSurfaceVariant),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(child: Icon(icon)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: Theme.of(context).textTheme.titleMedium),
+                  Text(label, style: TextStyle(color: color)),
+                ],
+              ),
             ),
-          ),
-          IconButton(
-            onPressed: onConfigure,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Configure $name',
-          ),
-        ],
+            IconButton(
+              onPressed: onConfigure,
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Configure $name',
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SettingSwitch extends StatelessWidget {
@@ -737,6 +737,7 @@ Future<void> _configureSecret(
                       await ref
                           .read(credentialStoreProvider)
                           .write(key, controller.text);
+                      ref.invalidate(credentialConfiguredProvider(key));
                       if (context.mounted) Navigator.pop(context);
                     } catch (failure) {
                       setState(() {
@@ -833,6 +834,9 @@ Future<void> _configureRelay(
                 await credentialStore.write(
                   CredentialKey.relayDeviceToken,
                   tokenController.text,
+                );
+                ref.invalidate(
+                  credentialConfiguredProvider(CredentialKey.relayDeviceToken),
                 );
                 await ref
                     .read(settingsControllerProvider)
