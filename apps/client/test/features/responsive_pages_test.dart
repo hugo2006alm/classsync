@@ -65,6 +65,8 @@ void main() {
     await tester.pumpWidget(_app(database, const SettingsScreen()));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('AI & summaries'));
+    await tester.pumpAndSettle();
     expect(find.text('AI'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
@@ -81,6 +83,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
     expect(find.text('Checking secure storage…'), findsNWidgets(4));
     credentials.complete(CredentialKey.firefliesApiKey, false);
     credentials.complete(CredentialKey.geminiApiKey, true);
@@ -90,6 +94,44 @@ void main() {
 
     expect(find.text('Connected'), findsNWidgets(2));
     expect(find.text('Not configured'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('Android automation page hides Windows-only startup setting', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+
+    await tester.pumpWidget(
+      _app(database, const SettingsScreen(), platform: TargetPlatform.android),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Automation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Background mobile sync'), findsOneWidget);
+    expect(find.text('Launch with Windows'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('Windows automation page hides Android-only background setting', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+
+    await tester.pumpWidget(
+      _app(database, const SettingsScreen(), platform: TargetPlatform.windows),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Automation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Launch with Windows'), findsOneWidget);
+    expect(find.text('Background mobile sync'), findsNothing);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -128,6 +170,7 @@ Widget _app(
   Widget screen, {
   List<AcademicSubject> subjects = const [],
   SecureCredentialStore? credentialStore,
+  TargetPlatform? platform,
 }) => ProviderScope(
   overrides: [
     databaseProvider.overrideWithValue(database),
@@ -145,7 +188,7 @@ Widget _app(
     ),
   ],
   child: MaterialApp(
-    theme: ClassSyncTheme.light(),
+    theme: ClassSyncTheme.light().copyWith(platform: platform),
     home: Scaffold(body: screen),
   ),
 );

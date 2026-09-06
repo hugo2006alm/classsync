@@ -16,8 +16,22 @@ ISEP
 
 Runtime setup searches accessible data sources and asks the user to confirm mappings. IDs are installation data, never source constants.
 
+## New-user workspace
+
+Recommended onboarding is a duplicate-able Notion template. Publish an empty
+ClassSync parent page with **Duplicate as template** enabled. A new user
+duplicates it into their own workspace, creates a Notion integration, shares
+the copied parent page with that integration, then lets ClassSync discover the
+two copied data sources.
+
+ClassSync can later offer **Create workspace** instead. The user must first
+grant an integration `insert content` access and select a parent page. The app
+can then create the databases and properties under that page through Notion's
+API. A token alone does not authorize access to arbitrary private pages.
+
 `Lista de Cadeiras` is canonical. Only rows where `Status = In progress` are classifier candidates. `Histórico de Resumos` receives `Nome`, `Data`, `Cadeira`, and optionally additive ClassSync properties. Schema changes require explicit confirmation and never rename or remove properties.
 
-Pages are created empty and their remote top-level child count is used as the
-append checkpoint. Regenerate, reclassify, and republish operations keep the
-persisted page ID, replace its properties/body, and retry against that same page.
+Generated blocks live inside revision-marked ClassSync-owned toggles. Append
+checkpoints use those markers instead of total page-child count. Regenerate,
+reclassify, and republish keep the persisted page ID and replace only
+ClassSync-owned content, preserving user notes and template blocks.

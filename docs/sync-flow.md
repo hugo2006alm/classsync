@@ -8,7 +8,10 @@
 4. Atomically claim runnable or stale-processing row with SQLite lease.
 5. Fetch/reuse transcript, then acquire D1 cross-device processing claim.
 6. Classify or apply exact local correction.
-7. Generate bounded chunks, persisting partial checkpoints.
+7. Generate lecture-faithful structured notes in the teacher's order,
+   persisting partial checkpoints. Teacher emphasis, important side details,
+   Q&A, tasks, deadlines, examples, formulas, code, and uncertainties remain
+   separate so synthesis cannot silently flatten them.
 8. Pause for review when thresholds require it.
 9. Reconcile Notion `Fireflies ID`, publish revision-marked owned chunks, and
    preserve all user/template blocks.
