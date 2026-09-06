@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:classsync/app/theme/classsync_theme.dart';
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/providers.dart';
+import 'package:classsync/core/integrations/notion/notion_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/features/classes/class_detail_screen.dart';
 import 'package:classsync/features/overview/overview_screen.dart';
+import 'package:classsync/features/library/library_screen.dart';
 import 'package:classsync/features/settings/settings_screen.dart';
 import 'package:classsync/features/sync/sync_screen.dart';
 import 'package:drift/native.dart';
@@ -157,6 +159,32 @@ void main() {
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
+
+  testWidgets('Notion library groups summaries without duplicating Ano', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final library = NotionLibraryData(
+      subjects: {_subject.notionId: _subject},
+      summaries: [
+        NotionSummaryRecord(
+          id: 'summary-1',
+          title: 'Process scheduling',
+          date: DateTime(2026, 9, 6),
+          subjectIds: const ['subject-1'],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      _app(database, const LibraryScreen(), library: library),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('3º Ano · 1º Semestre'), findsOneWidget);
+    expect(find.text('Process scheduling'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
 }
 
 void _usePhoneViewport(WidgetTester tester) {
@@ -171,6 +199,7 @@ Widget _app(
   List<AcademicSubject> subjects = const [],
   SecureCredentialStore? credentialStore,
   TargetPlatform? platform,
+  NotionLibraryData? library,
 }) => ProviderScope(
   overrides: [
     databaseProvider.overrideWithValue(database),
@@ -186,6 +215,8 @@ Widget _app(
     settingsProvider.overrideWith(
       (ref) => Stream<AppSettings>.value(AppSettings.defaults),
     ),
+    if (library != null)
+      notionLibraryProvider.overrideWith((ref) async => library),
   ],
   child: MaterialApp(
     theme: ClassSyncTheme.light().copyWith(platform: platform),

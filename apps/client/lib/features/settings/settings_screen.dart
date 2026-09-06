@@ -13,6 +13,7 @@ import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
 import '../shared/page_frame.dart';
+import 'device_sync_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -34,6 +35,7 @@ class SettingsScreen extends ConsumerWidget {
 
 enum _SettingsCategory {
   connections,
+  deviceSync,
   automation,
   ai,
   notion,
@@ -61,6 +63,12 @@ class _SettingsBody extends StatelessWidget {
             icon: Icons.link_rounded,
             title: 'Connections',
             subtitle: 'Fireflies, Gemini, Notion, and relay',
+          ),
+          (
+            category: _SettingsCategory.deviceSync,
+            icon: Icons.devices_rounded,
+            title: 'Account & device sync',
+            subtitle: 'Private keys and lecture status across your devices',
           ),
           (
             category: _SettingsCategory.automation,
@@ -153,6 +161,7 @@ class _SettingsCategoryPage extends ConsumerWidget {
 
 String _categoryTitle(_SettingsCategory category) => switch (category) {
   _SettingsCategory.connections => 'Connections',
+  _SettingsCategory.deviceSync => 'Account & device sync',
   _SettingsCategory.automation => 'Automation',
   _SettingsCategory.ai => 'AI & summaries',
   _SettingsCategory.notion => 'Notion workspace',
@@ -272,6 +281,13 @@ class _SettingsDetailBody extends ConsumerWidget {
               );
             },
           ),
+        ),
+      ],
+      if (category == _SettingsCategory.deviceSync) ...[
+        _SettingsSection(
+          title: 'Your devices',
+          description: 'One account per person. Join only devices you own.',
+          child: DeviceSyncSettings(settings: settings),
         ),
       ],
       if (category == _SettingsCategory.automation) ...[
@@ -961,6 +977,13 @@ Future<void> _configureSecret(
                       await ref
                           .read(credentialStoreProvider)
                           .write(key, controller.text);
+                      try {
+                        await ref
+                            .read(deviceSyncServiceProvider)
+                            .pushConfiguration();
+                      } catch (_) {
+                        // Saved locally; device sync retries later.
+                      }
                       ref.invalidate(credentialConfiguredProvider(key));
                       if (context.mounted) Navigator.pop(context);
                     } catch (failure) {

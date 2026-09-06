@@ -11,6 +11,18 @@ class MemoryD1 {
   readonly auth = new Map<string, { hash: string; revoked: string | null }>();
   readonly acks = new Set<string>();
   readonly claims = new Map<string, ProcessingClaimRow>();
+  readonly accounts = new Map<string, { hash: string; revoked: string | null }>();
+  readonly snapshots = new Map<
+    string,
+    {
+      revision: number;
+      ciphertext: string;
+      nonce: string;
+      schema_version: number;
+      updated_at: string;
+      device_id: string;
+    }
+  >();
 
   prepare(query: string): D1PreparedStatement {
     let values: unknown[] = [];
@@ -20,6 +32,42 @@ class MemoryD1 {
         return statement;
       },
       run: async () => {
+        if (query.includes("INSERT INTO sync_accounts")) {
+          const [id, hash] = values as string[];
+          this.accounts.set(id!, { hash: hash!, revoked: null });
+          return { success: true, meta: { changes: 1 } };
+        }
+        if (query.includes("INSERT INTO account_sync_snapshots")) {
+          const [accountId, scope, revision, ciphertext, nonce, schemaVersion, updated, deviceId] =
+            values as [string, string, number, string, string, number, string, string];
+          this.snapshots.set(`${accountId}:${scope}`, {
+            revision,
+            ciphertext,
+            nonce,
+            schema_version: schemaVersion,
+            updated_at: updated,
+            device_id: deviceId,
+          });
+          return { success: true, meta: { changes: 1 } };
+        }
+        if (query.includes("UPDATE account_sync_snapshots")) {
+          const [revision, ciphertext, nonce, schemaVersion, updated, deviceId, accountId, scope, expected] =
+            values as [number, string, string, number, string, string, string, string, number];
+          const key = `${accountId}:${scope}`;
+          const current = this.snapshots.get(key);
+          if (!current || current.revision !== expected) {
+            return { success: true, meta: { changes: 0 } };
+          }
+          this.snapshots.set(key, {
+            revision,
+            ciphertext,
+            nonce,
+            schema_version: schemaVersion,
+            updated_at: updated,
+            device_id: deviceId,
+          });
+          return { success: true, meta: { changes: 1 } };
+        }
         if (query.includes("INSERT INTO relay_events")) {
           const [id, transcriptId, eventType, receivedAt] = values as string[];
           const duplicate = [...this.rows.values()].some(
@@ -129,6 +177,19 @@ class MemoryD1 {
         return { success: true, results, meta: {} };
       },
       first: async <T>() => {
+        if (query.includes("FROM sync_accounts")) {
+          const row = this.accounts.get(values[0] as string);
+          return (row
+            ? {
+                id: values[0],
+                auth_hash: row.hash,
+                revoked_at: row.revoked,
+              }
+            : null) as T | null;
+        }
+        if (query.includes("FROM account_sync_snapshots")) {
+          return (this.snapshots.get(`${values[0]}:${values[1]}`) ?? null) as T | null;
+        }
         if (query.includes("FROM relay_device_auth")) {
           const row = this.auth.get(values[0] as string);
           return (row
@@ -368,5 +429,64 @@ describe("ClassSync Relay", () => {
       completed: true,
       notionPageId: "notion-page",
     });
+  });
+
+  it("isolates encrypted snapshots by random account credentials", async () => {
+    const create = (env: Env) => fetch(
+      new Request("https://relay.test/accounts", {
+        method: "POST",
+        headers: { authorization: `Bearer ${deviceToken}` },
+      }),
+      env,
+    );
+    const headers = (account: { accountId: string; authSecret: string }) => ({
+      authorization: `Bearer ${account.authSecret}`,
+      "x-classsync-account-id": account.accountId,
+      "x-classsync-device-id": "device-account-one",
+      "content-type": "application/json",
+    });
+    const database = new MemoryD1();
+    const env = testEnv(database);
+    const first = (await (await create(env)).json()) as {
+      accountId: string;
+      authSecret: string;
+    };
+    const second = (await (await create(env)).json()) as {
+      accountId: string;
+      authSecret: string;
+    };
+    const saved = await fetch(
+      new Request("https://relay.test/account/sync/config", {
+        method: "PUT",
+        headers: headers(first),
+        body: JSON.stringify({
+          baseRevision: 0,
+          ciphertext: "opaque-ciphertext",
+          nonce: "opaque-nonce",
+          schemaVersion: 1,
+        }),
+      }),
+      env,
+    );
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toMatchObject({ revision: 1 });
+
+    const own = await fetch(
+      new Request("https://relay.test/account/sync/config", {
+        headers: headers(first),
+      }),
+      env,
+    );
+    await expect(own.json()).resolves.toMatchObject({
+      revision: 1,
+      ciphertext: "opaque-ciphertext",
+    });
+    const isolated = await fetch(
+      new Request("https://relay.test/account/sync/config", {
+        headers: headers(second),
+      }),
+      env,
+    );
+    await expect(isolated.json()).resolves.toEqual({ revision: 0 });
   });
 });

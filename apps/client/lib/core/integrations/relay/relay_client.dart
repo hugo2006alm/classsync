@@ -50,6 +50,14 @@ class RelayClient {
     required String bootstrapToken,
     required SecureCredentialStore credentials,
   }) async {
+    final accountValues = await Future.wait([
+      credentials.read(CredentialKey.syncAccountId),
+      credentials.read(CredentialKey.syncAccountAuthSecret),
+      credentials.read(CredentialKey.syncDeviceId),
+    ]);
+    if (accountValues.every((value) => value?.isNotEmpty == true)) {
+      return 'account:${accountValues[0]}.${accountValues[1]}.${accountValues[2]}';
+    }
     final existing = await credentials.read(
       CredentialKey.relayDeviceCredential,
     );
@@ -80,8 +88,8 @@ class RelayClient {
   }) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        '${_base(baseUrl)}/events',
-        options: Options(headers: _deviceHeaders(token)),
+        '${_base(baseUrl)}${_path(token, '/events', '/account/events')}',
+        options: Options(headers: _sessionHeaders(token)),
       );
       return (response.data?['events'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -108,8 +116,8 @@ class RelayClient {
   }) async {
     try {
       await _dio.post<void>(
-        '${_base(baseUrl)}/events/${Uri.encodeComponent(eventId)}/ack',
-        options: Options(headers: _deviceHeaders(token)),
+        '${_base(baseUrl)}${_path(token, '/events', '/account/events')}/${Uri.encodeComponent(eventId)}/ack',
+        options: Options(headers: _sessionHeaders(token)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -123,9 +131,9 @@ class RelayClient {
   }) async {
     try {
       await _dio.post<void>(
-        '${_base(baseUrl)}/devices/register',
+        '${_base(baseUrl)}${_path(deviceToken, '/devices/register', '/account/devices/register')}',
         data: {'pushToken': pushToken, 'platform': 'android'},
-        options: Options(headers: _deviceHeaders(deviceToken)),
+        options: Options(headers: _sessionHeaders(deviceToken)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -139,9 +147,9 @@ class RelayClient {
   }) async {
     try {
       await _dio.delete<void>(
-        '${_base(baseUrl)}/devices/register',
+        '${_base(baseUrl)}${_path(deviceToken, '/devices/register', '/account/devices/register')}',
         data: {'pushToken': pushToken, 'platform': 'android'},
-        options: Options(headers: _deviceHeaders(deviceToken)),
+        options: Options(headers: _sessionHeaders(deviceToken)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -155,8 +163,8 @@ class RelayClient {
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '${_base(baseUrl)}/claims/${Uri.encodeComponent(firefliesId)}',
-        options: Options(headers: _deviceHeaders(token)),
+        '${_base(baseUrl)}${_path(token, '/claims', '/account/claims')}/${Uri.encodeComponent(firefliesId)}',
+        options: Options(headers: _sessionHeaders(token)),
       );
       return RelayClaim(
         acquired: response.data?['acquired'] == true,
@@ -176,9 +184,9 @@ class RelayClient {
   }) async {
     try {
       await _dio.post<void>(
-        '${_base(baseUrl)}/claims/${Uri.encodeComponent(firefliesId)}/complete',
+        '${_base(baseUrl)}${_path(token, '/claims', '/account/claims')}/${Uri.encodeComponent(firefliesId)}/complete',
         data: {'notionPageId': notionPageId},
-        options: Options(headers: _deviceHeaders(token)),
+        options: Options(headers: _sessionHeaders(token)),
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('ClassSync Relay', error);
@@ -200,6 +208,31 @@ class RelayClient {
   }
 
   String _base(String value) => value.trim().replaceFirst(RegExp(r'/+$'), '');
+
+  String _path(String session, String legacy, String account) =>
+      session.startsWith('account:') ? account : legacy;
+
+  Map<String, String> _sessionHeaders(String session) =>
+      session.startsWith('account:')
+      ? _accountHeaders(session)
+      : _deviceHeaders(session);
+
+  Map<String, String> _accountHeaders(String session) {
+    final parts = session.substring('account:'.length).split('.');
+    if (parts.length != 3 || parts.any((part) => part.isEmpty)) {
+      throw const IntegrationException(
+        integration: 'ClassSync Relay',
+        code: 'account_not_connected',
+        userMessage: 'Reconnect this device to your ClassSync account.',
+        retryable: false,
+      );
+    }
+    return {
+      'authorization': 'Bearer ${parts[1]}',
+      'x-classsync-account-id': parts[0],
+      'x-classsync-device-id': parts[2],
+    };
+  }
 
   Map<String, String> _deviceHeaders(String session) {
     final separator = session.indexOf('.');

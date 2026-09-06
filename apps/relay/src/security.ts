@@ -42,7 +42,8 @@ export async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+    .join("")
+    .slice(0, 32);
 }
 
 export async function authenticatedDevice(
@@ -64,4 +65,46 @@ export async function authenticatedDevice(
   return constantTimeEqual(await sha256(credential), row.credential_hash)
     ? row.id
     : null;
+}
+
+export function randomSecret(byteLength = 32): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+export async function authenticatedAccount(
+  request: Request,
+  env: import("./types").Env,
+): Promise<string | null> {
+  const id = request.headers.get("x-classsync-account-id") ?? "";
+  const authorization = request.headers.get("authorization") ?? "";
+  const secret = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  if (!/^[a-zA-Z0-9-]{20,80}$/.test(id) || secret.length < 32) return null;
+  const row = await env.DB.prepare(
+    "SELECT id, auth_hash, revoked_at FROM sync_accounts WHERE id = ?",
+  ).bind(id).first<import("./types").SyncAccountRow>();
+  if (!row || row.revoked_at) return null;
+  return constantTimeEqual(await sha256(secret), row.auth_hash) ? row.id : null;
+}
+
+export async function accountWebhookSecret(
+  accountId: string,
+  masterSecret: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(masterSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", key, encoder.encode(accountId));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }

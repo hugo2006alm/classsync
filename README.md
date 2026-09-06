@@ -19,6 +19,10 @@ them with Gemini, and publishes structured study notes to Notion.
 - Controlled regenerate, reclassify, and republish actions update the existing
   Notion page instead of creating a duplicate.
 - Minimal Cloudflare Worker + D1 relay storing IDs and timestamps only.
+- Private per-person account namespaces with AES-256-GCM device sync for keys,
+  shared preferences, and bounded lecture status metadata.
+- In-app Notion Library grouped by academic semester, with readable summary
+  pages and a direct Open in Notion action.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.
@@ -57,9 +61,13 @@ flutter run -d windows
 flutter run -d android
 ```
 
-The first-run wizard tests Fireflies, Gemini, and Notion; discovers the shared
+The first-run wizard links to the public
+[ClassSync Notion template](https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332),
+tests Fireflies, Gemini, and Notion; discovers the shared
 Notion data sources; asks before adding the optional `Fireflies ID` property;
-uses the hosted production relay URL by default; and configures automation.
+uses the hosted production relay URL by default; creates or joins a private
+device account; shows its unique Fireflies webhook settings; and configures
+automation.
 See the [step-by-step setup guide](docs/setup.md). No private Fireflies, Gemini,
 Notion, relay, or
 Firebase service-account credential is compiled into the app. FlutterFire's
@@ -87,10 +95,10 @@ pnpm exec wrangler secret put DEVICE_API_TOKEN
 pnpm deploy
 ```
 
-Register `https://<worker>/webhooks/fireflies` as a Fireflies Webhooks V2
-endpoint for `meeting.transcribed`, using the same webhook secret. Put the
-Worker base URL and bootstrap token into ClassSync. Client enrolls one random
-device credential. Full details are in
+The setup wizard creates an account-specific `https://<worker>/webhooks/fireflies/<account>`
+endpoint and shows its 32-character signing secret. Register those values in
+Fireflies Webhooks V2 for `meeting.transcribed`. Legacy single-user installs can
+continue using `/webhooks/fireflies`. Full details are in
 [Cloudflare setup](docs/cloudflare.md) and [Fireflies setup](docs/fireflies.md).
 
 ## Verify and package

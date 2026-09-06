@@ -50,3 +50,18 @@ export interface RelayEventRow {
   received_at: string;
   acknowledged_at: string | null;
 }
+
+export interface SyncAccountRow {
+  id: string;
+  auth_hash: string;
+  revoked_at: string | null;
+}
+
+export interface AccountSnapshotRow {
+  revision: number;
+  ciphertext: string;
+  nonce: string;
+  schema_version: number;
+  updated_at: string;
+  device_id: string;
+}

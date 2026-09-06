@@ -192,6 +192,53 @@ export async function notifyDevices(
   if (failed > 0) console.error(`FCM transient failures: ${failed}`);
 }
 
+export async function notifyAccountDevices(
+  env: Env,
+  accountId: string,
+  event: { id: string; transcriptId: string; eventType: string },
+): Promise<void> {
+  if (!env.FIREBASE_SERVICE_ACCOUNT_JSON) return;
+  const account = JSON.parse(
+    env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  ) as FirebaseServiceAccount;
+  const projectId = env.FIREBASE_PROJECT_ID ?? account.project_id;
+  const token = await accessToken(account);
+  const devices = await env.DB.prepare(
+    `SELECT id, push_token, platform FROM relay_devices
+     WHERE account_id = ?`,
+  ).bind(accountId).all<RelayDeviceRow>();
+  await Promise.allSettled((devices.results ?? []).map(async (device) => {
+    const response = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          message: {
+            token: device.push_token,
+            notification: {
+              title: "ClassSync",
+              body: "Nova aula pronta para sincronizar.",
+            },
+            data: {
+              eventId: event.id,
+              firefliesTranscriptId: event.transcriptId,
+              eventType: event.eventType,
+            },
+            android: { priority: "high" },
+          },
+        }),
+      },
+    );
+    if (response.status === 404 || (await response.text()).includes("UNREGISTERED")) {
+      await removeDevice(env, device.id);
+    }
+  }));
+}
+
 export async function retryPendingDeliveries(env: Env): Promise<void> {
   if (!env.FIREBASE_SERVICE_ACCOUNT_JSON) return;
   const account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON) as FirebaseServiceAccount;

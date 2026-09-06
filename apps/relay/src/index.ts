@@ -1,13 +1,17 @@
 import { json, methodNotAllowed, notFound } from "./http";
-import { notifyDevices, retryPendingDeliveries } from "./firebase";
+import { notifyAccountDevices, notifyDevices, retryPendingDeliveries } from "./firebase";
 import {
+  accountWebhookSecret,
+  authenticatedAccount,
   authenticatedDevice,
   isDeviceAuthorized,
   sha256,
+  randomSecret,
   verifyFirefliesSignature,
 } from "./security";
 import type {
   Env,
+  AccountSnapshotRow,
   FirefliesWebhookPayload,
   ProcessingClaimRow,
   RelayEventRow,
@@ -16,6 +20,8 @@ import type {
 const allowedEvents = new Set(["meeting.transcribed"]);
 const maxWebhookBytes = 64 * 1024;
 const webhookSkewMs = 5 * 60 * 1000;
+const snapshotScopes = new Set(["config", "jobs"]);
+const maxSnapshotBytes = 700 * 1024;
 
 function validPayload(value: unknown): value is FirefliesWebhookPayload {
   if (!value || typeof value !== "object") return false;
@@ -99,6 +105,343 @@ async function receiveWebhook(
   }
 
   return json({ accepted: true, id }, 202);
+}
+
+async function createAccount(request: Request, env: Env): Promise<Response> {
+  if (!isDeviceAuthorized(request, env.DEVICE_API_TOKEN)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const id = crypto.randomUUID();
+  const authSecret = randomSecret(48);
+  await env.DB.prepare(
+    `INSERT INTO sync_accounts (id, auth_hash, created_at, revoked_at)
+     VALUES (?, ?, ?, NULL)`,
+  ).bind(id, await sha256(authSecret), new Date().toISOString()).run();
+  return json({ accountId: id, authSecret, protocolVersion: 3 }, 201);
+}
+
+async function accountSession(request: Request, env: Env): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  return accountId
+    ? json({ service: "ClassSync Relay", protocolVersion: 3, accountId })
+    : json({ error: "unauthorized" }, 401);
+}
+
+async function accountWebhookConfig(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  if (!accountId) return json({ error: "unauthorized" }, 401);
+  const url = new URL(request.url);
+  return json({
+    webhookUrl: `${url.origin}/webhooks/fireflies/${encodeURIComponent(accountId)}`,
+    signingSecret: await accountWebhookSecret(
+      accountId,
+      env.FIREFLIES_WEBHOOK_SECRET,
+    ),
+  });
+}
+
+async function receiveAccountWebhook(
+  request: Request,
+  env: Env,
+  accountId: string,
+  context?: ExecutionContext,
+): Promise<Response> {
+  if (!/^[a-zA-Z0-9-]{20,80}$/.test(accountId)) {
+    return json({ error: "not_found" }, 404);
+  }
+  const account = await env.DB.prepare(
+    "SELECT id FROM sync_accounts WHERE id = ? AND revoked_at IS NULL",
+  ).bind(accountId).first<{ id: string }>();
+  if (!account) return json({ error: "not_found" }, 404);
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > maxWebhookBytes) {
+    return json({ error: "payload_too_large" }, 413);
+  }
+  const secret = await accountWebhookSecret(
+    accountId,
+    env.FIREFLIES_WEBHOOK_SECRET,
+  );
+  if (!(await verifyFirefliesSignature(
+    rawBody,
+    request.headers.get("x-hub-signature"),
+    secret,
+  ))) {
+    return json({ error: "invalid_signature" }, 401);
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  if (isFirefliesTestPayload(payload)) {
+    return json({ accepted: true, test: true });
+  }
+  if (!validPayload(payload)) return json({ error: "invalid_payload" }, 400);
+  const timestampMs = payload.timestamp < 10_000_000_000
+    ? payload.timestamp * 1000
+    : payload.timestamp;
+  if (Math.abs(Date.now() - timestampMs) > webhookSkewMs) {
+    return json({ error: "stale_webhook" }, 401);
+  }
+  const id = `${accountId}:${payload.event}:${payload.meeting_id}`;
+  const inserted = await env.DB.prepare(
+    `INSERT INTO account_relay_events
+       (id, account_id, fireflies_transcript_id, event_type, received_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(account_id, fireflies_transcript_id, event_type) DO NOTHING`,
+  ).bind(
+    id,
+    accountId,
+    payload.meeting_id,
+    payload.event,
+    new Date().toISOString(),
+  ).run();
+  if ((inserted.meta.changes ?? 0) > 0) {
+    context?.waitUntil(notifyAccountDevices(env, accountId, {
+      id,
+      transcriptId: payload.meeting_id,
+      eventType: payload.event,
+    }));
+  }
+  return json({ accepted: true, id }, 202);
+}
+
+function accountDeviceId(request: Request): string | null {
+  const value = request.headers.get("x-classsync-device-id") ?? "";
+  return /^[a-zA-Z0-9-]{8,80}$/.test(value) ? value : null;
+}
+
+async function listAccountEvents(request: Request, env: Env): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  const result = await env.DB.prepare(
+    `SELECT e.id, e.fireflies_transcript_id, e.event_type, e.received_at,
+            a.acknowledged_at
+     FROM account_relay_events e
+     LEFT JOIN account_event_acks a
+       ON a.event_id = e.id AND a.device_id = ?
+     WHERE e.account_id = ? AND a.event_id IS NULL
+     ORDER BY e.received_at ASC LIMIT 100`,
+  ).bind(deviceId, accountId).all<RelayEventRow>();
+  return json({ events: result.results ?? [] });
+}
+
+async function registerAccountDevice(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const value = body as Record<string, unknown>;
+  if (
+    !value || typeof value.pushToken !== "string" ||
+    value.pushToken.length < 32 || value.pushToken.length > 4096 ||
+    value.platform !== "android"
+  ) return json({ error: "invalid_payload" }, 400);
+  if (request.method === "DELETE") {
+    await env.DB.prepare(
+      "DELETE FROM relay_devices WHERE push_token = ? AND account_id = ?",
+    ).bind(value.pushToken, accountId).run();
+    return json({ registered: false });
+  }
+  const id = await sha256(value.pushToken);
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO relay_devices
+       (id, push_token, platform, created_at, updated_at, device_id, account_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(push_token) DO UPDATE SET platform = excluded.platform,
+       updated_at = excluded.updated_at, device_id = excluded.device_id,
+       account_id = excluded.account_id`,
+  ).bind(id, value.pushToken, value.platform, now, now, deviceId, accountId).run();
+  return json({ registered: true, id });
+}
+
+async function acknowledgeAccountEvent(
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  const event = await env.DB.prepare(
+    "SELECT id FROM account_relay_events WHERE id = ? AND account_id = ?",
+  ).bind(id, accountId).first<{ id: string }>();
+  if (!event) return json({ error: "not_found" }, 404);
+  await env.DB.prepare(
+    `INSERT INTO account_event_acks (event_id, device_id, acknowledged_at)
+     VALUES (?, ?, ?) ON CONFLICT(event_id, device_id) DO NOTHING`,
+  ).bind(id, deviceId, new Date().toISOString()).run();
+  return json({ acknowledged: true, id });
+}
+
+async function claimAccountTranscript(
+  request: Request,
+  env: Env,
+  transcriptId: string,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  if (!transcriptId || transcriptId.length > 256) {
+    return json({ error: "invalid_id" }, 400);
+  }
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const expires = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+  await env.DB.prepare(
+    `INSERT INTO account_processing_claims
+       (account_id, fireflies_transcript_id, device_id, lease_expires_at,
+        status, notion_page_id, updated_at)
+     VALUES (?, ?, ?, ?, 'processing', NULL, ?)
+     ON CONFLICT(account_id, fireflies_transcript_id) DO NOTHING`,
+  ).bind(accountId, transcriptId, deviceId, expires, nowIso).run();
+  await env.DB.prepare(
+    `UPDATE account_processing_claims
+     SET device_id = ?, lease_expires_at = ?, status = 'processing', updated_at = ?
+     WHERE account_id = ? AND fireflies_transcript_id = ?
+       AND status != 'completed'
+       AND (device_id = ? OR lease_expires_at <= ?)`,
+  ).bind(deviceId, expires, nowIso, accountId, transcriptId, deviceId, nowIso).run();
+  const claim = await env.DB.prepare(
+    `SELECT fireflies_transcript_id, device_id, lease_expires_at, status,
+            notion_page_id, updated_at
+     FROM account_processing_claims
+     WHERE account_id = ? AND fireflies_transcript_id = ?`,
+  ).bind(accountId, transcriptId).first<ProcessingClaimRow>();
+  return json({
+    acquired: claim?.device_id === deviceId && claim.status === "processing",
+    completed: claim?.status === "completed",
+    notionPageId: claim?.notion_page_id ?? null,
+    leaseExpiresAt: claim?.lease_expires_at ?? null,
+  });
+}
+
+async function completeAccountTranscript(
+  request: Request,
+  env: Env,
+  transcriptId: string,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const notionPageId = (body as Record<string, unknown>)?.notionPageId;
+  if (typeof notionPageId !== "string" || notionPageId.length > 128) {
+    return json({ error: "invalid_payload" }, 400);
+  }
+  const result = await env.DB.prepare(
+    `UPDATE account_processing_claims
+     SET status = 'completed', notion_page_id = ?, updated_at = ?
+     WHERE account_id = ? AND fireflies_transcript_id = ? AND device_id = ?`,
+  ).bind(
+    notionPageId,
+    new Date().toISOString(),
+    accountId,
+    transcriptId,
+    deviceId,
+  ).run();
+  return (result.meta.changes ?? 0) === 1
+    ? json({ completed: true })
+    : json({ error: "claim_not_owned" }, 409);
+}
+
+async function accountSnapshot(
+  request: Request,
+  env: Env,
+  scope: string,
+): Promise<Response> {
+  const accountId = await authenticatedAccount(request, env);
+  const deviceId = accountDeviceId(request);
+  if (!accountId || !deviceId) return json({ error: "unauthorized" }, 401);
+  if (!snapshotScopes.has(scope)) return json({ error: "invalid_scope" }, 400);
+  if (request.method === "GET") {
+    const row = await env.DB.prepare(
+      `SELECT revision, ciphertext, nonce, schema_version, updated_at, device_id
+       FROM account_sync_snapshots WHERE account_id = ? AND scope = ?`,
+    ).bind(accountId, scope).first<AccountSnapshotRow>();
+    return row ? json(row) : json({ revision: 0 });
+  }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const value = body as Record<string, unknown>;
+  if (
+    !value ||
+    !Number.isInteger(value.baseRevision) ||
+    typeof value.ciphertext !== "string" ||
+    typeof value.nonce !== "string" ||
+    !Number.isInteger(value.schemaVersion) ||
+    value.ciphertext.length > maxSnapshotBytes ||
+    value.nonce.length > 64
+  ) return json({ error: "invalid_payload" }, 400);
+  const current = await env.DB.prepare(
+    "SELECT revision FROM account_sync_snapshots WHERE account_id = ? AND scope = ?",
+  ).bind(accountId, scope).first<{ revision: number }>();
+  const baseRevision = value.baseRevision as number;
+  if ((current?.revision ?? 0) !== baseRevision) {
+    return json({ error: "revision_conflict", revision: current?.revision ?? 0 }, 409);
+  }
+  const nextRevision = baseRevision + 1;
+  const now = new Date().toISOString();
+  if (current) {
+    const changed = await env.DB.prepare(
+      `UPDATE account_sync_snapshots
+       SET revision = ?, ciphertext = ?, nonce = ?, schema_version = ?,
+           updated_at = ?, device_id = ?
+       WHERE account_id = ? AND scope = ? AND revision = ?`,
+    ).bind(
+      nextRevision,
+      value.ciphertext,
+      value.nonce,
+      value.schemaVersion,
+      now,
+      deviceId,
+      accountId,
+      scope,
+      baseRevision,
+    ).run();
+    if ((changed.meta.changes ?? 0) !== 1) {
+      return json({ error: "revision_conflict" }, 409);
+    }
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO account_sync_snapshots
+       (account_id, scope, revision, ciphertext, nonce, schema_version,
+        updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      accountId,
+      scope,
+      nextRevision,
+      value.ciphertext,
+      value.nonce,
+      value.schemaVersion,
+      now,
+      deviceId,
+    ).run();
+  }
+  return json({ revision: nextRevision, updatedAt: now });
 }
 
 async function registerDevice(request: Request, env: Env): Promise<Response> {
@@ -350,6 +693,71 @@ export default {
       if (request.method === "DELETE") return revokeDevice(request, env);
       return methodNotAllowed();
     }
+    if (url.pathname === "/accounts") {
+      return request.method === "POST"
+        ? createAccount(request, env)
+        : methodNotAllowed();
+    }
+    if (url.pathname === "/account/session") {
+      return request.method === "GET"
+        ? accountSession(request, env)
+        : methodNotAllowed();
+    }
+    if (url.pathname === "/account/webhook-config") {
+      return request.method === "GET"
+        ? accountWebhookConfig(request, env)
+        : methodNotAllowed();
+    }
+    if (url.pathname === "/account/events") {
+      return request.method === "GET"
+        ? listAccountEvents(request, env)
+        : methodNotAllowed();
+    }
+    if (url.pathname === "/account/devices/register") {
+      return request.method === "POST" || request.method === "DELETE"
+        ? registerAccountDevice(request, env)
+        : methodNotAllowed();
+    }
+    const accountAcknowledgement = url.pathname.match(
+      /^\/account\/events\/([^/]+)\/ack$/,
+    );
+    if (accountAcknowledgement) {
+      return request.method === "POST"
+        ? acknowledgeAccountEvent(
+            request,
+            env,
+            decodeURIComponent(accountAcknowledgement[1]!),
+          )
+        : methodNotAllowed();
+    }
+    const accountCompletion = url.pathname.match(
+      /^\/account\/claims\/([^/]+)\/complete$/,
+    );
+    if (accountCompletion) {
+      return request.method === "POST"
+        ? completeAccountTranscript(
+            request,
+            env,
+            decodeURIComponent(accountCompletion[1]!),
+          )
+        : methodNotAllowed();
+    }
+    const accountClaim = url.pathname.match(/^\/account\/claims\/([^/]+)$/);
+    if (accountClaim) {
+      return request.method === "POST"
+        ? claimAccountTranscript(
+            request,
+            env,
+            decodeURIComponent(accountClaim[1]!),
+          )
+        : methodNotAllowed();
+    }
+    const snapshot = url.pathname.match(/^\/account\/sync\/([^/]+)$/);
+    if (snapshot) {
+      return request.method === "GET" || request.method === "PUT"
+        ? accountSnapshot(request, env, decodeURIComponent(snapshot[1]!))
+        : methodNotAllowed();
+    }
     if (url.pathname === "/devices/enroll") {
       return request.method === "POST"
         ? enrollDevice(request, env)
@@ -358,6 +766,19 @@ export default {
     if (url.pathname === "/webhooks/fireflies") {
       return request.method === "POST"
         ? receiveWebhook(request, env, context)
+        : methodNotAllowed();
+    }
+    const accountWebhook = url.pathname.match(
+      /^\/webhooks\/fireflies\/([^/]+)$/,
+    );
+    if (accountWebhook) {
+      return request.method === "POST"
+        ? receiveAccountWebhook(
+            request,
+            env,
+            decodeURIComponent(accountWebhook[1]!),
+            context,
+          )
         : methodNotAllowed();
     }
     if (url.pathname === "/devices/register") {
@@ -413,6 +834,13 @@ export default {
     const claimCutoff = new Date(now - 180 * 24 * 60 * 60 * 1000).toISOString();
     await env.DB.prepare(
       "DELETE FROM processing_claims WHERE status = 'completed' AND updated_at < ?",
+    ).bind(claimCutoff).run();
+    await env.DB.prepare(
+      "DELETE FROM account_relay_events WHERE received_at < ?",
+    ).bind(eventCutoff).run();
+    await env.DB.prepare(
+      `DELETE FROM account_processing_claims
+       WHERE status = 'completed' AND updated_at < ?`,
     ).bind(claimCutoff).run();
   },
 } satisfies ExportedHandler<Env>;

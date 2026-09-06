@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/classes/classes_screen.dart';
 import '../../features/classes/class_detail_screen.dart';
 import '../../features/overview/overview_screen.dart';
+import '../../features/library/library_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/sync/job_detail_screen.dart';
 import '../../features/sync/sync_screen.dart';
@@ -47,6 +48,21 @@ final routerProvider = Provider<GoRouter>(
                 path: ':jobId',
                 builder: (context, state) =>
                     JobDetailScreen(jobId: state.pathParameters['jobId']!),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/library',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: LibraryScreen()),
+            routes: [
+              GoRoute(
+                path: ':pageId',
+                builder: (context, state) => LibraryDetailScreen(
+                  pageId: state.pathParameters['pageId']!,
+                  title: state.uri.queryParameters['title'] ?? 'Lecture notes',
+                  notionUrl: state.uri.queryParameters['url'],
+                ),
               ),
             ],
           ),
