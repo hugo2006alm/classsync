@@ -26,6 +26,21 @@ Worker stores only its SHA-256 hash. Lost device can be revoked by setting
 Fireflies' signed synthetic Test Webhook receives `200` but is not stored or
 sent to devices. Production `meeting.transcribed` deliveries receive `202`.
 
+## Multiple people and devices
+
+The current app creates a private relay account during setup. The account page
+shows a unique webhook URL and a 32-character Fireflies signing secret. Each
+person must create a different account and use that person's values in
+Fireflies. A recovery code joins that same person's other devices.
+
+D1 migration `0005_account_sync.sql` adds account-scoped events, claims, and
+opaque snapshots. Apply it before installing a client that uses account sync.
+The Worker stores a hash of the account authentication secret. API keys and
+shared preferences reach D1 only as AES-256-GCM ciphertext.
+
+The global `DEVICE_API_TOKEN` is now also the account-creation setup code. It
+does not grant access to an existing account or decrypt its snapshots.
+
 The relay stores no transcript, prompt, summary, or Notion content.
 FCM tokens are stored only for authenticated Android devices. See
 `docs/firebase.md`.

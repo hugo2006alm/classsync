@@ -5,7 +5,14 @@ enum CredentialKey {
   geminiApiKey('gemini_api_key'),
   notionToken('notion_token'),
   relayDeviceToken('relay_device_token'),
-  relayDeviceCredential('relay_device_credential');
+  relayDeviceCredential('relay_device_credential'),
+  syncAccountId('sync_account_id'),
+  syncAccountAuthSecret('sync_account_auth_secret'),
+  syncEncryptionKey('sync_encryption_key'),
+  syncDeviceId('sync_device_id'),
+  syncLocalOwnerId('sync_local_owner_id'),
+  syncConfigRevision('sync_config_revision'),
+  syncJobsRevision('sync_jobs_revision');
 
   const CredentialKey(this.storageKey);
   final String storageKey;

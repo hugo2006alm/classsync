@@ -696,6 +696,7 @@ class SyncCoordinator {
           CredentialKey.notionToken => 'Notion',
           CredentialKey.relayDeviceToken => 'ClassSync Relay',
           CredentialKey.relayDeviceCredential => 'ClassSync Relay',
+          _ => 'ClassSync account',
         },
         code: 'not_configured',
         userMessage: 'Required integration is not configured.',

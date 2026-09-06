@@ -22,7 +22,7 @@ V1 is complete only when this pipeline is dependable. Calendar, assessments, tas
 ```mermaid
 flowchart LR
   FF[Fireflies] -->|signed transcript-ready metadata| R[Cloudflare Worker + D1]
-  R -->|authenticated pending IDs| C[Flutter client]
+  R -->|account-scoped pending IDs + encrypted snapshots| C[Flutter client]
   FF -->|GraphQL transcript| C
   C <--> DB[(Drift / SQLite)]
   C -->|classification and summary prompts| G[Gemini]
@@ -38,7 +38,7 @@ flowchart LR
 | Notion | subjects and published summaries | client credentials |
 | Local SQLite | queue, checkpoints, cached subjects, preferences, corrections | API credentials |
 | OS secure storage | Fireflies, Gemini, Notion, relay credentials | transcripts |
-| Cloudflare D1 | minimal relay and device-delivery metadata | transcript or summary content |
+| Cloudflare D1 | account-scoped relay metadata and opaque encrypted snapshots | transcript or summary content |
 | Gemini | transient classification/summary requests | durable application state |
 
 Relay failure must degrade to Fireflies polling. Mobile/desktop failure must leave recoverable jobs. No device may rely on another device being online.
@@ -93,13 +93,14 @@ Processing states are checkpoints, not proof that a process is still alive. Star
 - Android: full shared pipeline, quick review/status UI, manual sync, FCM wake-up, WorkManager recovery. OS execution limits still apply.
 - macOS/iOS: codebase compatibility target. Platform capabilities and signing need explicit validation before claiming production support.
 
-Desktop uses a sidebar/navigation rail. Mobile uses bottom navigation. Implemented modules are Overview, Classes, Sync, and Settings.
+Desktop uses a sidebar/navigation rail. Mobile uses bottom navigation. Implemented modules are Overview, Classes, Library, Sync, and Settings.
 
 ## Decisions already recorded
 
 - `docs/architecture/adr-001-modular-monolith.md`: shared Flutter modular monolith.
 - `docs/architecture/adr-002-d1-relay.md`: one Worker and D1 for minimal durable relay state.
 - `docs/architecture/adr-003-global-idempotency.md`: optional Notion Fireflies identity metadata.
+- `docs/architecture/adr-005-private-account-device-sync.md`: tenant separation and end-to-end encrypted device sync.
 
 Changing cross-device coordination or remote idempotency requires a new ADR because simple client-side check-then-create cannot provide a global uniqueness guarantee.
 

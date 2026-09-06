@@ -15,6 +15,34 @@ class NotionPageRef {
   final String? url;
 }
 
+class NotionSummaryRecord {
+  const NotionSummaryRecord({
+    required this.id,
+    required this.title,
+    required this.date,
+    required this.subjectIds,
+    this.url,
+  });
+
+  final String id;
+  final String title;
+  final DateTime? date;
+  final List<String> subjectIds;
+  final String? url;
+}
+
+class NotionContentBlock {
+  const NotionContentBlock({
+    required this.type,
+    required this.text,
+    required this.depth,
+  });
+
+  final String type;
+  final String text;
+  final int depth;
+}
+
 class NotionClient {
   NotionClient({Dio? dio})
     : _dio = dio ?? createDio(baseUrl: 'https://api.notion.com/v1');
@@ -112,6 +140,114 @@ class NotionClient {
       }
     } while (cursor != null);
     return results;
+  }
+
+  Future<List<AcademicSubject>> querySubjects({
+    required String token,
+    required String dataSourceId,
+  }) async {
+    final results = <AcademicSubject>[];
+    String? cursor;
+    do {
+      try {
+        final response = await _dio.post<Map<String, dynamic>>(
+          '/data_sources/${Uri.encodeComponent(dataSourceId)}/query',
+          data: {'page_size': 100, 'start_cursor': ?cursor},
+          options: _options(token),
+        );
+        final data = response.data ?? const {};
+        results.addAll(
+          (data['results'] as List<dynamic>? ?? const [])
+              .whereType<Map<String, dynamic>>()
+              .map(subjectFromPage),
+        );
+        cursor = data['has_more'] == true
+            ? data['next_cursor'] as String?
+            : null;
+      } on DioException catch (error) {
+        throw IntegrationException.fromDio('Notion', error);
+      }
+    } while (cursor != null);
+    return results;
+  }
+
+  Future<List<NotionSummaryRecord>> querySummaries({
+    required String token,
+    required String dataSourceId,
+  }) async {
+    final results = <NotionSummaryRecord>[];
+    String? cursor;
+    do {
+      try {
+        final response = await _dio.post<Map<String, dynamic>>(
+          '/data_sources/${Uri.encodeComponent(dataSourceId)}/query',
+          data: {
+            'page_size': 100,
+            'sorts': [
+              {'property': 'Data', 'direction': 'descending'},
+            ],
+            'start_cursor': ?cursor,
+          },
+          options: _options(token),
+        );
+        final data = response.data ?? const {};
+        for (final page
+            in (data['results'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()) {
+          results.add(summaryFromPage(page));
+        }
+        cursor = data['has_more'] == true
+            ? data['next_cursor'] as String?
+            : null;
+      } on DioException catch (error) {
+        throw IntegrationException.fromDio('Notion', error);
+      }
+    } while (cursor != null);
+    return results;
+  }
+
+  Future<List<NotionContentBlock>> readPageContent({
+    required String token,
+    required String pageId,
+  }) async {
+    final output = <NotionContentBlock>[];
+    await _readContentLevel(
+      token: token,
+      blockId: pageId,
+      depth: 0,
+      output: output,
+    );
+    return output;
+  }
+
+  Future<void> _readContentLevel({
+    required String token,
+    required String blockId,
+    required int depth,
+    required List<NotionContentBlock> output,
+  }) async {
+    if (depth > 5 || output.length >= 800) return;
+    final children = await _children(token: token, pageId: blockId);
+    for (final block in children) {
+      if (output.length >= 800) break;
+      final type = block['type'] as String? ?? 'unsupported';
+      final payload = block[type] as Map<String, dynamic>?;
+      final marker = _ownedMarker(block);
+      final text = type == 'equation'
+          ? (payload?['expression']?.toString() ?? '')
+          : (_richText(payload?['rich_text']) ?? '');
+      if (marker == null && (text.isNotEmpty || type == 'divider')) {
+        output.add(NotionContentBlock(type: type, text: text, depth: depth));
+      }
+      if (block['has_children'] == true && block['id'] is String) {
+        await _readContentLevel(
+          token: token,
+          blockId: block['id'] as String,
+          depth: marker == null ? depth + 1 : depth,
+          output: output,
+        );
+      }
+    }
   }
 
   Future<void> addFirefliesIdProperty({
@@ -399,6 +535,20 @@ class NotionClient {
       professors: _propertyStringList(properties['Professores']),
       scheduleHints: _propertyStringList(properties['Horário']),
       lastSyncedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  NotionSummaryRecord summaryFromPage(Map<String, dynamic> page) {
+    final properties = page['properties'] as Map<String, dynamic>? ?? const {};
+    return NotionSummaryRecord(
+      id: page['id'] as String,
+      title:
+          _propertyText(properties['Nome']) ??
+          _propertyText(properties['Name']) ??
+          'Untitled lecture',
+      date: _propertyDate(properties['Data']),
+      subjectIds: _propertyRelations(properties['Cadeira']),
+      url: page['url'] as String?,
     );
   }
 
@@ -690,6 +840,25 @@ String? _propertyText(dynamic property) {
     'number' => property['number']?.toString(),
     _ => null,
   };
+}
+
+DateTime? _propertyDate(dynamic property) {
+  if (property is! Map<String, dynamic> || property['type'] != 'date') {
+    return null;
+  }
+  final start = (property['date'] as Map?)?['start']?.toString();
+  return start == null ? null : DateTime.tryParse(start)?.toLocal();
+}
+
+List<String> _propertyRelations(dynamic property) {
+  if (property is! Map<String, dynamic> || property['type'] != 'relation') {
+    return const [];
+  }
+  return (property['relation'] as List<dynamic>? ?? const [])
+      .whereType<Map<String, dynamic>>()
+      .map((item) => item['id']?.toString() ?? '')
+      .where((id) => id.isNotEmpty)
+      .toList();
 }
 
 String? _formulaText(dynamic formula) {

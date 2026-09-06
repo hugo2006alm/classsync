@@ -12,14 +12,17 @@ Webhooks fire only for meetings owned by the configured Fireflies account. Polli
 
 ## Configure the webhook
 
-1. Copy the ClassSync webhook URL below.
-2. Open Fireflies → **Settings → Personal → Developer settings**.
-3. Under **Webhook**, select **Configure**.
-4. URL: `https://classsync-relay.classsync-relay.workers.dev/webhooks/fireflies`.
-5. Secret: same value stored as Cloudflare
-   `FIREFLIES_WEBHOOK_SECRET`.
-6. Event: **Transcription Completed** / `meeting.transcribed`.
-7. Save.
+1. In ClassSync setup, create or join your private account.
+2. Copy the webhook URL and signing secret shown by ClassSync.
+3. Open Fireflies → **Settings → Personal → Developer settings**.
+4. Under **Webhooks V2**, select **Configure**.
+5. Paste the account-specific URL and signing secret exactly.
+6. Event: `meeting.transcribed` only.
+7. Save, then run **Test Webhook**. A signed test returns `200` without being
+   stored as a lecture.
+
+Every person uses a different URL and secret. Devices belonging to the same
+person use the same account and therefore the same webhook configuration.
 
 Only transcripts completed after webhook setup generate webhook events.
 ClassSync recovery polling discovers older or missed transcripts.

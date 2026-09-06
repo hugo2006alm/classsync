@@ -24,6 +24,15 @@ duplicates it into their own workspace, creates a Notion integration, shares
 the copied parent page with that integration, then lets ClassSync discover the
 two copied data sources.
 
+Public template:
+
+<https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332>
+
+The app's Library queries `Histórico de Resumos`, resolves each `Cadeira`
+relation against `Lista de Cadeiras`, and groups pages by academic year and
+semester. Selecting a lecture reads its Notion blocks inside ClassSync; the
+external Notion page remains one tap away.
+
 ClassSync can later offer **Create workspace** instead. The user must first
 grant an integration `insert content` access and select a parent page. The app
 can then create the databases and properties under that page through Notion's

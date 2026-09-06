@@ -9,8 +9,10 @@ import 'integrations/fireflies/fireflies_client.dart';
 import 'integrations/gemini/gemini_client.dart';
 import 'integrations/notion/notion_client.dart';
 import 'integrations/relay/relay_client.dart';
+import 'integrations/relay/account_sync_client.dart';
 import 'notifications/classsync_notification_service.dart';
 import 'security/secure_credential_store.dart';
+import 'sync/device_sync_service.dart';
 
 final databaseProvider = Provider<ClassSyncDatabase>(
   (ref) => throw StateError('databaseProvider must be overridden at bootstrap'),
@@ -24,6 +26,7 @@ final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());
 final relayClientProvider = Provider((ref) => RelayClient());
+final accountSyncClientProvider = Provider((ref) => AccountSyncClient());
 final notificationServiceProvider = Provider(
   (ref) => ClassSyncNotificationService(),
 );
@@ -32,9 +35,65 @@ final settingsProvider = StreamProvider<AppSettings>(
   (ref) => ref.watch(databaseProvider).watchSettings(),
 );
 
+final syncAccountProvider = FutureProvider<SyncAccount?>((ref) {
+  return ref
+      .watch(accountSyncClientProvider)
+      .readAccount(ref.watch(credentialStoreProvider));
+});
+
+final deviceSyncServiceProvider = Provider(
+  (ref) => DeviceSyncService(
+    database: ref.watch(databaseProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    client: ref.watch(accountSyncClientProvider),
+  ),
+);
+
 final activeSubjectsProvider = StreamProvider<List<AcademicSubject>>(
   (ref) => ref.watch(databaseProvider).watchActiveSubjects(),
 );
+
+class NotionLibraryData {
+  const NotionLibraryData({required this.summaries, required this.subjects});
+  final List<NotionSummaryRecord> summaries;
+  final Map<String, AcademicSubject> subjects;
+}
+
+final notionLibraryProvider = FutureProvider<NotionLibraryData>((ref) async {
+  final settings = await ref.watch(settingsProvider.future);
+  final token = await ref
+      .watch(credentialStoreProvider)
+      .read(CredentialKey.notionToken);
+  final subjectsId = settings.notionSubjectsDataSourceId;
+  final summariesId = settings.notionSummariesDataSourceId;
+  if (token == null || subjectsId == null || summariesId == null) {
+    throw StateError('Connect Notion and select both databases first.');
+  }
+  final notion = ref.watch(notionClientProvider);
+  final values = await Future.wait([
+    notion.querySubjects(token: token, dataSourceId: subjectsId),
+    notion.querySummaries(token: token, dataSourceId: summariesId),
+  ]);
+  final subjects = values[0] as List<AcademicSubject>;
+  return NotionLibraryData(
+    subjects: {for (final subject in subjects) subject.notionId: subject},
+    summaries: values[1] as List<NotionSummaryRecord>,
+  );
+});
+
+final notionPageContentProvider =
+    FutureProvider.family<List<NotionContentBlock>, String>((
+      ref,
+      pageId,
+    ) async {
+      final token = await ref
+          .watch(credentialStoreProvider)
+          .read(CredentialKey.notionToken);
+      if (token == null) throw StateError('Connect Notion first.');
+      return ref
+          .watch(notionClientProvider)
+          .readPageContent(token: token, pageId: pageId);
+    });
 
 final syncJobsProvider = StreamProvider<List<SyncJob>>(
   (ref) => ref.watch(databaseProvider).watchJobs(),
@@ -67,28 +126,57 @@ final syncCoordinatorProvider = Provider(
 );
 
 class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
-  SyncController(this._coordinator) : super(const AsyncData(null));
+  SyncController(this._coordinator, this._deviceSync)
+    : super(const AsyncData(null));
   final SyncCoordinator _coordinator;
+  final DeviceSyncService _deviceSync;
 
   Future<void> run(SyncReason reason) async {
     if (state.isLoading) return;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() => _coordinator.run(reason));
+    state = await AsyncValue.guard(() async {
+      try {
+        await _deviceSync.synchronize();
+      } catch (_) {
+        // Cloud state is an optional accelerator; lecture processing remains local-first.
+      }
+      final result = await _coordinator.run(reason);
+      try {
+        await _deviceSync.synchronize();
+      } catch (_) {
+        // The next foreground/manual run retries device synchronization.
+      }
+      return result;
+    });
   }
 }
 
 final syncControllerProvider =
     StateNotifierProvider<SyncController, AsyncValue<SyncRunResult?>>(
-      (ref) => SyncController(ref.watch(syncCoordinatorProvider)),
+      (ref) => SyncController(
+        ref.watch(syncCoordinatorProvider),
+        ref.watch(deviceSyncServiceProvider),
+      ),
     );
 
 class SettingsController {
-  const SettingsController(this._database);
+  const SettingsController(this._database, this._deviceSync);
   final ClassSyncDatabase _database;
+  final DeviceSyncService _deviceSync;
 
-  Future<void> save(AppSettings settings) => _database.saveSettings(settings);
+  Future<void> save(AppSettings settings) async {
+    await _database.saveSettings(settings);
+    try {
+      await _deviceSync.pushConfiguration();
+    } catch (_) {
+      // Settings remain saved locally and are retried by the next sync.
+    }
+  }
 }
 
 final settingsControllerProvider = Provider(
-  (ref) => SettingsController(ref.watch(databaseProvider)),
+  (ref) => SettingsController(
+    ref.watch(databaseProvider),
+    ref.watch(deviceSyncServiceProvider),
+  ),
 );

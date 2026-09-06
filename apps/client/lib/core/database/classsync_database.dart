@@ -263,6 +263,19 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           .watch()
           .map((rows) => rows.map(_jobFromRow).toList());
 
+  Future<List<SyncJob>> readJobs() async =>
+      (await (select(
+            syncJobs,
+          )..orderBy([(row) => OrderingTerm.desc(row.updatedAt)])).get())
+          .map(_jobFromRow)
+          .toList();
+
+  Future<SyncJob?> readJobByFirefliesId(String firefliesId) async =>
+      (await (select(syncJobs)
+                ..where((row) => row.firefliesId.equals(firefliesId)))
+              .getSingleOrNull())
+          ?.let(_jobFromRow);
+
   Future<SyncJob?> readJob(String id) async => (await (select(
     syncJobs,
   )..where((row) => row.id.equals(id))).getSingleOrNull())?.let(_jobFromRow);
@@ -304,6 +317,46 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     if (created == null) return false;
     await addJobEvent(id, SyncJobStatus.discovered, 'Transcript discovered');
     return true;
+  }
+
+  Future<void> mergeSyncedJob(SyncJob remote) async {
+    var local = await readJobByFirefliesId(remote.firefliesId);
+    if (local == null) {
+      await discoverJob(
+        id: remote.id,
+        firefliesId: remote.firefliesId,
+        title: remote.title,
+        meetingDate: remote.meetingDate,
+        firefliesUrl: remote.firefliesUrl,
+        sourceType: remote.sourceType,
+      );
+      local = await readJobByFirefliesId(remote.firefliesId);
+    }
+    if (local == null || !remote.updatedAt.isAfter(local.updatedAt)) return;
+    await (update(syncJobs)..where((row) => row.id.equals(local!.id))).write(
+      SyncJobsCompanion(
+        meetingTitle: Value(remote.title),
+        meetingDate: Value(remote.meetingDate),
+        firefliesUrl: Value(remote.firefliesUrl),
+        status: Value(remote.status.wireName),
+        sourceType: Value(remote.sourceType),
+        subjectId: Value(remote.subjectId),
+        subjectName: Value(remote.subjectName),
+        classificationConfidence: Value(remote.classificationConfidence),
+        summaryTitle: Value(remote.summaryTitle),
+        notionPageId: Value(remote.notionPageId),
+        notionUrl: Value(remote.notionUrl),
+        attemptCount: Value(remote.attemptCount),
+        nextRetryAt: Value(remote.nextRetryAt),
+        lastErrorType: Value(remote.lastErrorType),
+        lastErrorMessage: Value(remote.lastErrorMessage),
+        startedAt: Value(remote.startedAt),
+        updatedAt: Value(remote.updatedAt),
+        completedAt: Value(remote.completedAt),
+        leaseOwner: const Value(null),
+        leaseExpiresAt: const Value(null),
+      ),
+    );
   }
 
   Future<List<SyncJob>> claimRunnableJobs({

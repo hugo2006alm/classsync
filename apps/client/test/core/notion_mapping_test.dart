@@ -69,4 +69,34 @@ void main() {
     expect(bullets, longPoint);
     expect(bullets.runes.last, 'l'.runes.single);
   });
+
+  test('maps summary pages for the in-app semester library', () {
+    final summary = NotionClient().summaryFromPage({
+      'id': 'summary-1',
+      'url': 'https://notion.so/summary-1',
+      'properties': {
+        'Nome': {
+          'type': 'title',
+          'title': [
+            {'plain_text': 'Process scheduling'},
+          ],
+        },
+        'Data': {
+          'type': 'date',
+          'date': {'start': '2026-09-06'},
+        },
+        'Cadeira': {
+          'type': 'relation',
+          'relation': [
+            {'id': 'subject-1'},
+          ],
+        },
+      },
+    });
+
+    expect(summary.id, 'summary-1');
+    expect(summary.title, 'Process scheduling');
+    expect(summary.date, DateTime(2026, 9, 6));
+    expect(summary.subjectIds, ['subject-1']);
+  });
 }

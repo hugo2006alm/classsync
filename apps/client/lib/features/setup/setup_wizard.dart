@@ -2,10 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/integrations/notion/notion_client.dart';
+import '../../core/integrations/relay/account_sync_client.dart';
 import '../../core/providers.dart';
+import '../../core/security/trusted_url_launcher.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
@@ -28,6 +31,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   );
   final _relayTokenController = TextEditingController();
   final _modelController = TextEditingController(text: 'gemini-3.8-flash');
+  final _accountCodeController = TextEditingController();
 
   var _page = 0;
   var _busy = false;
@@ -39,14 +43,19 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _notifications = true;
   var _launchWithWindows = true;
   var _backgroundMobile = true;
+  var _joinAccount = false;
+  var _joinedExistingAccount = false;
+  SyncAccount? _syncAccount;
+  AccountWebhookConfig? _webhookConfig;
 
-  static const _stepCount = 7;
+  static const _stepCount = 8;
   static const _steps = <_StepDefinition>[
     _StepDefinition('Welcome', Icons.waving_hand_outlined),
     _StepDefinition('Fireflies', Icons.mic_none_rounded),
     _StepDefinition('Gemini', Icons.auto_awesome_outlined),
     _StepDefinition('Notion', Icons.account_tree_outlined),
     _StepDefinition('Relay', Icons.cloud_queue_outlined),
+    _StepDefinition('Account', Icons.devices_rounded),
     _StepDefinition('Automation', Icons.tune_rounded),
     _StepDefinition('Ready', Icons.check_circle_outline_rounded),
   ];
@@ -60,6 +69,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     _relayUrlController.dispose();
     _relayTokenController.dispose();
     _modelController.dispose();
+    _accountCodeController.dispose();
     super.dispose();
   }
 
@@ -126,6 +136,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               _gemini(),
               _notion(),
               _relay(),
+              _account(),
               _automation(),
               _ready(),
             ],
@@ -146,7 +157,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     icon: Icons.auto_stories_rounded,
     title: 'From lecture to study notes, quietly.',
     description:
-        'Seven short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
+        'Eight short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
     child: Column(
       children: const [
         _GuideCard(
@@ -187,7 +198,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           items: [
             'Open Settings → Personal → Developer settings.',
             'Copy your API key.',
-            'The webhook is separate and already points to the hosted ClassSync relay.',
+            'Keep this page open. Your private webhook URL appears in the Account step.',
           ],
         ),
         const SizedBox(height: 16),
@@ -256,12 +267,27 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         'ClassSync discovers the databases that your integration can access. It will never recreate or rename your existing workspace.',
     child: Column(
       children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.tonalIcon(
+            onPressed: _busy
+                ? null
+                : () => launchTrustedUrl(
+                    'https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332',
+                    allowedHosts: const {'notion.site'},
+                  ),
+            icon: const Icon(Icons.content_copy_rounded),
+            label: const Text('Duplicate the ClassSync Notion template'),
+          ),
+        ),
+        const SizedBox(height: 14),
         const _GuideCard(
           title: 'In Notion',
           items: [
+            'Open the template above and choose Duplicate into your own workspace.',
             'Create an internal integration at notion.so/my-integrations.',
             'Copy its internal integration secret.',
-            'Open your ISEP page, choose ••• → Connections, and add the integration.',
+            'Open your ClassSync Template page, choose ••• → Connections, and add the integration.',
           ],
         ),
         const SizedBox(height: 16),
@@ -408,6 +434,156 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     ),
   );
 
+  Widget _account() => _StepBody(
+    eyebrow: 'YOUR DEVICES',
+    icon: Icons.devices_rounded,
+    title: 'Keep each person separate.',
+    description:
+        'One private account connects your own PCs and phone. Other people create their own account, keys, Notion workspace, and queue.',
+    child: Column(
+      children: [
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(
+              value: false,
+              icon: Icon(Icons.add_rounded),
+              label: Text('New account'),
+            ),
+            ButtonSegment(
+              value: true,
+              icon: Icon(Icons.devices_rounded),
+              label: Text('Join mine'),
+            ),
+          ],
+          selected: {_joinAccount},
+          onSelectionChanged: _syncAccount == null
+              ? (values) => setState(() => _joinAccount = values.first)
+              : null,
+        ),
+        if (_joinAccount && _syncAccount == null) ...[
+          const SizedBox(height: 14),
+          TextField(
+            controller: _accountCodeController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Recovery code from your first device',
+              hintText: 'CS1.…',
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _busy || _syncAccount != null ? null : _prepareAccount,
+            icon: Icon(_joinAccount ? Icons.login_rounded : Icons.lock_rounded),
+            label: Text(
+              _joinAccount ? 'Join account' : 'Create private account',
+            ),
+          ),
+        ),
+        if (_syncAccount != null && _webhookConfig != null) ...[
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('In Fireflies Webhooks V2'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Use the URL and signing secret below. Subscribe only to meeting.transcribed, save, then run Test Webhook.',
+                  ),
+                  const SizedBox(height: 14),
+                  SelectableText('URL\n${_webhookConfig!.webhookUrl}'),
+                  const SizedBox(height: 10),
+                  SelectableText(
+                    'Signing secret\n${_webhookConfig!.signingSecret}',
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: _webhookConfig!.webhookUrl),
+                        ),
+                        icon: const Icon(Icons.link_rounded),
+                        label: const Text('Copy URL'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: _webhookConfig!.signingSecret),
+                        ),
+                        icon: const Icon(Icons.key_rounded),
+                        label: const Text('Copy secret'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: _syncAccount!.recoveryCode),
+                        ),
+                        icon: const Icon(Icons.save_alt_rounded),
+                        label: const Text('Copy recovery code'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const _InfoStrip(
+            icon: Icons.security_rounded,
+            message:
+                'Save the recovery code in a password manager. The relay cannot decrypt your synced API keys or settings.',
+          ),
+        ],
+      ],
+    ),
+  );
+
+  Future<void> _prepareAccount() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final client = ref.read(accountSyncClientProvider);
+      final store = ref.read(credentialStoreProvider);
+      final baseUrl = _relayUrlController.text.trim();
+      final account = _joinAccount
+          ? await client.joinAccount(
+              baseUrl: baseUrl,
+              recoveryCode: _accountCodeController.text,
+              store: store,
+            )
+          : await client.createAccount(
+              baseUrl: baseUrl,
+              setupToken: _relayTokenController.text.trim(),
+              store: store,
+            );
+      if (_joinAccount) {
+        await ref.read(deviceSyncServiceProvider).synchronize();
+      }
+      final webhook = await client.webhookConfig(
+        baseUrl: baseUrl,
+        account: account,
+      );
+      if (!mounted) return;
+      setState(() {
+        _syncAccount = account;
+        _joinedExistingAccount = _joinAccount;
+        _webhookConfig = webhook;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _automation() => _StepBody(
     eyebrow: 'PREFERENCES',
     icon: Icons.settings_suggest_rounded,
@@ -551,7 +727,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 _relayUrlController.text.trim(),
                 token: _relayTokenController.text.trim(),
               );
-        case 6:
+        case 5:
+          if (_syncAccount == null || _webhookConfig == null) {
+            throw const FormatException(
+              'Create or join your private ClassSync account first.',
+            );
+          }
+        case 7:
           await _finish();
           return;
       }
@@ -615,7 +797,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     final notificationService = ref.read(notificationServiceProvider);
     final syncController = ref.read(syncControllerProvider.notifier);
     final notionToken = _notionController.text.trim();
-    if (_addMetadata) {
+    if (_addMetadata && !_joinedExistingAccount) {
       await ref
           .read(notionClientProvider)
           .addFirefliesIdProperty(
@@ -623,31 +805,46 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             summariesDataSourceId: _summariesId!,
           );
     }
-    await Future.wait([
-      credentialStore.write(
-        CredentialKey.firefliesApiKey,
-        _firefliesController.text.trim(),
-      ),
-      credentialStore.write(
-        CredentialKey.geminiApiKey,
-        _geminiController.text.trim(),
-      ),
-      credentialStore.write(CredentialKey.notionToken, notionToken),
-      credentialStore.write(
-        CredentialKey.relayDeviceToken,
-        _relayTokenController.text.trim(),
-      ),
-    ]);
-    final settings = AppSettings.defaults.copyWith(
+    await credentialStore.write(
+      CredentialKey.relayDeviceToken,
+      _relayTokenController.text.trim(),
+    );
+    if (!_joinedExistingAccount) {
+      await Future.wait([
+        credentialStore.write(
+          CredentialKey.firefliesApiKey,
+          _firefliesController.text.trim(),
+        ),
+        credentialStore.write(
+          CredentialKey.geminiApiKey,
+          _geminiController.text.trim(),
+        ),
+        credentialStore.write(CredentialKey.notionToken, notionToken),
+      ]);
+    }
+    final restored = _joinedExistingAccount
+        ? await ref.read(databaseProvider).readSettings()
+        : AppSettings.defaults;
+    final settings = restored.copyWith(
       setupComplete: true,
       launchWithWindows: _launchWithWindows,
       backgroundMobileSync: _backgroundMobile,
       notificationsEnabled: _notifications,
-      classificationModel: _modelController.text.trim(),
-      summaryModel: _modelController.text.trim(),
-      notionMetadataEnabled: _addMetadata,
-      notionSubjectsDataSourceId: _subjectsId,
-      notionSummariesDataSourceId: _summariesId,
+      classificationModel: _joinedExistingAccount
+          ? restored.classificationModel
+          : _modelController.text.trim(),
+      summaryModel: _joinedExistingAccount
+          ? restored.summaryModel
+          : _modelController.text.trim(),
+      notionMetadataEnabled: _joinedExistingAccount
+          ? restored.notionMetadataEnabled
+          : _addMetadata,
+      notionSubjectsDataSourceId: _joinedExistingAccount
+          ? restored.notionSubjectsDataSourceId
+          : _subjectsId,
+      notionSummariesDataSourceId: _joinedExistingAccount
+          ? restored.notionSummariesDataSourceId
+          : _summariesId,
       relayBaseUrl: _relayUrlController.text.trim(),
     );
     if (_notifications) {
