@@ -527,6 +527,26 @@ List<Map<String, dynamic>> _summaryBlocks({
       }
     }
   }
+  if (summary.teacherEmphasis.isNotEmpty) {
+    blocks.addAll(_headings('Ênfase do docente', level: 2));
+    blocks.addAll(
+      summary.teacherEmphasis.expand((point) => _callouts(point, '📌')),
+    );
+  }
+  if (summary.importantDetails.isNotEmpty) {
+    blocks.addAll(_headings('Detalhes pequenos mas importantes', level: 2));
+    blocks.addAll(summary.importantDetails.expand(_bullets));
+  }
+  if (summary.questionsAndAnswers.isNotEmpty) {
+    blocks.addAll(_headings('Perguntas e respostas', level: 2));
+    blocks.addAll(summary.questionsAndAnswers.expand(_bullets));
+  }
+  if (summary.assignmentsAndDeadlines.isNotEmpty) {
+    blocks.addAll(_headings('Tarefas, prazos e avisos', level: 2));
+    blocks.addAll(
+      summary.assignmentsAndDeadlines.expand((item) => _callouts(item, '🗓️')),
+    );
+  }
   if (summary.examHints.isNotEmpty) {
     blocks.addAll(_headings('Pistas para avaliação', level: 2));
     blocks.addAll(summary.examHints.expand((hint) => _callouts(hint, '🎯')));

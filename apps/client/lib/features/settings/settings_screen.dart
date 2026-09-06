@@ -32,320 +32,372 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _SettingsBody extends ConsumerWidget {
+enum _SettingsCategory {
+  connections,
+  automation,
+  ai,
+  notion,
+  storage,
+  diagnostics,
+}
+
+class _SettingsBody extends StatelessWidget {
   const _SettingsBody({required this.settings});
   final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final destinations =
+        <
+          ({
+            _SettingsCategory category,
+            IconData icon,
+            String title,
+            String subtitle,
+          })
+        >[
+          (
+            category: _SettingsCategory.connections,
+            icon: Icons.link_rounded,
+            title: 'Connections',
+            subtitle: 'Fireflies, Gemini, Notion, and relay',
+          ),
+          (
+            category: _SettingsCategory.automation,
+            icon: Icons.sync_rounded,
+            title: 'Automation',
+            subtitle: _automationSubtitle(Theme.of(context).platform),
+          ),
+          (
+            category: _SettingsCategory.ai,
+            icon: Icons.auto_awesome_rounded,
+            title: 'AI & summaries',
+            subtitle: 'Models, detail, language, and classification',
+          ),
+          (
+            category: _SettingsCategory.notion,
+            icon: Icons.account_tree_outlined,
+            title: 'Notion workspace',
+            subtitle: 'Database mappings and summary metadata',
+          ),
+          (
+            category: _SettingsCategory.storage,
+            icon: Icons.shield_outlined,
+            title: 'Storage & privacy',
+            subtitle: 'Transcript cleanup and local retention',
+          ),
+          (
+            category: _SettingsCategory.diagnostics,
+            icon: Icons.monitor_heart_outlined,
+            title: 'Diagnostics',
+            subtitle: 'Queue health and redacted export',
+          ),
+        ];
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var index = 0; index < destinations.length; index++) ...[
+            ListTile(
+              minTileHeight: 72,
+              leading: CircleAvatar(child: Icon(destinations[index].icon)),
+              title: Text(destinations[index].title),
+              subtitle: Text(destinations[index].subtitle),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => _SettingsCategoryPage(
+                    category: destinations[index].category,
+                  ),
+                ),
+              ),
+            ),
+            if (index < destinations.length - 1) const Divider(height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsCategoryPage extends ConsumerWidget {
+  const _SettingsCategoryPage({required this.category});
+  final _SettingsCategory category;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsValue = ref.watch(settingsProvider);
+    return Scaffold(
+      appBar: AppBar(title: Text(_categoryTitle(category))),
+      body: SafeArea(
+        child: settingsValue.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(child: Text(error.toString())),
+          data: (settings) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 920),
+                child: _SettingsDetailBody(
+                  settings: settings,
+                  category: category,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _categoryTitle(_SettingsCategory category) => switch (category) {
+  _SettingsCategory.connections => 'Connections',
+  _SettingsCategory.automation => 'Automation',
+  _SettingsCategory.ai => 'AI & summaries',
+  _SettingsCategory.notion => 'Notion workspace',
+  _SettingsCategory.storage => 'Storage & privacy',
+  _SettingsCategory.diagnostics => 'Diagnostics',
+};
+
+String _automationSubtitle(TargetPlatform platform) => switch (platform) {
+  TargetPlatform.windows => 'Windows startup, polling, and notifications',
+  TargetPlatform.android => 'Background sync, polling, and notifications',
+  _ => 'Startup sync, polling, and notifications',
+};
+
+class _SettingsDetailBody extends ConsumerWidget {
+  const _SettingsDetailBody({required this.settings, required this.category});
+  final AppSettings settings;
+  final _SettingsCategory category;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _SettingsSection(
-        title: 'Integrations',
-        description: 'Secrets remain in OS secure storage.',
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth >= 850
-                ? (constraints.maxWidth - 12) / 2
-                : constraints.maxWidth;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                SizedBox(
-                  width: width,
-                  child: _IntegrationTile(
-                    name: 'Fireflies',
-                    icon: Icons.mic_none_rounded,
-                    credential: CredentialKey.firefliesApiKey,
-                    onConfigure: () => _configureSecret(
-                      context,
-                      ref,
+      if (category == _SettingsCategory.connections) ...[
+        _SettingsSection(
+          title: 'Integrations',
+          description: 'Secrets remain in OS secure storage.',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth >= 850
+                  ? (constraints.maxWidth - 12) / 2
+                  : constraints.maxWidth;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: _IntegrationTile(
                       name: 'Fireflies',
-                      key: CredentialKey.firefliesApiKey,
-                      tester: (value) => ref
-                          .read(firefliesClientProvider)
-                          .testConnection(value),
+                      icon: Icons.mic_none_rounded,
+                      credential: CredentialKey.firefliesApiKey,
+                      onConfigure: () => _configureSecret(
+                        context,
+                        ref,
+                        name: 'Fireflies',
+                        key: CredentialKey.firefliesApiKey,
+                        tester: (value) => ref
+                            .read(firefliesClientProvider)
+                            .testConnection(value),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(
-                  width: width,
-                  child: _IntegrationTile(
-                    name: 'Gemini',
-                    icon: Icons.auto_awesome_rounded,
-                    credential: CredentialKey.geminiApiKey,
-                    onConfigure: () => _configureSecret(
-                      context,
-                      ref,
+                  SizedBox(
+                    width: width,
+                    child: _IntegrationTile(
                       name: 'Gemini',
-                      key: CredentialKey.geminiApiKey,
-                      tester: (value) async {
-                        final selectedModel = await ref
-                            .read(geminiClientProvider)
-                            .testConnection(
-                              apiKey: value,
-                              model: settings.classificationModel,
-                            );
-                        if (selectedModel != settings.classificationModel) {
-                          await ref
-                              .read(settingsControllerProvider)
-                              .save(
-                                settings.copyWith(
-                                  classificationModel: selectedModel,
-                                  summaryModel:
-                                      settings.summaryModel ==
-                                          settings.classificationModel
-                                      ? selectedModel
-                                      : settings.summaryModel,
-                                ),
+                      icon: Icons.auto_awesome_rounded,
+                      credential: CredentialKey.geminiApiKey,
+                      onConfigure: () => _configureSecret(
+                        context,
+                        ref,
+                        name: 'Gemini',
+                        key: CredentialKey.geminiApiKey,
+                        tester: (value) async {
+                          final selectedModel = await ref
+                              .read(geminiClientProvider)
+                              .testConnection(
+                                apiKey: value,
+                                model: settings.classificationModel,
                               );
-                        }
-                      },
+                          if (selectedModel != settings.classificationModel) {
+                            await ref
+                                .read(settingsControllerProvider)
+                                .save(
+                                  settings.copyWith(
+                                    classificationModel: selectedModel,
+                                    summaryModel:
+                                        settings.summaryModel ==
+                                            settings.classificationModel
+                                        ? selectedModel
+                                        : settings.summaryModel,
+                                  ),
+                                );
+                          }
+                        },
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(
-                  width: width,
-                  child: _IntegrationTile(
-                    name: 'Notion',
-                    icon: Icons.account_tree_outlined,
-                    credential: CredentialKey.notionToken,
-                    onConfigure: () => _configureSecret(
-                      context,
-                      ref,
+                  SizedBox(
+                    width: width,
+                    child: _IntegrationTile(
                       name: 'Notion',
-                      key: CredentialKey.notionToken,
-                      tester: (value) =>
-                          ref.read(notionClientProvider).testConnection(value),
+                      icon: Icons.account_tree_outlined,
+                      credential: CredentialKey.notionToken,
+                      onConfigure: () => _configureSecret(
+                        context,
+                        ref,
+                        name: 'Notion',
+                        key: CredentialKey.notionToken,
+                        tester: (value) => ref
+                            .read(notionClientProvider)
+                            .testConnection(value),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(
-                  width: width,
-                  child: _IntegrationTile(
-                    name: 'ClassSync Relay',
-                    icon: Icons.cloud_queue_rounded,
-                    credential: CredentialKey.relayDeviceToken,
-                    onConfigure: () => _configureRelay(context, ref, settings),
+                  SizedBox(
+                    width: width,
+                    child: _IntegrationTile(
+                      name: 'ClassSync Relay',
+                      icon: Icons.cloud_queue_rounded,
+                      credential: CredentialKey.relayDeviceToken,
+                      onConfigure: () =>
+                          _configureRelay(context, ref, settings),
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-      const SizedBox(height: 28),
-      _SettingsSection(
-        title: 'Automation',
-        child: Card(
-          child: Column(
-            children: [
-              _SettingSwitch(
-                title: 'Automatic sync',
-                subtitle: 'Process discovered lectures without interaction.',
-                value: settings.automaticSync,
-                onChanged: (value) =>
-                    _save(ref, settings.copyWith(automaticSync: value)),
-              ),
-              const Divider(),
-              _SettingSwitch(
-                title: 'Launch with Windows',
-                subtitle: 'Start hidden in the tray after login.',
-                value: settings.launchWithWindows,
-                onChanged: (value) =>
-                    _save(ref, settings.copyWith(launchWithWindows: value)),
-              ),
-              const Divider(),
-              _SettingSwitch(
-                title: 'Sync on app launch',
-                subtitle:
-                    'Run relay and Fireflies recovery discovery after startup.',
-                value: settings.syncOnLaunch,
-                onChanged: (value) =>
-                    _save(ref, settings.copyWith(syncOnLaunch: value)),
-              ),
-              const Divider(),
-              _SettingSwitch(
-                title: 'Background mobile sync',
-                subtitle: 'Best-effort Android processing via WorkManager.',
-                value: settings.backgroundMobileSync,
-                onChanged: (value) =>
-                    _save(ref, settings.copyWith(backgroundMobileSync: value)),
-              ),
-              const Divider(),
-              _SettingSwitch(
-                title: 'Notifications',
-                subtitle: 'Silent success; visible reviews and failures.',
-                value: settings.notificationsEnabled,
-                onChanged: (value) async {
-                  if (value) {
-                    await ref
-                        .read(notificationServiceProvider)
-                        .requestPermissions();
-                  }
-                  await _save(
-                    ref,
-                    settings.copyWith(notificationsEnabled: value),
-                  );
-                },
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Recovery polling interval'),
-                subtitle: const Text('Webhook loss stays harmless.'),
-                trailing: DropdownButton<int>(
-                  value: settings.pollingMinutes,
-                  items: const [15, 30, 60, 120]
-                      .map(
-                        (minutes) => DropdownMenuItem(
-                          value: minutes,
-                          child: Text('$minutes min'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      _save(ref, settings.copyWith(pollingMinutes: value));
-                    }
-                  },
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Recovery overlap'),
-                subtitle: const Text(
-                  'Re-query this window to recover lost webhooks.',
-                ),
-                trailing: DropdownButton<int>(
-                  value: settings.overlapHours,
-                  items: const [12, 24, 48, 72]
-                      .map(
-                        (hours) => DropdownMenuItem(
-                          value: hours,
-                          child: Text('$hours h'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      _save(ref, settings.copyWith(overlapHours: value));
-                    }
-                  },
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Concurrent lecture jobs'),
-                subtitle: const Text('Keep this conservative for API limits.'),
-                trailing: DropdownButton<int>(
-                  value: settings.workerCount,
-                  items: const [1, 2]
-                      .map(
-                        (count) => DropdownMenuItem(
-                          value: count,
-                          child: Text('$count'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      _save(ref, settings.copyWith(workerCount: value));
-                    }
-                  },
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
-      ),
-      const SizedBox(height: 28),
-      _SettingsSection(
-        title: 'AI',
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
+      ],
+      if (category == _SettingsCategory.automation) ...[
+        _SettingsSection(
+          title: 'Automation',
+          child: Card(
             child: Column(
               children: [
-                TextFormField(
-                  key: ValueKey(
-                    'classification-model:${settings.classificationModel}',
-                  ),
-                  initialValue: settings.classificationModel,
-                  decoration: const InputDecoration(
-                    labelText: 'Classification model',
-                    helperText: 'Falls back automatically if unavailable.',
-                  ),
-                  onFieldSubmitted: (value) => _save(
-                    ref,
-                    settings.copyWith(classificationModel: value.trim()),
-                  ),
+                _SettingSwitch(
+                  title: 'Automatic sync',
+                  subtitle: 'Process discovered lectures without interaction.',
+                  value: settings.automaticSync,
+                  onChanged: (value) =>
+                      _save(ref, settings.copyWith(automaticSync: value)),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  key: ValueKey('summary-language:${settings.summaryLanguage}'),
-                  initialValue: settings.summaryLanguage,
-                  decoration: const InputDecoration(
-                    labelText: 'Summary language',
+                const Divider(),
+                if (Theme.of(context).platform == TargetPlatform.windows) ...[
+                  _SettingSwitch(
+                    title: 'Launch with Windows',
+                    subtitle: 'Start hidden in the tray after login.',
+                    value: settings.launchWithWindows,
+                    onChanged: (value) =>
+                        _save(ref, settings.copyWith(launchWithWindows: value)),
                   ),
-                  onFieldSubmitted: (value) => _save(
-                    ref,
-                    settings.copyWith(summaryLanguage: value.trim()),
-                  ),
+                  const Divider(),
+                ],
+                _SettingSwitch(
+                  title: 'Sync on app launch',
+                  subtitle:
+                      'Run relay and Fireflies recovery discovery after startup.',
+                  value: settings.syncOnLaunch,
+                  onChanged: (value) =>
+                      _save(ref, settings.copyWith(syncOnLaunch: value)),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  key: ValueKey('summary-model:${settings.summaryModel}'),
-                  initialValue: settings.summaryModel,
-                  decoration: const InputDecoration(
-                    labelText: 'Summary model',
-                    helperText: 'Uses the next supported model if necessary.',
-                  ),
-                  onFieldSubmitted: (value) =>
-                      _save(ref, settings.copyWith(summaryModel: value.trim())),
-                ),
-                const SizedBox(height: 18),
-                _ThresholdSlider(
-                  label: 'Automatic publish threshold',
-                  value: settings.autoClassifyThreshold,
-                  onChanged: (value) => _save(
-                    ref,
-                    settings.copyWith(
-                      autoClassifyThreshold: value,
-                      reviewThreshold: settings.reviewThreshold > value
-                          ? value
-                          : settings.reviewThreshold,
+                const Divider(),
+                if (Theme.of(context).platform == TargetPlatform.android) ...[
+                  _SettingSwitch(
+                    title: 'Background mobile sync',
+                    subtitle: 'Best-effort Android processing via WorkManager.',
+                    value: settings.backgroundMobileSync,
+                    onChanged: (value) => _save(
+                      ref,
+                      settings.copyWith(backgroundMobileSync: value),
                     ),
                   ),
+                  const Divider(),
+                ],
+                _SettingSwitch(
+                  title: 'Notifications',
+                  subtitle: 'Silent success; visible reviews and failures.',
+                  value: settings.notificationsEnabled,
+                  onChanged: (value) async {
+                    if (value) {
+                      await ref
+                          .read(notificationServiceProvider)
+                          .requestPermissions();
+                    }
+                    await _save(
+                      ref,
+                      settings.copyWith(notificationsEnabled: value),
+                    );
+                  },
                 ),
-                _ThresholdSlider(
-                  label: 'Review threshold',
-                  value: settings.reviewThreshold,
-                  onChanged: (value) => _save(
-                    ref,
-                    settings.copyWith(
-                      reviewThreshold: value > settings.autoClassifyThreshold
-                          ? settings.autoClassifyThreshold
-                          : value,
-                    ),
-                  ),
-                ),
+                const Divider(),
                 ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Summary detail'),
-                  trailing: DropdownButton<SummaryDetail>(
-                    value: settings.summaryDetail,
-                    items: SummaryDetail.values
+                  title: const Text('Recovery polling interval'),
+                  subtitle: const Text('Webhook loss stays harmless.'),
+                  trailing: DropdownButton<int>(
+                    value: settings.pollingMinutes,
+                    items: const [15, 30, 60, 120]
                         .map(
-                          (detail) => DropdownMenuItem(
-                            value: detail,
-                            child: Text(_capitalize(detail.name)),
+                          (minutes) => DropdownMenuItem(
+                            value: minutes,
+                            child: Text('$minutes min'),
                           ),
                         )
                         .toList(),
                     onChanged: (value) {
                       if (value != null) {
-                        _save(ref, settings.copyWith(summaryDetail: value));
+                        _save(ref, settings.copyWith(pollingMinutes: value));
+                      }
+                    },
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Recovery overlap'),
+                  subtitle: const Text(
+                    'Re-query this window to recover lost webhooks.',
+                  ),
+                  trailing: DropdownButton<int>(
+                    value: settings.overlapHours,
+                    items: const [12, 24, 48, 72]
+                        .map(
+                          (hours) => DropdownMenuItem(
+                            value: hours,
+                            child: Text('$hours h'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        _save(ref, settings.copyWith(overlapHours: value));
+                      }
+                    },
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Concurrent lecture jobs'),
+                  subtitle: const Text(
+                    'Keep this conservative for API limits.',
+                  ),
+                  trailing: DropdownButton<int>(
+                    value: settings.workerCount,
+                    items: const [1, 2]
+                        .map(
+                          (count) => DropdownMenuItem(
+                            value: count,
+                            child: Text('$count'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        _save(ref, settings.copyWith(workerCount: value));
                       }
                     },
                   ),
@@ -354,80 +406,252 @@ class _SettingsBody extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-      const SizedBox(height: 28),
-      _SettingsSection(
-        title: 'Storage',
-        child: Card(
-          child: Column(
-            children: [
-              _SettingSwitch(
-                title: 'Keep transcripts after success',
-                subtitle: 'Off by default for privacy.',
-                value: settings.keepTranscripts,
-                onChanged: (value) =>
-                    _save(ref, settings.copyWith(keepTranscripts: value)),
+      ],
+      if (category == _SettingsCategory.ai) ...[
+        _SettingsSection(
+          title: 'AI',
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                children: [
+                  TextFormField(
+                    key: ValueKey(
+                      'classification-model:${settings.classificationModel}',
+                    ),
+                    initialValue: settings.classificationModel,
+                    decoration: const InputDecoration(
+                      labelText: 'Classification model',
+                      helperText: 'Falls back automatically if unavailable.',
+                    ),
+                    onFieldSubmitted: (value) => _save(
+                      ref,
+                      settings.copyWith(classificationModel: value.trim()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: ValueKey(
+                      'summary-language:${settings.summaryLanguage}',
+                    ),
+                    initialValue: settings.summaryLanguage,
+                    decoration: const InputDecoration(
+                      labelText: 'Summary language',
+                    ),
+                    onFieldSubmitted: (value) => _save(
+                      ref,
+                      settings.copyWith(summaryLanguage: value.trim()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: ValueKey('summary-model:${settings.summaryModel}'),
+                    initialValue: settings.summaryModel,
+                    decoration: const InputDecoration(
+                      labelText: 'Summary model',
+                      helperText: 'Uses the next supported model if necessary.',
+                    ),
+                    onFieldSubmitted: (value) => _save(
+                      ref,
+                      settings.copyWith(summaryModel: value.trim()),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _ThresholdSlider(
+                    label: 'Automatic publish threshold',
+                    value: settings.autoClassifyThreshold,
+                    onChanged: (value) => _save(
+                      ref,
+                      settings.copyWith(
+                        autoClassifyThreshold: value,
+                        reviewThreshold: settings.reviewThreshold > value
+                            ? value
+                            : settings.reviewThreshold,
+                      ),
+                    ),
+                  ),
+                  _ThresholdSlider(
+                    label: 'Review threshold',
+                    value: settings.reviewThreshold,
+                    onChanged: (value) => _save(
+                      ref,
+                      settings.copyWith(
+                        reviewThreshold: value > settings.autoClassifyThreshold
+                            ? settings.autoClassifyThreshold
+                            : value,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Summary detail'),
+                    trailing: DropdownButton<SummaryDetail>(
+                      value: settings.summaryDetail,
+                      items: SummaryDetail.values
+                          .map(
+                            (detail) => DropdownMenuItem(
+                              value: detail,
+                              child: Text(_capitalize(detail.name)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          _save(ref, settings.copyWith(summaryDetail: value));
+                        }
+                      },
+                    ),
+                  ),
+                ],
               ),
-              const Divider(),
-              ListTile(
-                title: const Text('Diagnostics retention'),
-                subtitle: const Text('Operational metadata only.'),
-                trailing: DropdownButton<int>(
-                  value: settings.diagnosticsRetentionDays,
-                  items: const [7, 14, 30, 90]
-                      .map(
-                        (days) => DropdownMenuItem(
-                          value: days,
-                          child: Text('$days days'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      _save(
-                        ref,
-                        settings.copyWith(diagnosticsRetentionDays: value),
-                      );
-                    }
-                  },
-                ),
-              ),
-              const Divider(),
-              _SettingSwitch(
-                title: 'Clean completed payloads',
-                subtitle:
-                    'Retain metadata and diagnostics, remove lecture content.',
-                value: settings.cleanCompletedPayloads,
-                onChanged: (value) => _save(
-                  ref,
-                  settings.copyWith(cleanCompletedPayloads: value),
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Purge stored lecture content'),
-                subtitle: const Text(
-                  'Remove transcripts, partial AI work, and local summaries. Metadata remains.',
-                ),
-                trailing: OutlinedButton(
-                  onPressed: () => _confirmPurge(context, ref),
-                  child: const Text('Purge'),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
-      ),
-      const SizedBox(height: 28),
-      const _Corrections(),
-      const SizedBox(height: 28),
-      _Diagnostics(settings: settings),
+        const SizedBox(height: 28),
+        const _Corrections(),
+      ],
+      if (category == _SettingsCategory.notion) ...[
+        _NotionWorkspaceSettings(settings: settings),
+      ],
+      if (category == _SettingsCategory.storage) ...[
+        _SettingsSection(
+          title: 'Storage',
+          child: Card(
+            child: Column(
+              children: [
+                _SettingSwitch(
+                  title: 'Keep transcripts after success',
+                  subtitle: 'Off by default for privacy.',
+                  value: settings.keepTranscripts,
+                  onChanged: (value) =>
+                      _save(ref, settings.copyWith(keepTranscripts: value)),
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Diagnostics retention'),
+                  subtitle: const Text('Operational metadata only.'),
+                  trailing: DropdownButton<int>(
+                    value: settings.diagnosticsRetentionDays,
+                    items: const [7, 14, 30, 90]
+                        .map(
+                          (days) => DropdownMenuItem(
+                            value: days,
+                            child: Text('$days days'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        _save(
+                          ref,
+                          settings.copyWith(diagnosticsRetentionDays: value),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const Divider(),
+                _SettingSwitch(
+                  title: 'Clean completed payloads',
+                  subtitle:
+                      'Retain metadata and diagnostics, remove lecture content.',
+                  value: settings.cleanCompletedPayloads,
+                  onChanged: (value) => _save(
+                    ref,
+                    settings.copyWith(cleanCompletedPayloads: value),
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Purge stored lecture content'),
+                  subtitle: const Text(
+                    'Remove transcripts, partial AI work, and local summaries. Metadata remains.',
+                  ),
+                  trailing: OutlinedButton(
+                    onPressed: () => _confirmPurge(context, ref),
+                    child: const Text('Purge'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+      if (category == _SettingsCategory.diagnostics) ...[
+        _Diagnostics(settings: settings),
+      ],
     ],
   );
 
   Future<void> _save(WidgetRef ref, AppSettings value) async {
     await ref.read(settingsControllerProvider).save(value);
     await configureMobileBackgroundSync(value);
+  }
+}
+
+class _NotionWorkspaceSettings extends ConsumerWidget {
+  const _NotionWorkspaceSettings({required this.settings});
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => _SettingsSection(
+    title: 'Workspace mapping',
+    description:
+        'ClassSync writes only to the two data sources selected during setup.',
+    child: Card(
+      child: Column(
+        children: [
+          _MappingTile(
+            title: 'Classes data source',
+            value: settings.notionSubjectsDataSourceId,
+          ),
+          const Divider(height: 1),
+          _MappingTile(
+            title: 'Lecture summaries data source',
+            value: settings.notionSummariesDataSourceId,
+          ),
+          const Divider(height: 1),
+          _SettingSwitch(
+            title: 'Fireflies metadata',
+            subtitle:
+                'Store meeting ID for duplicate detection and source tracing.',
+            value: settings.notionMetadataEnabled,
+            onChanged: (value) => ref
+                .read(settingsControllerProvider)
+                .save(settings.copyWith(notionMetadataEnabled: value)),
+          ),
+          const Divider(height: 1),
+          const ListTile(
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('Mappings stay on this device'),
+            subtitle: Text(
+              'To use another Notion workspace, configure its token and data sources on that device.',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _MappingTile extends StatelessWidget {
+  const _MappingTile({required this.title, required this.value});
+  final String title;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = value?.trim().isNotEmpty ?? false;
+    return ListTile(
+      leading: Icon(
+        configured ? Icons.check_circle_outline : Icons.error_outline,
+        color: configured
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.error,
+      ),
+      title: Text(title),
+      subtitle: Text(configured ? 'Mapped during setup' : 'Not mapped'),
+    );
   }
 }
 

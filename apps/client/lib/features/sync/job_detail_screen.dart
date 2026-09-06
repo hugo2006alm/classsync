@@ -324,6 +324,23 @@ class _SummaryPreview extends StatelessWidget {
             child: Text('• $point'),
           ),
       ],
+      ..._summaryGroup(context, 'Ênfase do docente', summary.teacherEmphasis),
+      ..._summaryGroup(
+        context,
+        'Detalhes pequenos mas importantes',
+        summary.importantDetails,
+      ),
+      ..._summaryGroup(
+        context,
+        'Perguntas e respostas',
+        summary.questionsAndAnswers,
+      ),
+      ..._summaryGroup(
+        context,
+        'Tarefas, prazos e avisos',
+        summary.assignmentsAndDeadlines,
+      ),
+      ..._summaryGroup(context, 'Pistas para avaliação', summary.examHints),
       if (summary.conclusions.isNotEmpty) ...[
         const SizedBox(height: 18),
         Text(
@@ -339,6 +356,22 @@ class _SummaryPreview extends StatelessWidget {
     ],
   );
 }
+
+List<Widget> _summaryGroup(
+  BuildContext context,
+  String title,
+  List<String> items,
+) => items.isEmpty
+    ? const []
+    : [
+        const SizedBox(height: 18),
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Text('• $item'),
+          ),
+      ];
 
 class _Timeline extends StatelessWidget {
   const _Timeline({required this.events});

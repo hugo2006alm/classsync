@@ -195,6 +195,10 @@ class LectureSummary {
     required this.sections,
     this.objectives = const [],
     this.examHints = const [],
+    this.teacherEmphasis = const [],
+    this.importantDetails = const [],
+    this.questionsAndAnswers = const [],
+    this.assignmentsAndDeadlines = const [],
     this.uncertainties = const [],
     this.conclusions = const [],
     this.tags = const [],
@@ -205,6 +209,10 @@ class LectureSummary {
   final List<String> objectives;
   final List<LectureSummarySection> sections;
   final List<String> examHints;
+  final List<String> teacherEmphasis;
+  final List<String> importantDetails;
+  final List<String> questionsAndAnswers;
+  final List<String> assignmentsAndDeadlines;
   final List<String> uncertainties;
   final List<String> conclusions;
   final List<String> tags;
@@ -215,6 +223,10 @@ class LectureSummary {
     'objectives': objectives,
     'sections': sections.map((section) => section.toJson()).toList(),
     'examHints': examHints,
+    'teacherEmphasis': teacherEmphasis,
+    'importantDetails': importantDetails,
+    'questionsAndAnswers': questionsAndAnswers,
+    'assignmentsAndDeadlines': assignmentsAndDeadlines,
     'uncertainties': uncertainties,
     'conclusions': conclusions,
     'tags': tags,
@@ -231,6 +243,10 @@ class LectureSummary {
         .map(LectureSummarySection.fromJson)
         .toList(),
     examHints: _stringList(json['examHints']),
+    teacherEmphasis: _stringList(json['teacherEmphasis']),
+    importantDetails: _stringList(json['importantDetails']),
+    questionsAndAnswers: _stringList(json['questionsAndAnswers']),
+    assignmentsAndDeadlines: _stringList(json['assignmentsAndDeadlines']),
     uncertainties: _stringList(json['uncertainties']),
     conclusions: _stringList(json['conclusions']),
     tags: _stringList(json['tags']),
