@@ -73,9 +73,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Timetable'), findsWidgets);
+    expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('Evaluations'), findsOneWidget);
-    expect(find.text('Grades'), findsOneWidget);
-    expect(find.text('Moodle'), findsOneWidget);
+    expect(find.text('Progress'), findsOneWidget);
+    expect(find.text('Updates'), findsOneWidget);
+    expect(find.text('Course context'), findsOneWidget);
+    expect(find.text('Search & ask'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

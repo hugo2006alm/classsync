@@ -67,6 +67,79 @@ void main() {
     expect(changes.single.previousPayloadJson, contains('12.0'));
   });
 
+  test('task refresh preserves completion and user edits', () async {
+    final original = AcademicRecord(
+      key: AcademicRecord.keyFor(
+        AcademicSource.manual,
+        AcademicRecordKind.lectureTask,
+        'task-1',
+      ),
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+      externalId: 'task-1',
+      title: 'Read chapter',
+      payload: {
+        'id': 'task-1',
+        'sourceLectureId': 'lecture-1',
+        'title': 'Read chapter 4',
+        'description': 'Edited detail',
+        'dueAt': '2026-09-10T00:00:00.000Z',
+        'status': 'completed',
+        'userEdited': true,
+      },
+      syncedAt: DateTime.utc(2026, 9, 7),
+    );
+    await database.upsertAcademicRecord(original);
+    await database.replaceAcademicRecords(
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+      records: [
+        AcademicRecord(
+          key: original.key,
+          source: original.source,
+          kind: original.kind,
+          externalId: original.externalId,
+          title: 'Read chapter',
+          payload: {
+            'id': 'task-1',
+            'sourceLectureId': 'lecture-1',
+            'title': 'Read chapter',
+            'description': 'Generated again',
+            'dueAt': '2026-09-10T00:00:00.000Z',
+            'status': 'pending',
+          },
+          syncedAt: DateTime.utc(2026, 9, 8),
+        ),
+      ],
+    );
+    final task = (await database.readAcademicRecords()).single;
+    expect(task.payload['status'], 'completed');
+    expect(task.payload['title'], 'Read chapter 4');
+    expect(task.payload['description'], 'Edited detail');
+  });
+
+  test('Portal refresh preserves local notice read state', () async {
+    AcademicRecord notice(bool read) => AcademicRecord(
+      key: 'portal:notice:n-1',
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.portalNotification,
+      externalId: 'n-1',
+      title: 'Official notice',
+      payload: {'message': 'Read me', 'read': read},
+      syncedAt: DateTime.utc(2026, 9, 7),
+    );
+    await database.upsertAcademicRecord(notice(true));
+    await database.replaceAcademicRecords(
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.portalNotification,
+      records: [notice(false)],
+    );
+    expect(
+      (await database.readAcademicRecords()).single.payload['read'],
+      isTrue,
+    );
+  });
+
   test(
     'schema v4 upgrades add academic cache and account name safely',
     () async {

@@ -40,10 +40,15 @@ retained as provenance:
 - current grades: `classificações parciais`, `classificações`, `notas`;
 - history: `histórico académico`, `registo académico`, `histórico`;
 - evaluation rules: `ficha de unidade curricular`, `FUC`, `método de avaliação`.
+- official lesson summaries: `sumários`, `sumarios`;
+- electronic notices: `notificações eletrónicas`, `notificações`.
 
 FUC tables are parsed into alternative weighted formulas and minimum-component
-rules. Imported formulas remain disabled until the user reviews and confirms
-them. Publicly verified Portal routes include `/intranet/`,
+rules, plus versioned objectives, syllabus, bibliography, workload, teaching
+methods, and lecturer context. Imported formulas remain disabled until the user
+reviews and confirms them. Official lesson summaries are matched to local
+lectures only when subject and time corroborate; a low lexical coverage score is
+shown for review and never overwrites generated notes. Publicly verified Portal routes include `/intranet/`,
 `/intranet/home/Guest.aspx`, and `/intranet/ver_horario/ver_horario.aspx`; the
 last route is a public room calendar and is never treated as evidence of a
 student's enrolment or exam registration.
@@ -63,6 +68,12 @@ a 2 MiB ceiling. Redirects and discovered links must remain on
 Portal refresh is independent from Fireflies → Gemini → Notion. A Portal
 failure cannot stop lecture discovery, classification, summarization, or
 publication.
+
+Exam registration integration is deliberately read-only. ClassSync records the
+Portal-reported state, opening/closing window, exam date, and fee when present,
+but never interprets a timetable row as proof of registration and exposes no
+generic Portal write action. Registration reminders point the student back to
+the authoritative Portal page.
 
 ## Known limitations
 

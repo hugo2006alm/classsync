@@ -31,6 +31,14 @@ them with Gemini, and publishes structured study notes to Notion.
 - Offline Academic hub with week timetable, unified Portal/Moodle/manual
   evaluation calendar and agenda, per-event/type local reminders, grade
   provenance/history, FUC formula review, and weighted target-grade calculations.
+- Lecture action extraction with evidence, editable lifecycle state, and
+  deadline calendar integration; regeneration preserves user decisions.
+- Local academic search across retained summaries/transcripts, FUC, Portal, and
+  Moodle content, with subject/semester/date/type filters and evidence-only
+  Gemini answers with source IDs.
+- Read-only Portal notices, official lesson summaries, exam-registration
+  windows, enrolment/history, and ECTS progress with stable provenance and
+  change detection.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.
@@ -92,7 +100,8 @@ Required Notion data-source properties:
 - **Histórico de Resumos:** `Nome`, `Data`, `Cadeira`; optional
   `Fireflies ID`, which helps reconciliation after interrupted publication.
 
-Optional academic integrations are configured under **Academic → Connections**.
+Optional academic integrations can be skipped during first-run setup and are
+also configured under **Academic → Connections**.
 Portal username/password and the Moodle Web Services token stay in OS secure
 storage. Academic records remain in the local offline cache and never pass
 through the relay. See [ISEP Portal details](docs/isep-portal.md) and

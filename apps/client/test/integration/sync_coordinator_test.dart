@@ -67,6 +67,11 @@ void main() {
       expect(gemini.summaryCalls, 1);
       expect(notion.createCalls, 1);
       expect(notifier.successes, 1);
+      final tasks = await database.readAcademicRecords(
+        kind: AcademicRecordKind.lectureTask,
+      );
+      expect(tasks, hasLength(1));
+      expect(tasks.single.payload['supportingSegment'], contains('sexta'));
     },
   );
 
@@ -438,9 +443,10 @@ class _FakeGemini extends GeminiClient {
     required LectureTranscript transcript,
     required AcademicSubject subject,
     required AppSettings settings,
+    List<AcademicRecord> courseContext = const [],
   }) async {
     summaryCalls += 1;
-    return const LectureSummary(
+    return LectureSummary(
       title: 'Algoritmos de Pesquisa',
       context: 'Comparação de algoritmos de pesquisa.',
       objectives: ['Distinguir BFS e A*.'],
@@ -452,6 +458,16 @@ class _FakeGemini extends GeminiClient {
         ),
       ],
       conclusions: ['Escolher o algoritmo conforme o problema.'],
+      actionItems: [
+        LectureActionCandidate(
+          title: 'Entregar implementação A*',
+          description: 'Submeter o exercício pedido na aula.',
+          dueAt: DateTime.utc(2026, 9, 11, 18),
+          confidence: LectureActionConfidence.certain,
+          supportingSegment: 'Entreguem a implementação até sexta.',
+          timestampSeconds: 900,
+        ),
+      ],
     );
   }
 
@@ -464,6 +480,7 @@ class _FakeGemini extends GeminiClient {
     required AppSettings settings,
     List<Map<String, dynamic>> completedPartials = const [],
     Future<void> Function(List<Map<String, dynamic>> partials)? onCheckpoint,
+    List<AcademicRecord> courseContext = const [],
   }) => summarize(
     apiKey: apiKey,
     model: model,

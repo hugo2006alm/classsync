@@ -59,7 +59,14 @@ Future<void> main(List<String> arguments) async {
   await notifications.initialize(
     onOpenJob: (payload) {
       if (payload.startsWith('academic:')) {
-        router.go('/academic');
+        final parts = payload.split(':');
+        final section = parts.length >= 3 ? parts[1] : '0';
+        final record = parts.length >= 3
+            ? parts.skip(2).join(':')
+            : parts.skip(1).join(':');
+        router.go(
+          '/academic?section=${Uri.encodeQueryComponent(section)}&record=${Uri.encodeQueryComponent(record)}',
+        );
       } else {
         router.go('/sync/${Uri.encodeComponent(payload)}');
       }

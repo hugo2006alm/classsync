@@ -61,11 +61,34 @@ class ClassSyncNotificationService implements SyncNotifier {
       windows: WindowsNotificationDetails(),
     ),
     androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    payload: 'academic:$id',
+    payload: 'academic:2:$id',
   );
 
   Future<void> cancelAcademicReminder(String id) =>
       _plugin.cancel(id: _stableNotificationId(id));
+
+  Future<void> showAcademicUpdate({
+    required String id,
+    required String title,
+    required String body,
+  }) => _plugin.show(
+    id: _stableNotificationId(id),
+    title: title,
+    body: body,
+    payload: 'academic:4:$id',
+    notificationDetails: const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'classsync_academic_updates',
+        'Academic updates',
+        channelDescription: 'Important Portal and Moodle academic updates',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+      iOS: DarwinNotificationDetails(),
+      macOS: DarwinNotificationDetails(),
+      windows: WindowsNotificationDetails(),
+    ),
+  );
 
   Future<void> requestPermissions() async {
     await _plugin

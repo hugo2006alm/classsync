@@ -29,6 +29,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   final _firefliesNameController = TextEditingController(text: 'My Fireflies');
   final _geminiController = TextEditingController();
   final _notionController = TextEditingController();
+  final _portalUsernameController = TextEditingController();
+  final _portalPasswordController = TextEditingController();
+  final _moodleTokenController = TextEditingController();
   final _relayUrlController = TextEditingController(
     text: AppSettings.productionRelayBaseUrl,
   );
@@ -53,12 +56,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   SyncAccount? _syncAccount;
   AccountWebhookConfig? _webhookConfig;
 
-  static const _stepCount = 8;
+  static const _stepCount = 9;
   static const _steps = <_StepDefinition>[
     _StepDefinition('Welcome', Icons.waving_hand_outlined),
     _StepDefinition('Fireflies', Icons.mic_none_rounded),
     _StepDefinition('Gemini', Icons.auto_awesome_outlined),
     _StepDefinition('Notion', Icons.account_tree_outlined),
+    _StepDefinition('Academic', Icons.school_outlined),
     _StepDefinition('Relay', Icons.cloud_queue_outlined),
     _StepDefinition('Account', Icons.devices_rounded),
     _StepDefinition('Automation', Icons.tune_rounded),
@@ -72,6 +76,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     _firefliesNameController.dispose();
     _geminiController.dispose();
     _notionController.dispose();
+    _portalUsernameController.dispose();
+    _portalPasswordController.dispose();
+    _moodleTokenController.dispose();
     _relayUrlController.dispose();
     _relayTokenController.dispose();
     _modelController.dispose();
@@ -142,6 +149,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               _fireflies(),
               _gemini(),
               _notion(),
+              _academicConnections(),
               _relay(),
               _account(),
               _automation(),
@@ -164,7 +172,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     icon: Icons.auto_stories_rounded,
     title: 'From lecture to study notes, quietly.',
     description:
-        'Eight short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
+        'Nine short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
     child: Column(
       children: const [
         _GuideCard(
@@ -447,6 +455,69 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               ),
             ],
           ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _academicConnections() => _StepBody(
+    eyebrow: 'ACADEMIC SOURCES · OPTIONAL',
+    icon: Icons.school_outlined,
+    title: 'Bring the official context with you.',
+    description:
+        'Portal adds your timetable, grades, enrolment, exam registrations, official lesson summaries, FUC details, and notices. Moodle adds assignments and announcements. Leave everything blank to skip this step.',
+    child: Column(
+      children: [
+        const _InfoStrip(
+          icon: Icons.lock_outline_rounded,
+          message:
+              'These credentials stay in this device’s OS secure storage. ClassSync only reads academic data and never submits an exam registration.',
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            leading: const Icon(Icons.account_balance_outlined),
+            title: const Text('ISEP Portal'),
+            subtitle: const Text('Recommended · username and password'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              TextField(
+                controller: _portalUsernameController,
+                autofillHints: const [AutofillHints.username],
+                decoration: const InputDecoration(
+                  labelText: 'Portal username or ISEP email',
+                  helperText: 'The @isep.ipp.pt suffix is accepted.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _SecretField(
+                controller: _portalPasswordController,
+                label: 'Portal password',
+                hint: 'Same password used at portal.isep.ipp.pt',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Card(
+          child: ExpansionTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('Moodle ISEP'),
+            subtitle: const Text('Optional · Web Services token'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              _SecretField(
+                controller: _moodleTokenController,
+                label: 'Moodle Web Services token',
+                hint: 'Leave blank to connect later',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'You can connect or replace either source later from Academic → Connections.',
         ),
       ],
     ),
@@ -760,6 +831,25 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 metadataEnabled: _addMetadata,
               );
         case 4:
+          final portalUser = _portalUsernameController.text.trim();
+          final portalPassword = _portalPasswordController.text;
+          if (portalUser.isNotEmpty || portalPassword.isNotEmpty) {
+            if (portalUser.isEmpty || portalPassword.isEmpty) {
+              throw const FormatException(
+                'Enter both Portal fields, or leave both blank to skip.',
+              );
+            }
+            await ref
+                .read(academicHubActionsProvider)
+                .connectPortal(username: portalUser, password: portalPassword);
+          }
+          final moodleToken = _moodleTokenController.text.trim();
+          if (moodleToken.isNotEmpty) {
+            await ref
+                .read(academicHubActionsProvider)
+                .connectMoodle(moodleToken);
+          }
+        case 5:
           if (_relayUrlController.text.trim().isEmpty ||
               _relayTokenController.text.trim().length < 32) {
             throw const FormatException(
@@ -772,13 +862,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 _relayUrlController.text.trim(),
                 token: _relayTokenController.text.trim(),
               );
-        case 5:
+        case 6:
           if (_syncAccount == null || _webhookConfig == null) {
             throw const FormatException(
               'Create or join your private ClassSync account first.',
             );
           }
-        case 7:
+        case 8:
           await _finish();
           return;
       }
@@ -905,6 +995,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     await settingsController.save(settings);
     ref.invalidate(syncAccountProvider);
     ref.invalidate(firefliesConnectionsProvider);
+    ref.invalidate(academicConnectionStateProvider);
     for (final key in CredentialKey.values) {
       ref.invalidate(credentialConfiguredProvider(key));
     }
@@ -1188,8 +1279,10 @@ class _SetupFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = switch (page) {
       0 => 'Start setup',
-      >= 1 && <= 4 => 'Test & continue',
-      5 => 'Review setup',
+      >= 1 && <= 3 => 'Test & continue',
+      4 => 'Save or skip',
+      5 => 'Test & continue',
+      6 => 'Review setup',
       _ => 'Finish setup',
     };
     return Row(
@@ -1209,7 +1302,7 @@ class _SetupFooter extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Icon(
-                  page == 6 ? Icons.check_rounded : Icons.arrow_forward_rounded,
+                  page == 8 ? Icons.check_rounded : Icons.arrow_forward_rounded,
                 ),
           label: Text(label),
         ),

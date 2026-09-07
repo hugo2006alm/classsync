@@ -95,6 +95,80 @@ void main() {
     expect(values.single.source, GradeValueSource.officialPortal);
   });
 
+  test('academic history keeps credited rows without a numeric grade', () {
+    const html =
+        '''<table><tr><th>ID</th><th>Sigla</th><th>UC</th><th>Ano Letivo</th><th>Estado</th><th>ECTS</th><th>Curso</th></tr>
+      <tr><td>h-1</td><td>MAT</td><td>Matemática</td><td>2025/2026</td><td>Creditado</td><td>6</td><td>LEI</td></tr></table>''';
+    final value = parser
+        .parseGrades(
+          html,
+          sourceUrl: 'https://portal.isep.ipp.pt/history',
+          forceHistorical: true,
+        )
+        .single;
+    expect(value.value, isNull);
+    expect(value.academicStatus, 'Creditado');
+    expect(value.ects, 6);
+    expect(value.courseContext, 'LEI');
+  });
+
+  test('normalizes registration windows without inferring registration', () {
+    const html =
+        '''<table><tr><th>ID</th><th>Sigla</th><th>UC</th><th>Época</th><th>Estado</th><th>Início Inscrição</th><th>Fim Inscrição</th><th>Data Exame</th><th>Taxa</th></tr>
+      <tr><td>exam-2</td><td>SO</td><td>Sistemas Operativos</td><td>Recurso</td><td>Disponível</td><td>01/02/2027</td><td>08/02/2027</td><td>12/02/2027</td><td>3 EUR</td></tr></table>''';
+    final value = parser
+        .parseExamRegistrations(
+          html,
+          sourceUrl: 'https://portal.isep.ipp.pt/registrations',
+        )
+        .single;
+    expect(value.state, ExamRegistrationState.registrationAvailable);
+    expect(value.registrationClosesAt, DateTime(2027, 2, 8));
+    expect(value.fee, '3 EUR');
+  });
+
+  test('parses official notices, FUC context, and lesson summaries', () {
+    const noticeHtml =
+        '''<table><tr><th>ID</th><th>Assunto</th><th>Remetente</th><th>Data</th><th>Mensagem</th><th>Anexos</th></tr>
+      <tr><td>n-1</td><td>Prazo</td><td>Secretaria</td><td>07/09/2026</td><td>Consulte o prazo.</td><td>aviso.pdf</td></tr></table>''';
+    const fucHtml =
+        '''<table><tr><th>ID</th><th>Sigla</th><th>UC</th><th>Ano Letivo</th><th>Docente Responsável</th><th>Objetivos</th><th>Programa</th><th>Metodologias</th><th>Regras Avaliação</th></tr>
+      <tr><td>f-1</td><td>IA</td><td>Inteligência Artificial</td><td>2026/2027</td><td>Ana Silva</td><td>Pesquisar;Planear</td><td>A*;CSP</td><td>TP</td><td>Teste 60%;Projeto 40%</td></tr></table>''';
+    const summaryHtml =
+        '''<table><tr><th>ID</th><th>Sigla</th><th>UC</th><th>Data</th><th>Hora</th><th>Sumário</th><th>Docente</th></tr>
+      <tr><td>s-1</td><td>IA</td><td>Inteligência Artificial</td><td>07/09/2026</td><td>10:00</td><td>Pesquisa A* e heurísticas.</td><td>Ana Silva</td></tr></table>''';
+    expect(
+      parser
+          .parseNotifications(
+            noticeHtml,
+            sourceUrl: 'https://portal.isep.ipp.pt/notices',
+          )
+          .single
+          .sender,
+      'Secretaria',
+    );
+    expect(
+      parser
+          .parseFucProfiles(
+            fucHtml,
+            sourceUrl: 'https://portal.isep.ipp.pt/fuc',
+          )
+          .single
+          .syllabus,
+      ['A*', 'CSP'],
+    );
+    expect(
+      parser
+          .parseLessonSummaries(
+            summaryHtml,
+            sourceUrl: 'https://portal.isep.ipp.pt/summaries',
+          )
+          .single
+          .text,
+      contains('heurísticas'),
+    );
+  });
+
   test('layout drift fails closed without partial values', () {
     expect(
       () => parser.parseTimetable(

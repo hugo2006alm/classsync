@@ -324,6 +324,15 @@ class _FakePortal implements PortalAdapter {
       ],
     ),
   ];
+
+  @override
+  Future<List<FucProfile>> getFucProfiles() async => const [];
+
+  @override
+  Future<List<PortalNotification>> getNotifications() async => const [];
+
+  @override
+  Future<List<OfficialLessonSummary>> getLessonSummaries() async => const [];
 }
 
 class _FakeMoodle extends MoodleClient {
@@ -374,6 +383,7 @@ class _FakeMoodle extends MoodleClient {
 class _FakeNotifications extends ClassSyncNotificationService {
   final scheduled = <String>[];
   final cancelled = <String>[];
+  final shown = <String>[];
 
   @override
   Future<void> requestPermissions() async {}
@@ -390,5 +400,14 @@ class _FakeNotifications extends ClassSyncNotificationService {
   @override
   Future<void> cancelAcademicReminder(String id) async {
     cancelled.add(id);
+  }
+
+  @override
+  Future<void> showAcademicUpdate({
+    required String id,
+    required String title,
+    required String body,
+  }) async {
+    shown.add(id);
   }
 }

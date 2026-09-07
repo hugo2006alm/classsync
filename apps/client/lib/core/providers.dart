@@ -9,6 +9,7 @@ import '../domain/sync/sync_coordinator.dart';
 import '../domain/sync/sync_models.dart';
 import 'database/classsync_database.dart';
 import 'academic/academic_sync_service.dart';
+import 'academic/academic_research_service.dart';
 import 'integrations/fireflies/fireflies_client.dart';
 import 'integrations/gemini/gemini_client.dart';
 import 'integrations/notion/notion_client.dart';
@@ -94,6 +95,37 @@ final academicSyncServiceProvider = Provider(
 
 final academicHubActionsProvider = Provider<AcademicHubActions>(
   (ref) => ref.watch(academicSyncServiceProvider),
+);
+
+class AcademicConnectionState {
+  const AcademicConnectionState({
+    required this.portalConfigured,
+    required this.moodleConfigured,
+  });
+  final bool portalConfigured;
+  final bool moodleConfigured;
+  bool get anyConfigured => portalConfigured || moodleConfigured;
+}
+
+final academicConnectionStateProvider = FutureProvider((ref) async {
+  final store = ref.watch(credentialStoreProvider);
+  final values = await Future.wait([
+    store.isConfigured(CredentialKey.portalUsername),
+    store.isConfigured(CredentialKey.portalPassword),
+    store.isConfigured(CredentialKey.moodleToken),
+  ]);
+  return AcademicConnectionState(
+    portalConfigured: values[0] && values[1],
+    moodleConfigured: values[2],
+  );
+});
+
+final academicResearchServiceProvider = Provider(
+  (ref) => AcademicResearchService(
+    database: ref.watch(databaseProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    gemini: ref.watch(geminiClientProvider),
+  ),
 );
 
 class NotionLibraryData {

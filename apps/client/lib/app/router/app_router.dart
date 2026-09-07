@@ -52,8 +52,13 @@ final routerProvider = Provider<GoRouter>(
           ),
           GoRoute(
             path: '/academic',
-            pageBuilder: (context, state) =>
-                const NoTransitionPage(child: AcademicScreen()),
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: AcademicScreen(
+                initialSection:
+                    int.tryParse(state.uri.queryParameters['section'] ?? '') ??
+                    0,
+              ),
+            ),
           ),
           GoRoute(
             path: '/sync',
