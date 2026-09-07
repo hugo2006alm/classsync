@@ -24,6 +24,10 @@ void main() {
     final active = await database.readActiveSubjects();
 
     expect(active.map((subject) => subject.name), ['active']);
+    expect((await database.readSubjects()).map((subject) => subject.name), [
+      'active',
+      'done',
+    ]);
   });
 
   test('initialization preserves completed setup settings', () async {

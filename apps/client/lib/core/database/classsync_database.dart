@@ -266,6 +266,18 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           .watch()
           .map((rows) => rows.map(_subjectFromRow).toList());
 
+  Stream<List<AcademicSubject>> watchSubjects() =>
+      (select(cachedSubjects)..orderBy([(row) => OrderingTerm.asc(row.name)]))
+          .watch()
+          .map((rows) => rows.map(_subjectFromRow).toList());
+
+  Future<List<AcademicSubject>> readSubjects() async =>
+      (await (select(
+            cachedSubjects,
+          )..orderBy([(row) => OrderingTerm.asc(row.name)])).get())
+          .map(_subjectFromRow)
+          .toList();
+
   Future<List<AcademicSubject>> readActiveSubjects() async =>
       (await (select(cachedSubjects)
                 ..where((row) => row.status.lower().equals('in progress'))

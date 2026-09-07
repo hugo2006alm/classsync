@@ -50,7 +50,10 @@ class AcademicSyncService implements AcademicHubActions {
     required String username,
     String? password,
   }) async {
-    final cleanUsername = username.trim();
+    final enteredUsername = username.trim();
+    final cleanUsername = enteredUsername.toLowerCase().endsWith('@isep.ipp.pt')
+        ? enteredUsername.substring(0, enteredUsername.lastIndexOf('@'))
+        : enteredUsername;
     final secret = password?.isNotEmpty == true
         ? password!
         : await _credentials.read(CredentialKey.portalPassword);

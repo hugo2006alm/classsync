@@ -127,6 +127,7 @@ void main() {
           onRequest: (options, handler) {
             requests.add(options);
             if (options.method == 'POST') {
+              expect(options.uri.path, '/intranet/');
               final form = options.data as Map<String, String>;
               expect(form['__VIEWSTATE'], 'sanitized-state');
               expect(
