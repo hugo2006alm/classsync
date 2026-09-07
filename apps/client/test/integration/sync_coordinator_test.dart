@@ -8,6 +8,7 @@ import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/academic/academic_hub_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
+import 'package:classsync/domain/settings/fireflies_connection.dart';
 import 'package:classsync/domain/sync/sync_coordinator.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/domain/sync/sync_notifier.dart';
@@ -185,6 +186,83 @@ void main() {
     );
   });
 
+  test(
+    'polls every named Fireflies connection and fetches with its key',
+    () async {
+      final credentials = _FakeCredentials(
+        connections: const [
+          FirefliesConnection(id: 'ana', name: 'Ana', apiKey: 'key-ana'),
+          FirefliesConnection(id: 'rui', name: 'Rui', apiKey: 'key-rui'),
+        ],
+      );
+      fireflies.transcriptsByKey = {
+        'key-ana': [_lecture('meeting-ana', 'Ana recorder')],
+        'key-rui': [_lecture('meeting-rui', 'Rui recorder')],
+      };
+      coordinator = SyncCoordinator(
+        database: database,
+        credentials: credentials,
+        fireflies: fireflies,
+        gemini: gemini,
+        notion: notion,
+        relay: relay,
+        notifier: notifier,
+      );
+
+      final result = await coordinator.run(SyncReason.manual);
+
+      expect(result.discovered, 2);
+      expect(fireflies.listKeys, containsAll(['key-ana', 'key-rui']));
+      expect(fireflies.fetchKeys, containsAll(['key-ana', 'key-rui']));
+      expect(await database.readJobs(), hasLength(2));
+    },
+  );
+
+  test(
+    'webhook transcript tries named keys until owner access succeeds',
+    () async {
+      final credentials = _FakeCredentials(
+        connections: const [
+          FirefliesConnection(id: 'mine', name: 'Mine', apiKey: 'key-mine'),
+          FirefliesConnection(
+            id: 'colleague',
+            name: 'Colleague',
+            apiKey: 'key-colleague',
+          ),
+        ],
+      );
+      fireflies.transcriptsByKey = {
+        'key-mine': const [],
+        'key-colleague': [_lecture('meeting-shared', 'Shared recorder')],
+      };
+      relay.events = [
+        RelayEvent(
+          id: 'meeting.transcribed:meeting-shared',
+          firefliesTranscriptId: 'meeting-shared',
+          eventType: 'meeting.transcribed',
+          receivedAt: DateTime.utc(2026, 9, 5),
+        ),
+      ];
+      coordinator = SyncCoordinator(
+        database: database,
+        credentials: credentials,
+        fireflies: fireflies,
+        gemini: gemini,
+        notion: notion,
+        relay: relay,
+        notifier: notifier,
+      );
+
+      final result = await coordinator.run(SyncReason.firefliesWebhook);
+
+      expect(result.processed, 1);
+      expect(fireflies.fetchKeys, ['key-mine', 'key-colleague']);
+      final job = (await database.readJobs()).single;
+      expect(job.status, SyncJobStatus.success);
+      expect(job.sourceType, 'fireflies:colleague');
+    },
+  );
+
   test('discovery outages do not block a durable manual job', () async {
     await database.replaceSubjects([notion.subject]);
     await database.discoverJob(
@@ -217,7 +295,30 @@ void main() {
   });
 }
 
+LectureTranscript _lecture(String id, String title) => LectureTranscript(
+  firefliesId: id,
+  title: title,
+  date: DateTime.utc(2026, 9, 5, 10),
+  sentences: const [TranscriptSentence(text: 'Shared lecture transcript')],
+);
+
 class _FakeCredentials extends SecureCredentialStore {
+  _FakeCredentials({
+    this.connections = const [
+      FirefliesConnection(
+        id: FirefliesConnection.legacyId,
+        name: 'Primary',
+        apiKey: 'test-key',
+      ),
+    ],
+  });
+
+  final List<FirefliesConnection> connections;
+
+  @override
+  Future<List<FirefliesConnection>> readFirefliesConnections() async =>
+      connections;
+
   @override
   Future<String?> read(CredentialKey key) async => switch (key) {
     CredentialKey.relayDeviceToken => '0123456789abcdef0123456789abcdef',
@@ -230,6 +331,9 @@ class _FakeCredentials extends SecureCredentialStore {
 class _FakeFireflies extends FirefliesClient {
   DateTime? lastFrom;
   var failList = false;
+  Map<String, List<LectureTranscript>>? transcriptsByKey;
+  final listKeys = <String>[];
+  final fetchKeys = <String>[];
   final transcript = LectureTranscript(
     firefliesId: 'meeting-1',
     title: 'Search algorithms',
@@ -256,7 +360,21 @@ class _FakeFireflies extends FirefliesClient {
         retryable: true,
       );
     }
+    listKeys.add(apiKey);
     lastFrom = from;
+    final configured = transcriptsByKey;
+    if (configured != null) {
+      return (configured[apiKey] ?? const [])
+          .map(
+            (item) => FirefliesTranscriptRef(
+              id: item.firefliesId,
+              title: item.title,
+              date: item.date,
+              url: item.firefliesUrl,
+            ),
+          )
+          .toList();
+    }
     return [
       FirefliesTranscriptRef(
         id: transcript.firefliesId,
@@ -271,7 +389,20 @@ class _FakeFireflies extends FirefliesClient {
   Future<LectureTranscript> fetchTranscript({
     required String apiKey,
     required String transcriptId,
-  }) async => transcript;
+  }) async {
+    fetchKeys.add(apiKey);
+    final configured = transcriptsByKey;
+    if (configured == null) return transcript;
+    for (final item in configured[apiKey] ?? const []) {
+      if (item.firefliesId == transcriptId) return item;
+    }
+    throw const IntegrationException(
+      integration: 'Fireflies',
+      code: 'forbidden',
+      userMessage: 'Key cannot access transcript.',
+      retryable: false,
+    );
+  }
 }
 
 class _FakeGemini extends GeminiClient {

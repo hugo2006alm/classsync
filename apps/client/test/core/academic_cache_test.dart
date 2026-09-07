@@ -68,7 +68,7 @@ void main() {
   });
 
   test(
-    'schema v4 upgrades add academic cache without losing settings',
+    'schema v4 upgrades add academic cache and account name safely',
     () async {
       final legacy = ClassSyncDatabase(
         NativeDatabase.memory(
@@ -107,6 +107,7 @@ CREATE TABLE settings_records (
       await legacy.initialize();
       expect(await legacy.readAcademicRecords(), isEmpty);
       expect((await legacy.readSettings()).pollingMinutes, greaterThan(0));
+      expect((await legacy.readSettings()).displayName, isEmpty);
       await legacy.close();
     },
   );

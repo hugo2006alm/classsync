@@ -4,6 +4,7 @@ import '../domain/academic/academic_models.dart';
 import '../domain/academic/academic_hub_models.dart';
 import '../domain/academic/academic_hub_actions.dart';
 import '../domain/settings/app_settings.dart';
+import '../domain/settings/fireflies_connection.dart';
 import '../domain/sync/sync_coordinator.dart';
 import '../domain/sync/sync_models.dart';
 import 'database/classsync_database.dart';
@@ -27,6 +28,13 @@ final credentialStoreProvider = Provider((ref) => SecureCredentialStore());
 final credentialConfiguredProvider = FutureProvider.family<bool, CredentialKey>(
   (ref, key) => ref.watch(credentialStoreProvider).isConfigured(key),
 );
+final firefliesConnectionsProvider =
+    FutureProvider<List<FirefliesConnectionSummary>>((ref) async {
+      final connections = await ref
+          .watch(credentialStoreProvider)
+          .readFirefliesConnections();
+      return connections.map((item) => item.summary).toList();
+    });
 final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());

@@ -32,4 +32,15 @@ void main() {
     );
     expect(invalid.validate, throwsFormatException);
   });
+
+  test('account name is retained and bounded', () {
+    final named = AppSettings.defaults.copyWith(displayName: 'Hugo');
+    expect(named.displayName, 'Hugo');
+    expect(
+      AppSettings.defaults
+          .copyWith(displayName: List.filled(81, 'x').join())
+          .validate,
+      throwsFormatException,
+    );
+  });
 }

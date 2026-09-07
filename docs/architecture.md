@@ -36,7 +36,7 @@ Features depend on domain contracts. Integration adapters depend on Dio and secu
   preferences, diagnostics, corrections.
 - Cloudflare D1: transcript-ready IDs, per-device acknowledgements, hashed
   device identity, processing claims, and bounded push-delivery metadata.
-- OS secure storage: all credentials.
+- OS secure storage: all credentials, including multiple named Fireflies keys.
 
 Portal and Moodle are read-only academic sources. Their adapters normalize data
 at one integration boundary. No Portal/Moodle content or credentials enter the

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../domain/settings/app_settings.dart';
+import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../database/classsync_database.dart';
 import '../integrations/relay/account_sync_client.dart';
@@ -167,14 +168,15 @@ class DeviceSyncService {
 
   Future<Map<String, dynamic>> _configurationPayload() async {
     final settings = await _database.readSettings();
+    final fireflies = await _credentials.readFirefliesConnections();
     final values = await Future.wait([
-      _credentials.read(CredentialKey.firefliesApiKey),
       _credentials.read(CredentialKey.geminiApiKey),
       _credentials.read(CredentialKey.notionToken),
     ]);
     return {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'settings': {
+        'displayName': settings.displayName,
         'automaticSync': settings.automaticSync,
         'pollingMinutes': settings.pollingMinutes,
         'overlapHours': settings.overlapHours,
@@ -193,9 +195,10 @@ class DeviceSyncService {
         'notionSummariesDataSourceId': settings.notionSummariesDataSourceId,
       },
       'credentials': {
-        'fireflies': values[0],
-        'gemini': values[1],
-        'notion': values[2],
+        'fireflies': fireflies.firstOrNull?.apiKey,
+        'firefliesConnections': fireflies.map((item) => item.toJson()).toList(),
+        'gemini': values[0],
+        'notion': values[1],
       },
     };
   }
@@ -207,6 +210,7 @@ class DeviceSyncService {
       (item) => item.name == values['summaryDetail'],
     );
     final merged = local.copyWith(
+      displayName: values['displayName'] as String? ?? local.displayName,
       automaticSync: values['automaticSync'] as bool? ?? local.automaticSync,
       pollingMinutes: (values['pollingMinutes'] as num?)?.toInt(),
       overlapHours: (values['overlapHours'] as num?)?.toInt(),
@@ -235,15 +239,33 @@ class DeviceSyncService {
     await _database.saveSettings(merged);
     final credentials =
         payload['credentials'] as Map<String, dynamic>? ?? const {};
+    final encodedConnections = credentials['firefliesConnections'];
+    if (encodedConnections is List) {
+      final connections = encodedConnections
+          .whereType<Map<String, dynamic>>()
+          .map(FirefliesConnection.fromJson)
+          .toList();
+      await _credentials.writeFirefliesConnections(connections);
+    } else if (credentials['fireflies'] case final String legacy
+        when legacy.isNotEmpty) {
+      await _credentials.writeFirefliesConnections([
+        FirefliesConnection(
+          id: FirefliesConnection.legacyId,
+          name: 'Primary',
+          apiKey: legacy,
+        ),
+      ]);
+    }
+    final valuesToWrite = <CredentialKey, String>{};
     for (final entry in <CredentialKey, String?>{
-      CredentialKey.firefliesApiKey: credentials['fireflies'] as String?,
       CredentialKey.geminiApiKey: credentials['gemini'] as String?,
       CredentialKey.notionToken: credentials['notion'] as String?,
     }.entries) {
       if (entry.value != null && entry.value!.isNotEmpty) {
-        await _credentials.write(entry.key, entry.value!);
+        valuesToWrite[entry.key] = entry.value!;
       }
     }
+    await _credentials.writeAll(valuesToWrite);
   }
 
   Map<String, dynamic> _jobToJson(SyncJob job) => {
@@ -299,4 +321,8 @@ class DeviceSyncService {
       value is String ? DateTime.tryParse(value)?.toUtc() : null;
 
   String _canonical(Map<String, dynamic> value) => jsonEncode(value);
+}
+
+extension _FirstOrNull<T> on List<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

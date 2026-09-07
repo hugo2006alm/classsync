@@ -262,15 +262,15 @@ class AccountSyncClient {
         'This local ClassSync profile belongs to another person. Use a different OS user or clear the local app profile first.',
       );
     }
-    await Future.wait([
-      store.write(CredentialKey.syncAccountId, account.id),
-      store.write(CredentialKey.syncAccountAuthSecret, account.authSecret),
-      store.write(CredentialKey.syncEncryptionKey, account.encryptionKey),
-      store.write(CredentialKey.syncDeviceId, account.deviceId),
-      store.write(CredentialKey.syncLocalOwnerId, account.id),
-      store.write(CredentialKey.syncConfigRevision, '0'),
-      store.write(CredentialKey.syncJobsRevision, '0'),
-    ]);
+    await store.writeAll({
+      CredentialKey.syncAccountId: account.id,
+      CredentialKey.syncAccountAuthSecret: account.authSecret,
+      CredentialKey.syncEncryptionKey: account.encryptionKey,
+      CredentialKey.syncDeviceId: account.deviceId,
+      CredentialKey.syncLocalOwnerId: account.id,
+      CredentialKey.syncConfigRevision: '0',
+      CredentialKey.syncJobsRevision: '0',
+    });
   }
 
   Map<String, String> _headers(SyncAccount account) => {

@@ -13,6 +13,7 @@ import '../../core/security/secure_credential_store.dart';
 import '../academic/academic_models.dart';
 import '../academic/academic_hub_models.dart';
 import '../settings/app_settings.dart';
+import '../settings/fireflies_connection.dart';
 import 'retry_policy.dart';
 import 'classification_policy.dart';
 import 'sync_models.dart';
@@ -121,32 +122,37 @@ class SyncCoordinator {
       }
     }
 
-    try {
-      final firefliesKey = await _requiredCredential(
-        CredentialKey.firefliesApiKey,
-      );
-      final cursor = await _database.readCursor('fireflies');
-      final from = (cursor ?? DateTime.now().toUtc()).subtract(
-        Duration(hours: settings.overlapHours),
-      );
-      final transcriptRefs = await _fireflies.listTranscripts(
-        apiKey: firefliesKey,
-        from: from,
-      );
-      for (final transcript in transcriptRefs) {
-        final inserted = await _database.discoverJob(
-          id: _uuid.v5(Namespace.url.value, 'fireflies:${transcript.id}'),
-          firefliesId: transcript.id,
-          title: transcript.title,
-          meetingDate: transcript.date,
-          firefliesUrl: transcript.url,
+    final firefliesConnections = await _credentials.readFirefliesConnections();
+    for (final connection in firefliesConnections) {
+      try {
+        final cursorKey = 'fireflies:${connection.id}';
+        final cursor =
+            await _database.readCursor(cursorKey) ??
+            (connection.id == FirefliesConnection.legacyId
+                ? await _database.readCursor('fireflies')
+                : null);
+        final from = (cursor ?? DateTime.now().toUtc()).subtract(
+          Duration(hours: settings.overlapHours),
         );
-        if (inserted) discovered += 1;
+        final transcriptRefs = await _fireflies.listTranscripts(
+          apiKey: connection.apiKey,
+          from: from,
+        );
+        for (final transcript in transcriptRefs) {
+          final inserted = await _database.discoverJob(
+            id: _uuid.v5(Namespace.url.value, 'fireflies:${transcript.id}'),
+            firefliesId: transcript.id,
+            title: transcript.title,
+            meetingDate: transcript.date,
+            firefliesUrl: transcript.url,
+            sourceType: 'fireflies:${connection.id}',
+          );
+          if (inserted) discovered += 1;
+        }
+        await _database.saveCursor(cursorKey, DateTime.now().toUtc());
+      } on IntegrationException {
+        // One unavailable account cannot block other sources or durable work.
       }
-      await _database.saveCursor('fireflies', DateTime.now().toUtc());
-    } on IntegrationException {
-      // Discovery is a recovery path. Durable local work must continue when
-      // Fireflies is temporarily unavailable.
     }
 
     try {
@@ -309,9 +315,6 @@ class SyncCoordinator {
       var job = await _database.readJob(jobId);
       if (job == null) return false;
       if (job.leaseOwner != _owner) return false;
-      final firefliesKey = job.sourceType == 'manual'
-          ? null
-          : await _requiredCredential(CredentialKey.firefliesApiKey);
       final geminiKey = await _requiredCredential(CredentialKey.geminiApiKey);
       final notionToken = await _requiredCredential(CredentialKey.notionToken);
       final relaySession = job.sourceType == 'manual'
@@ -328,10 +331,7 @@ class SyncCoordinator {
           SyncJobStatus.fetchingTranscript,
           'Fetching transcript from Fireflies',
         );
-        transcript = await _fireflies.fetchTranscript(
-          apiKey: firefliesKey!,
-          transcriptId: job.firefliesId,
-        );
+        transcript = await _fetchFirefliesTranscript(job);
         await _database.saveTranscript(jobId, transcript);
       }
 
@@ -653,6 +653,50 @@ class SyncCoordinator {
         retryable: true,
       );
     }
+  }
+
+  Future<LectureTranscript> _fetchFirefliesTranscript(SyncJob job) async {
+    final connections = await _credentials.readFirefliesConnections();
+    if (connections.isEmpty) {
+      throw const IntegrationException(
+        integration: 'Fireflies',
+        code: 'not_configured',
+        userMessage: 'Add at least one Fireflies connection in Settings.',
+        retryable: false,
+      );
+    }
+    final sourceId = job.sourceType.startsWith('fireflies:')
+        ? job.sourceType.substring('fireflies:'.length)
+        : null;
+    final exact = connections.where((item) => item.id == sourceId).toList();
+    final ordered = exact.isNotEmpty ? exact : connections;
+    IntegrationException? lastFailure;
+    IntegrationException? retryableFailure;
+    for (final connection in ordered) {
+      try {
+        final transcript = await _fireflies.fetchTranscript(
+          apiKey: connection.apiKey,
+          transcriptId: job.firefliesId,
+        );
+        final sourceType = 'fireflies:${connection.id}';
+        if (job.sourceType != sourceType) {
+          await _database.setJobSourceType(job.id, sourceType);
+        }
+        return transcript;
+      } on IntegrationException catch (failure) {
+        lastFailure = failure;
+        if (failure.retryable) retryableFailure ??= failure;
+      }
+    }
+    throw retryableFailure ??
+        lastFailure ??
+        const IntegrationException(
+          integration: 'Fireflies',
+          code: 'transcript_unavailable',
+          userMessage:
+              'No named Fireflies connection can access this transcript.',
+          retryable: false,
+        );
   }
 
   Future<String?> _relaySession(AppSettings settings) async {

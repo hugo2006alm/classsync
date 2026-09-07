@@ -198,62 +198,78 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   }
 }
 
-class _JobRow extends StatelessWidget {
+class _JobRow extends ConsumerWidget {
   const _JobRow({required this.job});
   final SyncJob job;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: () => context.go('/sync/${job.id}'),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: Theme.of(
-              context,
-            ).colorScheme.surfaceContainerHighest,
-            child: Icon(
-              job.sourceType == 'manual'
-                  ? Icons.note_add_outlined
-                  : Icons.mic_none_rounded,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final connections =
+        ref.watch(firefliesConnectionsProvider).valueOrNull ?? const [];
+    final sourceName = job.sourceType == 'manual'
+        ? 'Manual import'
+        : connections
+                  .where((item) => job.sourceType == 'fireflies:${item.id}')
+                  .firstOrNull
+                  ?.name ??
+              'Fireflies';
+    return InkWell(
+      onTap: () => context.go('/sync/${job.id}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
+              child: Icon(
+                job.sourceType == 'manual'
+                    ? Icons.note_add_outlined
+                    : Icons.mic_none_rounded,
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  job.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    DateFormat.yMMMd().add_Hm().format(
-                      job.meetingDate.toLocal(),
-                    ),
-                    if (job.subjectName != null) job.subjectName!,
-                    if (job.classificationConfidence != null)
-                      '${(job.classificationConfidence! * 100).round()}% heuristic',
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    [
+                      sourceName,
+                      DateFormat.yMMMd().add_Hm().format(
+                        job.meetingDate.toLocal(),
+                      ),
+                      if (job.subjectName != null) job.subjectName!,
+                      if (job.classificationConfidence != null)
+                        '${(job.classificationConfidence! * 100).round()}% heuristic',
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          StatusBadge(job.status),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right_rounded),
-        ],
+            const SizedBox(width: 12),
+            StatusBadge(job.status),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
 
 String _filterLabel(_JobFilter filter) => switch (filter) {

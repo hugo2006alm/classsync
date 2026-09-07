@@ -73,6 +73,8 @@ Current Portuguese property semantics:
 - `LectureSummary`: structured academic notes rendered by the Notion adapter.
 - `SyncJob`: durable local workflow and remote checkpoints.
 - `RelayEvent`: minimal transcript-ready coordination event.
+- `FirefliesConnection`: named, stable source identity plus securely stored API
+  key; one ClassSync account may own several permitted recorder sources.
 - `ClassificationCorrection`: inspectable local hint derived from a manual choice.
 
 Expected job states:
@@ -101,6 +103,8 @@ Desktop uses a sidebar/navigation rail. Mobile uses bottom navigation. Implement
 - `docs/architecture/adr-002-d1-relay.md`: one Worker and D1 for minimal durable relay state.
 - `docs/architecture/adr-003-global-idempotency.md`: optional Notion Fireflies identity metadata.
 - `docs/architecture/adr-005-private-account-device-sync.md`: tenant separation and end-to-end encrypted device sync.
+- `docs/architecture/adr-006-named-fireflies-sources.md`: permitted colleague
+  recorders and multiple named Fireflies credentials.
 
 Changing cross-device coordination or remote idempotency requires a new ADR because simple client-side check-then-create cannot provide a global uniqueness guarantee.
 

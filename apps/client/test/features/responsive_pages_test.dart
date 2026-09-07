@@ -7,6 +7,7 @@ import 'package:classsync/core/integrations/notion/notion_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
+import 'package:classsync/domain/settings/fireflies_connection.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/features/classes/class_detail_screen.dart';
 import 'package:classsync/features/academic/academic_screen.dart';
@@ -41,6 +42,23 @@ void main() {
     expect(find.text('Active classes'), findsWidgets);
     expect(find.text('3º Ano · 1º Semestre'), findsWidgets);
     expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('overview greets the configured account name', (tester) async {
+    _usePhoneViewport(tester);
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const OverviewScreen(),
+        settings: AppSettings.defaults.copyWith(displayName: 'Hugo'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining(', Hugo'), findsOneWidget);
+    expect(find.textContaining(', ClassSync'), findsNothing);
     await _disposeApp(tester);
   });
 
@@ -114,6 +132,28 @@ void main() {
 
     expect(find.text('Connected'), findsNWidgets(2));
     expect(find.text('Not configured'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('Fireflies settings identify every named connection', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const SettingsScreen(),
+        credentialStore: _NamedCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connections'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 connected'), findsOneWidget);
+    expect(find.text('Hugo · Ana'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -218,6 +258,7 @@ Widget _app(
   SecureCredentialStore? credentialStore,
   TargetPlatform? platform,
   NotionLibraryData? library,
+  AppSettings settings = AppSettings.defaults,
 }) => ProviderScope(
   overrides: [
     databaseProvider.overrideWithValue(database),
@@ -230,9 +271,7 @@ Widget _app(
     syncJobsProvider.overrideWith(
       (ref) => Stream<List<SyncJob>>.value(const <SyncJob>[]),
     ),
-    settingsProvider.overrideWith(
-      (ref) => Stream<AppSettings>.value(AppSettings.defaults),
-    ),
+    settingsProvider.overrideWith((ref) => Stream<AppSettings>.value(settings)),
     if (library != null)
       notionLibraryProvider.overrideWith((ref) async => library),
   ],
@@ -258,6 +297,10 @@ final _subject = AcademicSubject(
 
 class _ImmediateCredentialStore extends SecureCredentialStore {
   @override
+  Future<List<FirefliesConnection>> readFirefliesConnections() async =>
+      const [];
+
+  @override
   Future<bool> isConfigured(CredentialKey key) async => false;
 }
 
@@ -269,7 +312,26 @@ class _ControlledCredentialStore extends SecureCredentialStore {
   @override
   Future<bool> isConfigured(CredentialKey key) => _completers[key]!.future;
 
+  @override
+  Future<List<FirefliesConnection>> readFirefliesConnections() async =>
+      await _completers[CredentialKey.firefliesApiKey]!.future
+      ? const [
+          FirefliesConnection(id: 'primary', name: 'Primary', apiKey: 'key'),
+        ]
+      : const [];
+
   void complete(CredentialKey key, bool value) {
     _completers[key]!.complete(value);
   }
+}
+
+class _NamedCredentialStore extends SecureCredentialStore {
+  @override
+  Future<List<FirefliesConnection>> readFirefliesConnections() async => const [
+    FirefliesConnection(id: 'mine', name: 'Hugo', apiKey: 'mine-key'),
+    FirefliesConnection(id: 'ana', name: 'Ana', apiKey: 'ana-key'),
+  ];
+
+  @override
+  Future<bool> isConfigured(CredentialKey key) async => false;
 }
