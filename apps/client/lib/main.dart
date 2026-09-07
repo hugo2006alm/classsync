@@ -57,8 +57,12 @@ Future<void> main(List<String> arguments) async {
   final notifications = container.read(notificationServiceProvider);
   final router = container.read(routerProvider);
   await notifications.initialize(
-    onOpenJob: (jobId) {
-      router.go('/sync/${Uri.encodeComponent(jobId)}');
+    onOpenJob: (payload) {
+      if (payload.startsWith('academic:')) {
+        router.go('/academic');
+      } else {
+        router.go('/sync/${Uri.encodeComponent(payload)}');
+      }
     },
   );
   final settings = await database.readSettings();

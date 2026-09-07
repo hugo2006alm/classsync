@@ -6,6 +6,7 @@ import 'package:classsync/core/integrations/notion/notion_client.dart';
 import 'package:classsync/core/integrations/relay/relay_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
+import 'package:classsync/domain/academic/academic_hub_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/sync/sync_coordinator.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
@@ -296,6 +297,7 @@ class _FakeGemini extends GeminiClient {
     required String model,
     required LectureTranscript transcript,
     required List<AcademicSubject> subjects,
+    TimetableContext? timetableContext,
   }) async => result;
 
   @override

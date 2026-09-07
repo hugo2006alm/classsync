@@ -11,6 +11,7 @@ import '../../core/integrations/relay/relay_client.dart';
 import '../../core/logging/redactor.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../academic/academic_models.dart';
+import '../academic/academic_hub_models.dart';
 import '../settings/app_settings.dart';
 import 'retry_policy.dart';
 import 'classification_policy.dart';
@@ -388,27 +389,63 @@ class SyncCoordinator {
             : subjects
                   .where((item) => item.notionId == correction.subjectId)
                   .firstOrNull;
-        classification = correctedSubject == null
-            ? await _gemini.classify(
-                apiKey: geminiKey,
-                model: settings.classificationModel,
-                transcript: transcript,
-                subjects: subjects,
-              )
-            : ClassificationResult(
-                decision: ClassificationDecision.match,
+        if (correctedSubject == null) {
+          final timetableRecords = await _database.readAcademicRecords(
+            kind: AcademicRecordKind.timetable,
+          );
+          final slots = <TimetableSlot>[];
+          for (final record in timetableRecords) {
+            try {
+              slots.add(TimetableSlot.fromJson(record.payload));
+            } on FormatException {
+              // A stale malformed cache row cannot block lecture processing.
+            }
+          }
+          final lastSentenceSecond = transcript.sentences
+              .map((item) => item.endTimeSeconds ?? item.startTimeSeconds ?? 0)
+              .fold<double>(
+                0,
+                (maximum, value) => value > maximum ? value : maximum,
+              );
+          final context = TimetableMatcher.match(
+            meetingStart: transcript.date,
+            meetingEnd: transcript.date.add(
+              Duration(
+                seconds: lastSentenceSecond > 0
+                    ? lastSentenceSecond.ceil()
+                    : 5400,
+              ),
+            ),
+            slots: slots,
+          );
+          final semantic = await _gemini.classify(
+            apiKey: geminiKey,
+            model: settings.classificationModel,
+            transcript: transcript,
+            subjects: subjects,
+            timetableContext: context,
+          );
+          classification = TimetableMatcher.combine(
+            semantic,
+            context,
+            subjects,
+          );
+        } else {
+          classification = ClassificationResult(
+            decision: ClassificationDecision.match,
+            subjectId: correctedSubject.notionId,
+            subjectName: correctedSubject.name,
+            confidence: 1,
+            candidates: [
+              ClassificationCandidate(
                 subjectId: correctedSubject.notionId,
                 subjectName: correctedSubject.name,
                 confidence: 1,
-                candidates: [
-                  ClassificationCandidate(
-                    subjectId: correctedSubject.notionId,
-                    subjectName: correctedSubject.name,
-                    confidence: 1,
-                  ),
-                ],
-                reasoningSummary: const ['Local correction matched title'],
-              );
+              ),
+            ],
+            reasoningSummary: const ['Local correction matched title'],
+          );
+        }
         await _database.saveClassification(jobId, classification);
         if (classification.decision == ClassificationDecision.notALecture) {
           await _database.setJobStatus(

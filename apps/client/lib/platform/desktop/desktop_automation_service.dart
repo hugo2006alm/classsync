@@ -11,6 +11,7 @@ import '../../core/database/classsync_database.dart';
 import '../../core/providers.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class DesktopAutomationService with TrayListener, WindowListener {

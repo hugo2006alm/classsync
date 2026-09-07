@@ -1,4 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as timezone_data;
+import 'package:timezone/timezone.dart' as timezone;
 
 import '../../domain/sync/sync_notifier.dart';
 
@@ -9,6 +11,7 @@ class ClassSyncNotificationService implements SyncNotifier {
   final FlutterLocalNotificationsPlugin _plugin;
 
   Future<void> initialize({void Function(String jobId)? onOpenJob}) async {
+    timezone_data.initializeTimeZones();
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(
@@ -35,6 +38,34 @@ class ClassSyncNotificationService implements SyncNotifier {
       },
     );
   }
+
+  Future<void> scheduleAcademicReminder({
+    required String id,
+    required String title,
+    required DateTime scheduledAt,
+  }) => _plugin.zonedSchedule(
+    id: _stableNotificationId(id),
+    title: 'ClassSync academic reminder',
+    body: title,
+    scheduledDate: timezone.TZDateTime.from(scheduledAt.toUtc(), timezone.UTC),
+    notificationDetails: const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'classsync_academic',
+        'Academic deadlines',
+        channelDescription: 'User-controlled exam and assignment reminders',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+      macOS: DarwinNotificationDetails(),
+      windows: WindowsNotificationDetails(),
+    ),
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    payload: 'academic:$id',
+  );
+
+  Future<void> cancelAcademicReminder(String id) =>
+      _plugin.cancel(id: _stableNotificationId(id));
 
   Future<void> requestPermissions() async {
     await _plugin
@@ -115,4 +146,13 @@ class ClassSyncNotificationService implements SyncNotifier {
       windows: WindowsNotificationDetails(),
     ),
   );
+}
+
+int _stableNotificationId(String value) {
+  var hash = 0x811c9dc5;
+  for (final unit in value.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0x7fffffff;
+  }
+  return hash;
 }
