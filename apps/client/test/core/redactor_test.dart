@@ -12,4 +12,14 @@ void main() {
     expect(output, isNot(contains('ntn_123456')));
     expect(output, contains('[REDACTED]'));
   });
+
+  test('redacts payment references from diagnostics', () {
+    final output = SecretRedactor.redact(
+      'Portal error: Referência Multibanco: 123 456 789 entidade=12345',
+    );
+
+    expect(output, isNot(contains('123 456 789')));
+    expect(output, isNot(contains('12345')));
+    expect(output, contains('[REDACTED]'));
+  });
 }

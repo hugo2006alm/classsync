@@ -127,6 +127,49 @@ void main() {
     expect(value.fee, '3 EUR');
   });
 
+  test('normalizes tuition items without retaining full payment references', () {
+    const html =
+        '''<table><tr><th>ID Cobrança</th><th>Descrição</th><th>Ano Letivo</th><th>Prestação</th><th>Valor</th><th>Por pagar</th><th>Vencimento</th><th>Estado</th><th>Referência Multibanco</th><th>Juros Mora</th></tr>
+      <tr><td>fee-1</td><td>Propina</td><td>2026/2027</td><td>2ª Prestação</td><td>120,50 €</td><td>80,50 €</td><td>15/10/2026</td><td>Pendente</td><td>123 456 789</td><td>0,00 €</td></tr></table>''';
+    final value = parser
+        .parseTuitionCharges(
+          html,
+          sourceUrl: 'https://portal.isep.ipp.pt/payments',
+        )
+        .single;
+    expect(value.id, 'fee-1');
+    expect(value.amount, 120.5);
+    expect(value.outstandingAmount, 80.5);
+    expect(value.dueAt, DateTime(2026, 10, 15));
+    expect(value.state, TuitionPaymentState.pending);
+    expect(value.paymentReferenceAvailable, isTrue);
+    expect(value.paymentReferenceHint, '•••• 6789');
+    expect(value.toJson().values.join(' '), isNot(contains('123456789')));
+  });
+
+  test('stable tuition identity survives due date change and detects overdue', () {
+    const first =
+        '''<table><tr><th>Descrição</th><th>Ano Letivo</th><th>Prestação</th><th>Vencimento</th><th>Estado</th></tr>
+      <tr><td>Propina</td><td>2026/2027</td><td>1ª Prestação</td><td>10/10/2026</td><td>Pendente</td></tr></table>''';
+    const moved =
+        '''<table><tr><th>Descrição</th><th>Ano Letivo</th><th>Prestação</th><th>Vencimento</th><th>Estado</th></tr>
+      <tr><td>Propina</td><td>2026/2027</td><td>1ª Prestação</td><td>20/10/2026</td><td>Pendente</td></tr></table>''';
+    final firstCharge = parser
+        .parseTuitionCharges(
+          first,
+          sourceUrl: 'https://portal.isep.ipp.pt/payments',
+        )
+        .single;
+    final movedCharge = parser
+        .parseTuitionCharges(
+          moved,
+          sourceUrl: 'https://portal.isep.ipp.pt/payments',
+        )
+        .single;
+    expect(movedCharge.id, firstCharge.id);
+    expect(firstCharge.isOverdueAt(DateTime(2026, 10, 11)), isTrue);
+  });
+
   test('parses official notices, FUC context, and lesson summaries', () {
     const noticeHtml =
         '''<table><tr><th>ID</th><th>Assunto</th><th>Remetente</th><th>Data</th><th>Mensagem</th><th>Anexos</th></tr>

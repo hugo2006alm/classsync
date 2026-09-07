@@ -41,7 +41,9 @@ retained as provenance:
 - history: `histórico académico`, `registo académico`, `histórico`;
 - evaluation rules: `ficha de unidade curricular`, `FUC`, `método de avaliação`.
 - official lesson summaries: `sumários`, `sumarios`;
-- electronic notices: `notificações eletrónicas`, `notificações`.
+- electronic notices: `notificações eletrónicas`, `notificações`;
+- tuition and fees: `situação financeira`, `propinas`, `pagamentos`,
+  `emolumentos`.
 
 FUC tables are parsed into alternative weighted formulas and minimum-component
 rules, plus versioned objectives, syllabus, bibliography, workload, teaching
@@ -74,6 +76,23 @@ Portal-reported state, opening/closing window, exam date, and fee when present,
 but never interprets a timetable row as proof of registration and exposes no
 generic Portal write action. Registration reminders point the student back to
 the authoritative Portal page.
+
+## Tuition, fees, and payments
+
+ClassSync reads the authenticated Portal financial page when it is available.
+It stores a stable charge identity, description, academic year, installment,
+amount, outstanding balance, due/paid dates, state, and late-interest marker.
+A changed amount, due date, or state is retained in local academic history
+rather than duplicated.
+
+Finance is strictly read-only. It opens the trusted Portal page and can schedule
+local reminders before a due date or when a charge becomes overdue. A charge
+reported paid or cancelled stops its scheduled reminder. ClassSync never starts
+or guarantees a payment and never stores card or banking credentials.
+
+Payment references are sensitive. Complete references never enter cached
+records, device-sync payloads, the relay, or diagnostics. The UI keeps only a
+masked final-four-character hint for recognising an item before opening Portal.
 
 ## Known limitations
 

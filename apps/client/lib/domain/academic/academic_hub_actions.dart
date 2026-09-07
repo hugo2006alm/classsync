@@ -17,6 +17,11 @@ abstract interface class AcademicHubActions {
   Future<void> addManualEvaluation(EvaluationEvent event);
   Future<void> addManualGrade(GradeComponent component);
   Future<void> setEvaluationReminder(AcademicRecord record, int? minutes);
+  Future<void> setTuitionReminder(
+    AcademicRecord record,
+    int? minutes, {
+    required bool overdueReminder,
+  });
   Future<void> setEvaluationTypeReminder(String type, int? minutes);
   Future<void> setMoodleCourseSubject(
     AcademicRecord course,

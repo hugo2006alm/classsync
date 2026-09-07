@@ -79,6 +79,7 @@ abstract interface class PortalAdapter {
   Future<List<FucProfile>> getFucProfiles();
   Future<List<PortalNotification>> getNotifications();
   Future<List<OfficialLessonSummary>> getLessonSummaries();
+  Future<List<TuitionCharge>> getTuitionCharges();
 }
 
 class IsepPortalClient implements PortalAdapter {
@@ -241,6 +242,18 @@ class IsepPortalClient implements PortalAdapter {
   Future<List<OfficialLessonSummary>> getLessonSummaries() async {
     final page = await _featurePage(const ['sumários', 'sumarios']);
     return _parser.parseLessonSummaries(page.html, sourceUrl: page.url);
+  }
+
+  @override
+  Future<List<TuitionCharge>> getTuitionCharges() async {
+    final page = await _featurePage(const [
+      'situação financeira',
+      'situacao financeira',
+      'propinas',
+      'pagamentos',
+      'emolumentos',
+    ]);
+    return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
   }
 
   Future<PortalDocument> _featurePage(List<String> labels) async {
@@ -954,6 +967,127 @@ class IsepPortalParser {
     );
   }
 
+  List<TuitionCharge> parseTuitionCharges(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final result = <TuitionCharge>[];
+    for (final row in _tableRows(html)) {
+      final title = _value(row, const [
+        'tipo',
+        'descricao',
+        'designacao',
+        'rubrica',
+        'servico',
+        'encargo',
+      ]);
+      final academicYear = _nullable(
+        _value(row, const ['ano letivo', 'ano academico', 'ano']),
+      );
+      final installment = _nullable(
+        _value(row, const [
+          'prestacao',
+          'parcela',
+          'numero prestacao',
+          'n prestacao',
+        ]),
+      );
+      final dueAt = _dateTime(
+        _value(row, const [
+          'data limite',
+          'data vencimento',
+          'vencimento',
+          'prazo pagamento',
+          'limite pagamento',
+        ]),
+        _value(row, const ['hora limite', 'hora vencimento']),
+      );
+      final status = _paymentState(
+        _value(row, const ['estado', 'situacao', 'status']),
+      );
+      final amount = _money(
+        _value(row, const ['valor a pagar', 'montante', 'valor', 'total']),
+      );
+      final outstanding = _money(
+        _value(row, const [
+          'em divida',
+          'valor em divida',
+          'por pagar',
+          'saldo',
+          'restante',
+        ]),
+      );
+      final rawReference = _value(row, const [
+        'referencia multibanco',
+        'referencia pagamento',
+        'referencia',
+      ]);
+      final lateInterest = _value(row, const [
+        'juros mora',
+        'juros',
+        'mora',
+        'em atraso',
+      ]);
+      if (title.isEmpty &&
+          academicYear == null &&
+          installment == null &&
+          dueAt == null) {
+        continue;
+      }
+      final explicitId = _value(row, const [
+        'id pagamento',
+        'id cobranca',
+        'id',
+        'numero documento',
+        'documento',
+      ]);
+      final id = explicitId.ifEmpty(
+        _financialIdentity(
+          title: title,
+          academicYear: academicYear,
+          installment: installment,
+        ),
+      );
+      result.add(
+        TuitionCharge(
+          id: id,
+          title: title.ifEmpty('Portal charge'),
+          state: status,
+          sourceUrl: sourceUrl,
+          academicYear: academicYear,
+          installment: installment,
+          amount: amount,
+          outstandingAmount: outstanding,
+          dueAt: dueAt,
+          paidAt: _dateTime(
+            _value(row, const [
+              'data pagamento',
+              'pago em',
+              'data liquidacao',
+              'liquidado em',
+            ]),
+            _value(row, const ['hora pagamento', 'hora liquidacao']),
+          ),
+          hasLateInterest:
+              _money(lateInterest) != null ||
+              _normalize(lateInterest).contains('sim') ||
+              _normalize(lateInterest).contains('atraso'),
+          paymentReferenceAvailable: rawReference.isNotEmpty,
+          paymentReferenceHint: _maskedReference(rawReference),
+        ),
+      );
+    }
+    final values = _dedupe(result, (item) => item.id);
+    if (values.isNotEmpty) return values;
+    final normalizedPage = _normalize(html);
+    if (normalizedPage.contains('nao existem pagamentos') ||
+        normalizedPage.contains('nao existem dividas') ||
+        normalizedPage.contains('sem valores a pagamento')) {
+      return const [];
+    }
+    return _requireParsed(values, 'tuition and payments');
+  }
+
   static List<Map<String, String>> _tableRows(String html) {
     final document = html_parser.parse(html);
     final result = <Map<String, String>>[];
@@ -1017,6 +1151,60 @@ class IsepPortalParser {
 
   static double? _number(String value) =>
       double.tryParse(value.replaceAll('%', '').replaceAll(',', '.').trim());
+
+  static double? _money(String value) {
+    var compact = value
+        .replaceAll(RegExp(r'[^0-9,.-]'), '')
+        .replaceAll(RegExp(r'(?<=-)\.'), '');
+    if (compact.isEmpty) return null;
+    if (compact.contains(',') && compact.contains('.')) {
+      compact = compact.replaceAll('.', '').replaceAll(',', '.');
+    } else if (compact.contains(',')) {
+      compact = compact.replaceAll(',', '.');
+    }
+    return double.tryParse(compact);
+  }
+
+  static TuitionPaymentState _paymentState(String value) {
+    final normalized = _normalize(value);
+    if (normalized.contains('liquid') ||
+        normalized.contains('pag') ||
+        normalized.contains('regulariz')) {
+      return TuitionPaymentState.paid;
+    }
+    if (normalized.contains('anulad') || normalized.contains('cancel')) {
+      return TuitionPaymentState.cancelled;
+    }
+    if (normalized.contains('atras') || normalized.contains('vencid')) {
+      return TuitionPaymentState.overdue;
+    }
+    if (normalized.contains('parcial')) return TuitionPaymentState.partial;
+    if (normalized.contains('pend') ||
+        normalized.contains('abert') ||
+        normalized.contains('pagamento')) {
+      return TuitionPaymentState.pending;
+    }
+    return TuitionPaymentState.unknown;
+  }
+
+  static String _financialIdentity({
+    required String title,
+    required String? academicYear,
+    required String? installment,
+  }) => [
+    _normalize(title),
+    _normalize(academicYear ?? ''),
+    _normalize(installment ?? 'single'),
+  ].join(':');
+
+  static String? _maskedReference(String value) {
+    final compact = value.replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty) return null;
+    final suffix = compact.length <= 4
+        ? compact
+        : compact.substring(compact.length - 4);
+    return '•••• $suffix';
+  }
 
   static List<String> _splitList(String value) => value
       .split(RegExp(r'(?:\r?\n|;|\s[•·]\s)'))

@@ -1115,6 +1115,10 @@ Map<String, dynamic> _preserveLocalAcademicFields(
   if (old?['reminderMinutes'] != null && result['reminderMinutes'] == null) {
     result['reminderMinutes'] = old!['reminderMinutes'];
   }
+  if (old?['overdueReminderConfigured'] == true) {
+    result['overdueReminder'] = old!['overdueReminder'];
+    result['overdueReminderConfigured'] = true;
+  }
   if (old?['status'] != null && incoming.containsKey('sourceLectureId')) {
     result['status'] = old!['status'];
   }
@@ -1136,6 +1140,8 @@ List<String> _changedAcademicFields(
 ) {
   const ignored = {
     'reminderMinutes',
+    'overdueReminder',
+    'overdueReminderConfigured',
     'provenance',
     'status',
     'userEdited',
