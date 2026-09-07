@@ -154,7 +154,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                 TextField(
                   controller: user,
                   decoration: const InputDecoration(
-                    labelText: 'Student username',
+                    labelText: 'Portal username or ISEP email',
+                    helperText:
+                        'Use the same account as portal.isep.ipp.pt. ISEP email suffix is removed automatically.',
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -194,7 +196,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
           FilledButton(
             onPressed: () async {
               try {
-                if (user.text.trim().isNotEmpty && password.text.isNotEmpty) {
+                if (user.text.trim().isNotEmpty) {
                   await actions.connectPortal(
                     username: user.text,
                     password: password.text.isEmpty ? null : password.text,

@@ -13,7 +13,7 @@ class ClassDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsValue = ref.watch(activeSubjectsProvider);
+    final subjectsValue = ref.watch(subjectsProvider);
     if (subjectsValue.isLoading) {
       return const PageFrame(
         title: 'Opening class',
@@ -50,7 +50,7 @@ class ClassDetailScreen extends ConsumerWidget {
         child: EmptyState(
           icon: Icons.search_off_rounded,
           title: 'Class is not in the active cache',
-          message: 'It may have changed status in Notion.',
+          message: 'Refresh classes to load its latest Notion status.',
           action: FilledButton(
             onPressed: () => context.go('/classes'),
             child: const Text('Back to classes'),

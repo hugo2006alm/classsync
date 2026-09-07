@@ -10,6 +10,7 @@ import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/settings/fireflies_connection.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/features/classes/class_detail_screen.dart';
+import 'package:classsync/features/classes/classes_screen.dart';
 import 'package:classsync/features/academic/academic_screen.dart';
 import 'package:classsync/features/overview/overview_screen.dart';
 import 'package:classsync/features/library/library_screen.dart';
@@ -218,6 +219,39 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('classes keep future and previous subjects in compact drawers', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final future = _copySubject(
+      id: 'future',
+      name: 'Future systems',
+      status: 'Not Done',
+    );
+    final previous = _copySubject(
+      id: 'previous',
+      name: 'Past systems',
+      status: 'Done',
+    );
+    await tester.pumpWidget(
+      _app(
+        database,
+        const ClassesScreen(),
+        subjects: [_subject, future, previous],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Future classes'), findsOneWidget);
+    expect(find.text('Previous classes'), findsOneWidget);
+    expect(find.text('Future systems'), findsNothing);
+    await tester.tap(find.text('Future classes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Future systems'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
   testWidgets('Notion library groups summaries without duplicating Ano', (
     tester,
   ) async {
@@ -240,6 +274,52 @@ void main() {
 
     expect(find.text('3º Ano · 1º Semestre'), findsOneWidget);
     expect(find.text('Process scheduling'), findsOneWidget);
+    await tester.tap(find.text('Operating Systems'));
+    await tester.pumpAndSettle();
+    expect(find.text('Process scheduling'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('library detail exposes previous and next lecture navigation', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final library = NotionLibraryData(
+      subjects: {_subject.notionId: _subject},
+      summaries: [
+        NotionSummaryRecord(
+          id: 'older',
+          title: 'Older lecture',
+          date: DateTime(2026, 9, 1),
+          subjectIds: const ['subject-1'],
+        ),
+        NotionSummaryRecord(
+          id: 'newer',
+          title: 'Newer lecture',
+          date: DateTime(2026, 9, 2),
+          subjectIds: const ['subject-1'],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      _app(
+        database,
+        const LibraryDetailScreen(pageId: 'older', title: 'Older lecture'),
+        library: library,
+        notionBlocks: const [],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final previous = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Previous'),
+    );
+    final next = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Next'),
+    );
+    expect(previous.onPressed, isNull);
+    expect(next.onPressed, isNotNull);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -258,6 +338,7 @@ Widget _app(
   SecureCredentialStore? credentialStore,
   TargetPlatform? platform,
   NotionLibraryData? library,
+  List<NotionContentBlock>? notionBlocks,
   AppSettings settings = AppSettings.defaults,
 }) => ProviderScope(
   overrides: [
@@ -268,12 +349,19 @@ Widget _app(
     activeSubjectsProvider.overrideWith(
       (ref) => Stream<List<AcademicSubject>>.value(subjects),
     ),
+    subjectsProvider.overrideWith(
+      (ref) => Stream<List<AcademicSubject>>.value(subjects),
+    ),
     syncJobsProvider.overrideWith(
       (ref) => Stream<List<SyncJob>>.value(const <SyncJob>[]),
     ),
     settingsProvider.overrideWith((ref) => Stream<AppSettings>.value(settings)),
     if (library != null)
       notionLibraryProvider.overrideWith((ref) async => library),
+    if (notionBlocks != null)
+      notionPageContentProvider.overrideWith(
+        (ref, pageId) async => notionBlocks,
+      ),
   ],
   child: MaterialApp(
     theme: ClassSyncTheme.light().copyWith(platform: platform),
@@ -292,6 +380,19 @@ final _subject = AcademicSubject(
   year: '3º',
   semester: '1º Semestre',
   status: 'In progress',
+  lastSyncedAt: DateTime.utc(2026, 9, 5),
+);
+
+AcademicSubject _copySubject({
+  required String id,
+  required String name,
+  required String status,
+}) => AcademicSubject(
+  notionId: id,
+  name: name,
+  year: '3º',
+  semester: '1º Semestre',
+  status: status,
   lastSyncedAt: DateTime.utc(2026, 9, 5),
 );
 

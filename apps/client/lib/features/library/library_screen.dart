@@ -104,13 +104,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         if (summaries.isEmpty)
           const _EmptyLibrary()
         else
-          ..._grouped(summaries, data.subjects).entries.map(
-            (group) => _SemesterSection(
+          for (final (index, group) in _grouped(
+            summaries,
+            data.subjects,
+          ).entries.indexed)
+            _SemesterSection(
               label: group.key,
               summaries: group.value,
               subjects: data.subjects,
+              initiallyExpanded: index == 0,
             ),
-          ),
       ],
     );
   }
@@ -154,58 +157,92 @@ class _SemesterSection extends StatelessWidget {
     required this.label,
     required this.summaries,
     required this.subjects,
+    required this.initiallyExpanded,
   });
   final String label;
   final List<NotionSummaryRecord> summaries;
   final Map<String, AcademicSubject> subjects;
+  final bool initiallyExpanded;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 28),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+  Widget build(BuildContext context) {
+    final bySubject = <String, List<NotionSummaryRecord>>{};
+    for (final summary in summaries) {
+      final key = summary.subjectIds.firstOrNull ?? '__unlinked__';
+      bySubject.putIfAbsent(key, () => []).add(summary);
+    }
+    final groups = bySubject.entries.toList()
+      ..sort((a, b) {
+        final left = subjects[a.key]?.name ?? 'Unlinked notes';
+        final right = subjects[b.key]?.name ?? 'Unlinked notes';
+        return left.compareTo(right);
+      });
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          key: PageStorageKey('semester:$label'),
+          initiallyExpanded: initiallyExpanded,
+          leading: CircleAvatar(
+            radius: 16,
+            backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
+            child: Text('${summaries.length}'),
+          ),
+          title: Text(label, style: Theme.of(context).textTheme.titleLarge),
+          subtitle: Text(
+            '${groups.length} ${groups.length == 1 ? 'subject' : 'subjects'}',
+          ),
           children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.tertiary,
-                shape: BoxShape.circle,
+            const Divider(height: 1),
+            for (final (index, group) in groups.indexed)
+              _SubjectSection(
+                subject: subjects[group.key],
+                summaries: group.value,
+                subjects: subjects,
+                initiallyExpanded: index == 0,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.titleLarge,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${summaries.length}',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
           ],
         ),
-        const SizedBox(height: 12),
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (var index = 0; index < summaries.length; index++) ...[
-                _SummaryTile(summary: summaries[index], subjects: subjects),
-                if (index < summaries.length - 1) const Divider(height: 1),
-              ],
-            ],
-          ),
-        ),
+      ),
+    );
+  }
+}
+
+class _SubjectSection extends StatelessWidget {
+  const _SubjectSection({
+    required this.subject,
+    required this.summaries,
+    required this.subjects,
+    required this.initiallyExpanded,
+  });
+
+  final AcademicSubject? subject;
+  final List<NotionSummaryRecord> summaries;
+  final Map<String, AcademicSubject> subjects;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered = [
+      ...summaries,
+    ]..sort((a, b) => (b.date ?? DateTime(0)).compareTo(a.date ?? DateTime(0)));
+    return ExpansionTile(
+      key: PageStorageKey('subject:${subject?.notionId ?? 'unlinked'}'),
+      initiallyExpanded: initiallyExpanded,
+      leading: const Icon(Icons.book_outlined),
+      title: Text(subject?.name ?? 'Unlinked notes'),
+      subtitle: Text(
+        '${ordered.length} ${ordered.length == 1 ? 'lecture' : 'lectures'}',
+      ),
+      children: [
+        for (var index = 0; index < ordered.length; index++) ...[
+          _SummaryTile(summary: ordered[index], subjects: subjects),
+          if (index < ordered.length - 1) const Divider(height: 1, indent: 72),
+        ],
       ],
-    ),
-  );
+    );
+  }
 }
 
 class _SummaryTile extends StatelessWidget {
@@ -225,15 +262,7 @@ class _SummaryTile extends StatelessWidget {
       title: Text(summary.title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text('${subject?.name ?? 'Unlinked class'} · $date'),
       trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () => context.go(
-        Uri(
-          path: '/library/${Uri.encodeComponent(summary.id)}',
-          queryParameters: {
-            'title': summary.title,
-            if (summary.url != null) 'url': summary.url!,
-          },
-        ).toString(),
-      ),
+      onTap: () => _openSummary(context, summary),
     );
   }
 }
@@ -252,15 +281,24 @@ class LibraryDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final content = ref.watch(notionPageContentProvider(pageId));
+    final library = ref.watch(notionLibraryProvider).valueOrNull;
+    final current = library?.summaries
+        .where((summary) => summary.id == pageId)
+        .firstOrNull;
+    final neighbours = library == null
+        ? const _SummaryNeighbours()
+        : _summaryNeighbours(current, library.summaries);
+    final effectiveTitle = current?.title ?? title;
+    final effectiveUrl = current?.url ?? notionUrl;
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Text(effectiveTitle),
         actions: [
-          if (notionUrl != null)
+          if (effectiveUrl != null)
             IconButton(
               tooltip: 'Open in Notion',
               onPressed: () => launchTrustedUrl(
-                notionUrl!,
+                effectiveUrl,
                 allowedHosts: const {'notion.so', 'notion.site'},
               ),
               icon: const Icon(Icons.open_in_new_rounded),
@@ -285,8 +323,84 @@ class LibraryDetailScreen extends ConsumerWidget {
                 ),
         ),
       ),
+      bottomNavigationBar:
+          neighbours.previous == null && neighbours.next == null
+          ? null
+          : SafeArea(
+              top: false,
+              child: Material(
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: neighbours.previous == null
+                              ? null
+                              : () =>
+                                    _openSummary(context, neighbours.previous!),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          label: const Text('Previous'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: neighbours.next == null
+                              ? null
+                              : () => _openSummary(context, neighbours.next!),
+                          icon: const Icon(Icons.arrow_forward_rounded),
+                          label: const Text('Next'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
     );
   }
+}
+
+void _openSummary(BuildContext context, NotionSummaryRecord summary) {
+  context.go(
+    Uri(
+      path: '/library/${Uri.encodeComponent(summary.id)}',
+      queryParameters: {
+        'title': summary.title,
+        if (summary.url != null) 'url': summary.url!,
+      },
+    ).toString(),
+  );
+}
+
+_SummaryNeighbours _summaryNeighbours(
+  NotionSummaryRecord? current,
+  List<NotionSummaryRecord> all,
+) {
+  if (current == null) return const _SummaryNeighbours();
+  final subjectId = current.subjectIds.firstOrNull;
+  final sameSubject =
+      all.where((summary) {
+        final candidate = summary.subjectIds.firstOrNull;
+        return candidate == subjectId;
+      }).toList()..sort((a, b) {
+        final byDate = (a.date ?? DateTime(0)).compareTo(b.date ?? DateTime(0));
+        return byDate == 0 ? a.id.compareTo(b.id) : byDate;
+      });
+  final index = sameSubject.indexWhere((summary) => summary.id == current.id);
+  if (index < 0) return const _SummaryNeighbours();
+  return _SummaryNeighbours(
+    previous: index > 0 ? sameSubject[index - 1] : null,
+    next: index + 1 < sameSubject.length ? sameSubject[index + 1] : null,
+  );
+}
+
+class _SummaryNeighbours {
+  const _SummaryNeighbours({this.previous, this.next});
+  final NotionSummaryRecord? previous;
+  final NotionSummaryRecord? next;
 }
 
 class _NotionBlock extends StatelessWidget {

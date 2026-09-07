@@ -82,10 +82,12 @@ class IsepPortalClient implements PortalAdapter {
   @override
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
     try {
-      final login = await _request('/');
+      // `/` resolves to host root and loses WebForms fields when redirected.
+      // `./` targets the real form action at `/intranet/`.
+      final login = await _request('./');
       final state = _hiddenFields(login.document);
       final response = await _request(
-        '/',
+        './',
         method: 'POST',
         data: {
           ...state,

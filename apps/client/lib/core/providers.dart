@@ -70,6 +70,10 @@ final activeSubjectsProvider = StreamProvider<List<AcademicSubject>>(
   (ref) => ref.watch(databaseProvider).watchActiveSubjects(),
 );
 
+final subjectsProvider = StreamProvider<List<AcademicSubject>>(
+  (ref) => ref.watch(databaseProvider).watchSubjects(),
+);
+
 final academicRecordsProvider = StreamProvider<List<AcademicRecord>>(
   (ref) => ref.watch(databaseProvider).watchAcademicRecords(),
 );

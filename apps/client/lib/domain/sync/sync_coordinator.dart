@@ -205,12 +205,12 @@ class SyncCoordinator {
       );
     }
     final token = await _requiredCredential(CredentialKey.notionToken);
-    final subjects = await _notion.queryActiveSubjects(
+    final subjects = await _notion.querySubjects(
       token: token,
       dataSourceId: dataSourceId,
     );
     await _database.replaceSubjects(subjects);
-    return subjects;
+    return subjects.where((subject) => subject.isActive).toList();
   }
 
   Future<String> importTranscript({

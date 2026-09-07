@@ -489,7 +489,7 @@ class _FakeNotion extends NotionClient {
   var failQuery = false;
 
   @override
-  Future<List<AcademicSubject>> queryActiveSubjects({
+  Future<List<AcademicSubject>> querySubjects({
     required String token,
     required String dataSourceId,
   }) async {
