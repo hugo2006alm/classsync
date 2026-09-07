@@ -15,6 +15,7 @@ class AdaptiveAppShell extends StatelessWidget {
     _Destination('Overview', Icons.home_rounded, '/overview'),
     _Destination('Classes', Icons.school_rounded, '/classes'),
     _Destination('Library', Icons.menu_book_rounded, '/library'),
+    _Destination('Academic', Icons.calendar_month_rounded, '/academic'),
     _Destination('Sync', Icons.sync_rounded, '/sync'),
     _Destination('Settings', Icons.tune_rounded, '/settings'),
   ];

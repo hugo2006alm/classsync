@@ -10,6 +10,8 @@ flowchart LR
   Client -->|structured prompts| Gemini[Gemini API]
   Client -->|subjects and summaries| Notion[Notion API]
   Client <--> SQLite[(Local Drift / SQLite)]
+  Client --> Portal[ISEP Portal WebForms]
+  Client --> Moodle[Moodle Web Services]
   Client --> Secure[OS secure storage]
 ```
 
@@ -18,6 +20,8 @@ flowchart LR
 - `app`: bootstrap, routing, adaptive application shell, theme.
 - `core`: database, security, networking, diagnostics, background services.
 - `domain/academic`: semesters, subjects, lectures, summaries.
+- `domain/academic`: also normalized timetable, evaluations, provenance, and
+  grade calculation rules; no Flutter or HTTP dependencies.
 - `domain/sync`: durable jobs, transitions, retry policy, coordinator.
 - `features`: overview, classes, sync, setup, settings.
 - `platform`: Windows tray/autostart and mobile background hooks.
@@ -28,9 +32,14 @@ Features depend on domain contracts. Integration adapters depend on Dio and secu
 
 - Notion: canonical subjects and published summaries.
 - Fireflies: canonical transcript source.
-- Local SQLite: operational queue, cache, preferences, diagnostics, corrections.
+- Local SQLite: operational queue, academic offline cache/change history,
+  preferences, diagnostics, corrections.
 - Cloudflare D1: transcript-ready IDs, per-device acknowledgements, hashed
   device identity, processing claims, and bounded push-delivery metadata.
 - OS secure storage: all credentials.
+
+Portal and Moodle are read-only academic sources. Their adapters normalize data
+at one integration boundary. No Portal/Moodle content or credentials enter the
+relay. See [Portal](isep-portal.md) and [Moodle](moodle.md).
 
 See ADRs under `docs/architecture/` for trade-offs.

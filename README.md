@@ -23,6 +23,13 @@ them with Gemini, and publishes structured study notes to Notion.
   shared preferences, and bounded lecture status metadata.
 - In-app Notion Library grouped by academic semester, with readable summary
   pages and a direct Open in Notion action.
+- Read-only ISEP Portal integration for enrolment, timetable, official exams,
+  published grades, and academic history, with fail-closed WebForms parsing.
+- Moodle Web Services integration for enrolled courses, assignments, and
+  announcements; ambiguous subject mappings stay reviewable.
+- Offline Academic hub with week timetable, unified Portal/Moodle/manual
+  evaluation calendar and agenda, per-event/type local reminders, grade
+  provenance/history, FUC formula review, and weighted target-grade calculations.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.
@@ -40,6 +47,8 @@ flowchart LR
   C -->|structured prompts| G[Gemini]
   C -->|subjects and summaries| N[Notion]
   C --> S[OS secure storage]
+  P[ISEP Portal] --> C
+  M[Moodle] --> C
 ```
 
 Notion and Fireflies remain the content systems of record. The relay never sees
@@ -80,6 +89,12 @@ Required Notion data-source properties:
   `Status`; optional `Aliases`, `Professores`, `Horário`.
 - **Histórico de Resumos:** `Nome`, `Data`, `Cadeira`; optional
   `Fireflies ID`, which helps reconciliation after interrupted publication.
+
+Optional academic integrations are configured under **Academic → Connections**.
+Portal username/password and the Moodle Web Services token stay in OS secure
+storage. Academic records remain in the local offline cache and never pass
+through the relay. See [ISEP Portal details](docs/isep-portal.md) and
+[Moodle details](docs/moodle.md).
 
 ## Deploy the relay
 

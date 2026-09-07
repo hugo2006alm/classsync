@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 
 import '../../../../domain/academic/academic_models.dart';
+import '../../../../domain/academic/academic_hub_models.dart';
 import '../../../../domain/settings/app_settings.dart';
 import '../../../../domain/sync/sync_models.dart';
 import '../../../../domain/sync/transcript_chunker.dart';
@@ -64,6 +65,7 @@ class GeminiClient {
     required String model,
     required LectureTranscript transcript,
     required List<AcademicSubject> subjects,
+    TimetableContext? timetableContext,
   }) async {
     if (subjects.isEmpty) {
       throw const IntegrationException(
@@ -97,6 +99,8 @@ Meeting title: ${transcript.title}
 Date: ${transcript.date.toIso8601String()}
 Participants: ${transcript.participants.join(', ')}
 Candidates: ${jsonEncode(candidateJson)}
+Timetable context: ${timetableContext?.explanation ?? 'unavailable'}
+Expected timetable subject IDs: ${timetableContext?.subjectIds.join(', ') ?? 'none'}
 
 Representative transcript sample:
 ${_classificationSample(transcript)}

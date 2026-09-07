@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../domain/academic/academic_models.dart';
+import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
 
@@ -124,6 +125,37 @@ class ClassificationCorrections extends Table {
   DateTimeColumn get createdAt => dateTime()();
 }
 
+@DataClassName('AcademicCacheRow')
+class AcademicCacheRecords extends Table {
+  TextColumn get recordKey => text()();
+  TextColumn get source => text()();
+  TextColumn get kind => text()();
+  TextColumn get externalId => text()();
+  TextColumn get subjectId => text().nullable()();
+  TextColumn get title => text()();
+  DateTimeColumn get startsAt => dateTime().nullable()();
+  DateTimeColumn get endsAt => dateTime().nullable()();
+  TextColumn get payloadJson => text()();
+  TextColumn get fingerprint => text()();
+  TextColumn get changedFieldsJson =>
+      text().withDefault(const Constant('[]'))();
+  DateTimeColumn get lastChangedAt => dateTime().nullable()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {recordKey};
+}
+
+@DataClassName('AcademicChangeRow')
+class AcademicChangeRecords extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get recordKey => text()();
+  TextColumn get kind => text()();
+  TextColumn get previousPayloadJson => text()();
+  TextColumn get changedFieldsJson => text()();
+  DateTimeColumn get changedAt => dateTime()();
+}
+
 @DriftDatabase(
   tables: [
     CachedSubjects,
@@ -132,6 +164,8 @@ class ClassificationCorrections extends Table {
     SyncCursors,
     SettingsRecords,
     ClassificationCorrections,
+    AcademicCacheRecords,
+    AcademicChangeRecords,
   ],
 )
 class ClassSyncDatabase extends _$ClassSyncDatabase {
@@ -139,7 +173,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -158,6 +192,10 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         await migrator.addColumn(syncJobs, syncJobs.summaryPartialsJson);
         await migrator.addColumn(syncJobs, syncJobs.leaseOwner);
         await migrator.addColumn(syncJobs, syncJobs.leaseExpiresAt);
+      }
+      if (from < 5) {
+        await migrator.createTable(academicCacheRecords);
+        await migrator.createTable(academicChangeRecords);
       }
     },
   );
@@ -257,6 +295,157 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           );
         });
       });
+
+  Stream<List<AcademicRecord>> watchAcademicRecords({
+    Set<AcademicRecordKind>? kinds,
+  }) {
+    final query = select(academicCacheRecords)
+      ..orderBy([
+        (row) => OrderingTerm.asc(row.startsAt),
+        (row) => OrderingTerm.asc(row.title),
+      ]);
+    if (kinds != null && kinds.isNotEmpty) {
+      query.where((row) => row.kind.isIn(kinds.map((item) => item.name)));
+    }
+    return query.watch().map(
+      (rows) => rows.map(_academicRecordFromRow).toList(),
+    );
+  }
+
+  Future<List<AcademicRecord>> readAcademicRecords({
+    AcademicSource? source,
+    AcademicRecordKind? kind,
+  }) async {
+    final query = select(academicCacheRecords);
+    if (source != null) query.where((row) => row.source.equals(source.name));
+    if (kind != null) query.where((row) => row.kind.equals(kind.name));
+    return (await query.get()).map(_academicRecordFromRow).toList();
+  }
+
+  Future<AcademicRecord?> readAcademicRecord(String key) async =>
+      (await (select(
+        academicCacheRecords,
+      )..where((row) => row.recordKey.equals(key))).getSingleOrNull())?.let(
+        _academicRecordFromRow,
+      );
+
+  Future<void> replaceAcademicRecords({
+    required AcademicSource source,
+    required AcademicRecordKind kind,
+    required List<AcademicRecord> records,
+  }) => transaction(() async {
+    final existingRows =
+        await (select(academicCacheRecords)..where(
+              (row) =>
+                  row.source.equals(source.name) & row.kind.equals(kind.name),
+            ))
+            .get();
+    final existing = {for (final row in existingRows) row.recordKey: row};
+    final incomingKeys = records.map((item) => item.key).toSet();
+    for (final record in records) {
+      final old = existing[record.key];
+      final payload = _preserveLocalAcademicFields(
+        old == null
+            ? null
+            : jsonDecode(old.payloadJson) as Map<String, dynamic>,
+        record.payload,
+      );
+      final fingerprint = jsonEncode(_canonicalJson(payload));
+      final changedFields = old == null || old.fingerprint == fingerprint
+          ? const <String>[]
+          : _changedAcademicFields(
+              jsonDecode(old.payloadJson) as Map<String, dynamic>,
+              payload,
+            );
+      final changedAt = changedFields.isEmpty
+          ? old?.lastChangedAt
+          : DateTime.now().toUtc();
+      if (old != null && changedFields.isNotEmpty) {
+        await into(academicChangeRecords).insert(
+          AcademicChangeRecordsCompanion.insert(
+            recordKey: record.key,
+            kind: kind.name,
+            previousPayloadJson: old.payloadJson,
+            changedFieldsJson: jsonEncode(changedFields),
+            changedAt: changedAt!,
+          ),
+        );
+      }
+      await into(academicCacheRecords).insertOnConflictUpdate(
+        AcademicCacheRecordsCompanion.insert(
+          recordKey: record.key,
+          source: source.name,
+          kind: kind.name,
+          externalId: record.externalId,
+          subjectId: Value(record.subjectId),
+          title: record.title,
+          startsAt: Value(record.startsAt),
+          endsAt: Value(record.endsAt),
+          payloadJson: jsonEncode(payload),
+          fingerprint: fingerprint,
+          changedFieldsJson: Value(jsonEncode(changedFields)),
+          lastChangedAt: Value(changedAt),
+          syncedAt: record.syncedAt,
+        ),
+      );
+    }
+    for (final old in existingRows) {
+      if (!incomingKeys.contains(old.recordKey)) {
+        await (delete(
+          academicCacheRecords,
+        )..where((row) => row.recordKey.equals(old.recordKey))).go();
+      }
+    }
+  });
+
+  Future<void> upsertAcademicRecord(AcademicRecord record) async {
+    final old = await readAcademicRecord(record.key);
+    final payload = record.payload;
+    final changedFields = old == null
+        ? const <String>[]
+        : _changedAcademicFields(old.payload, payload);
+    final changedAt = changedFields.isEmpty
+        ? old?.lastChangedAt
+        : DateTime.now().toUtc();
+    if (old != null && changedFields.isNotEmpty) {
+      await into(academicChangeRecords).insert(
+        AcademicChangeRecordsCompanion.insert(
+          recordKey: record.key,
+          kind: record.kind.name,
+          previousPayloadJson: jsonEncode(old.payload),
+          changedFieldsJson: jsonEncode(changedFields),
+          changedAt: changedAt!,
+        ),
+      );
+    }
+    await into(academicCacheRecords).insertOnConflictUpdate(
+      AcademicCacheRecordsCompanion.insert(
+        recordKey: record.key,
+        source: record.source.name,
+        kind: record.kind.name,
+        externalId: record.externalId,
+        subjectId: Value(record.subjectId),
+        title: record.title,
+        startsAt: Value(record.startsAt),
+        endsAt: Value(record.endsAt),
+        payloadJson: jsonEncode(payload),
+        fingerprint: jsonEncode(_canonicalJson(payload)),
+        changedFieldsJson: Value(jsonEncode(changedFields)),
+        lastChangedAt: Value(changedAt),
+        syncedAt: record.syncedAt,
+      ),
+    );
+  }
+
+  Future<void> deleteAcademicRecord(String key) => (delete(
+    academicCacheRecords,
+  )..where((row) => row.recordKey.equals(key))).go();
+
+  Stream<List<AcademicChangeRow>> watchAcademicChanges({int limit = 100}) =>
+      (select(academicChangeRecords)
+            ..orderBy([(row) => OrderingTerm.desc(row.changedAt)])
+            ..limit(limit))
+          .watch();
 
   Stream<List<SyncJob>> watchJobs() =>
       (select(syncJobs)..orderBy([(row) => OrderingTerm.desc(row.updatedAt)]))
@@ -833,6 +1022,27 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     summaryPartialsJson: row.summaryPartialsJson,
   );
 
+  AcademicRecord _academicRecordFromRow(AcademicCacheRow row) => AcademicRecord(
+    key: row.recordKey,
+    source: AcademicSource.values.firstWhere(
+      (item) => item.name == row.source,
+      orElse: () => AcademicSource.manual,
+    ),
+    kind: AcademicRecordKind.values.firstWhere(
+      (item) => item.name == row.kind,
+      orElse: () => AcademicRecordKind.evaluation,
+    ),
+    externalId: row.externalId,
+    title: row.title,
+    subjectId: row.subjectId,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    payload: jsonDecode(row.payloadJson) as Map<String, dynamic>,
+    changedFields: _decodeStringList(row.changedFieldsJson),
+    lastChangedAt: row.lastChangedAt,
+    syncedAt: row.syncedAt,
+  );
+
   AppSettings _settingsFromRow(SettingsRow row) => AppSettings(
     setupComplete: row.setupComplete,
     automaticSync: row.automaticSync,
@@ -870,3 +1080,41 @@ List<String> _decodeStringList(String source) =>
     (jsonDecode(source) as List<dynamic>)
         .map((item) => item.toString())
         .toList();
+
+Map<String, dynamic> _preserveLocalAcademicFields(
+  Map<String, dynamic>? old,
+  Map<String, dynamic> incoming,
+) {
+  final result = <String, dynamic>{...incoming};
+  if (old?['reminderMinutes'] != null && result['reminderMinutes'] == null) {
+    result['reminderMinutes'] = old!['reminderMinutes'];
+  }
+  return result;
+}
+
+List<String> _changedAcademicFields(
+  Map<String, dynamic> old,
+  Map<String, dynamic> current,
+) {
+  const ignored = {'reminderMinutes', 'provenance'};
+  final keys = {...old.keys, ...current.keys}..removeAll(ignored);
+  return keys
+      .where(
+        (key) =>
+            jsonEncode(_canonicalJson(old[key])) !=
+            jsonEncode(_canonicalJson(current[key])),
+      )
+      .toList()
+    ..sort();
+}
+
+dynamic _canonicalJson(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    final keys = value.keys.toList()..sort();
+    return <String, dynamic>{
+      for (final key in keys) key: _canonicalJson(value[key]),
+    };
+  }
+  if (value is List) return value.map(_canonicalJson).toList();
+  return value;
+}

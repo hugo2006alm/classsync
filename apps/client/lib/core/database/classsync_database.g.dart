@@ -4776,6 +4776,1206 @@ class ClassificationCorrectionsCompanion
   }
 }
 
+class $AcademicCacheRecordsTable extends AcademicCacheRecords
+    with TableInfo<$AcademicCacheRecordsTable, AcademicCacheRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AcademicCacheRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _recordKeyMeta = const VerificationMeta(
+    'recordKey',
+  );
+  @override
+  late final GeneratedColumn<String> recordKey = GeneratedColumn<String>(
+    'record_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startsAtMeta = const VerificationMeta(
+    'startsAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startsAt = GeneratedColumn<DateTime>(
+    'starts_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _endsAtMeta = const VerificationMeta('endsAt');
+  @override
+  late final GeneratedColumn<DateTime> endsAt = GeneratedColumn<DateTime>(
+    'ends_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fingerprintMeta = const VerificationMeta(
+    'fingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> fingerprint = GeneratedColumn<String>(
+    'fingerprint',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changedFieldsJsonMeta = const VerificationMeta(
+    'changedFieldsJson',
+  );
+  @override
+  late final GeneratedColumn<String> changedFieldsJson =
+      GeneratedColumn<String>(
+        'changed_fields_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _lastChangedAtMeta = const VerificationMeta(
+    'lastChangedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastChangedAt =
+      GeneratedColumn<DateTime>(
+        'last_changed_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    recordKey,
+    source,
+    kind,
+    externalId,
+    subjectId,
+    title,
+    startsAt,
+    endsAt,
+    payloadJson,
+    fingerprint,
+    changedFieldsJson,
+    lastChangedAt,
+    syncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'academic_cache_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AcademicCacheRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('record_key')) {
+      context.handle(
+        _recordKeyMeta,
+        recordKey.isAcceptableOrUnknown(data['record_key']!, _recordKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordKeyMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_externalIdMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('starts_at')) {
+      context.handle(
+        _startsAtMeta,
+        startsAt.isAcceptableOrUnknown(data['starts_at']!, _startsAtMeta),
+      );
+    }
+    if (data.containsKey('ends_at')) {
+      context.handle(
+        _endsAtMeta,
+        endsAt.isAcceptableOrUnknown(data['ends_at']!, _endsAtMeta),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('fingerprint')) {
+      context.handle(
+        _fingerprintMeta,
+        fingerprint.isAcceptableOrUnknown(
+          data['fingerprint']!,
+          _fingerprintMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fingerprintMeta);
+    }
+    if (data.containsKey('changed_fields_json')) {
+      context.handle(
+        _changedFieldsJsonMeta,
+        changedFieldsJson.isAcceptableOrUnknown(
+          data['changed_fields_json']!,
+          _changedFieldsJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_changed_at')) {
+      context.handle(
+        _lastChangedAtMeta,
+        lastChangedAt.isAcceptableOrUnknown(
+          data['last_changed_at']!,
+          _lastChangedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {recordKey};
+  @override
+  AcademicCacheRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AcademicCacheRow(
+      recordKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_key'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      startsAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}starts_at'],
+      ),
+      endsAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}ends_at'],
+      ),
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      fingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fingerprint'],
+      )!,
+      changedFieldsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}changed_fields_json'],
+      )!,
+      lastChangedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_changed_at'],
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AcademicCacheRecordsTable createAlias(String alias) {
+    return $AcademicCacheRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class AcademicCacheRow extends DataClass
+    implements Insertable<AcademicCacheRow> {
+  final String recordKey;
+  final String source;
+  final String kind;
+  final String externalId;
+  final String? subjectId;
+  final String title;
+  final DateTime? startsAt;
+  final DateTime? endsAt;
+  final String payloadJson;
+  final String fingerprint;
+  final String changedFieldsJson;
+  final DateTime? lastChangedAt;
+  final DateTime syncedAt;
+  const AcademicCacheRow({
+    required this.recordKey,
+    required this.source,
+    required this.kind,
+    required this.externalId,
+    this.subjectId,
+    required this.title,
+    this.startsAt,
+    this.endsAt,
+    required this.payloadJson,
+    required this.fingerprint,
+    required this.changedFieldsJson,
+    this.lastChangedAt,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['record_key'] = Variable<String>(recordKey);
+    map['source'] = Variable<String>(source);
+    map['kind'] = Variable<String>(kind);
+    map['external_id'] = Variable<String>(externalId);
+    if (!nullToAbsent || subjectId != null) {
+      map['subject_id'] = Variable<String>(subjectId);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || startsAt != null) {
+      map['starts_at'] = Variable<DateTime>(startsAt);
+    }
+    if (!nullToAbsent || endsAt != null) {
+      map['ends_at'] = Variable<DateTime>(endsAt);
+    }
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['fingerprint'] = Variable<String>(fingerprint);
+    map['changed_fields_json'] = Variable<String>(changedFieldsJson);
+    if (!nullToAbsent || lastChangedAt != null) {
+      map['last_changed_at'] = Variable<DateTime>(lastChangedAt);
+    }
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  AcademicCacheRecordsCompanion toCompanion(bool nullToAbsent) {
+    return AcademicCacheRecordsCompanion(
+      recordKey: Value(recordKey),
+      source: Value(source),
+      kind: Value(kind),
+      externalId: Value(externalId),
+      subjectId: subjectId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subjectId),
+      title: Value(title),
+      startsAt: startsAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startsAt),
+      endsAt: endsAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(endsAt),
+      payloadJson: Value(payloadJson),
+      fingerprint: Value(fingerprint),
+      changedFieldsJson: Value(changedFieldsJson),
+      lastChangedAt: lastChangedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastChangedAt),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory AcademicCacheRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AcademicCacheRow(
+      recordKey: serializer.fromJson<String>(json['recordKey']),
+      source: serializer.fromJson<String>(json['source']),
+      kind: serializer.fromJson<String>(json['kind']),
+      externalId: serializer.fromJson<String>(json['externalId']),
+      subjectId: serializer.fromJson<String?>(json['subjectId']),
+      title: serializer.fromJson<String>(json['title']),
+      startsAt: serializer.fromJson<DateTime?>(json['startsAt']),
+      endsAt: serializer.fromJson<DateTime?>(json['endsAt']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      fingerprint: serializer.fromJson<String>(json['fingerprint']),
+      changedFieldsJson: serializer.fromJson<String>(json['changedFieldsJson']),
+      lastChangedAt: serializer.fromJson<DateTime?>(json['lastChangedAt']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'recordKey': serializer.toJson<String>(recordKey),
+      'source': serializer.toJson<String>(source),
+      'kind': serializer.toJson<String>(kind),
+      'externalId': serializer.toJson<String>(externalId),
+      'subjectId': serializer.toJson<String?>(subjectId),
+      'title': serializer.toJson<String>(title),
+      'startsAt': serializer.toJson<DateTime?>(startsAt),
+      'endsAt': serializer.toJson<DateTime?>(endsAt),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'fingerprint': serializer.toJson<String>(fingerprint),
+      'changedFieldsJson': serializer.toJson<String>(changedFieldsJson),
+      'lastChangedAt': serializer.toJson<DateTime?>(lastChangedAt),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  AcademicCacheRow copyWith({
+    String? recordKey,
+    String? source,
+    String? kind,
+    String? externalId,
+    Value<String?> subjectId = const Value.absent(),
+    String? title,
+    Value<DateTime?> startsAt = const Value.absent(),
+    Value<DateTime?> endsAt = const Value.absent(),
+    String? payloadJson,
+    String? fingerprint,
+    String? changedFieldsJson,
+    Value<DateTime?> lastChangedAt = const Value.absent(),
+    DateTime? syncedAt,
+  }) => AcademicCacheRow(
+    recordKey: recordKey ?? this.recordKey,
+    source: source ?? this.source,
+    kind: kind ?? this.kind,
+    externalId: externalId ?? this.externalId,
+    subjectId: subjectId.present ? subjectId.value : this.subjectId,
+    title: title ?? this.title,
+    startsAt: startsAt.present ? startsAt.value : this.startsAt,
+    endsAt: endsAt.present ? endsAt.value : this.endsAt,
+    payloadJson: payloadJson ?? this.payloadJson,
+    fingerprint: fingerprint ?? this.fingerprint,
+    changedFieldsJson: changedFieldsJson ?? this.changedFieldsJson,
+    lastChangedAt: lastChangedAt.present
+        ? lastChangedAt.value
+        : this.lastChangedAt,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  AcademicCacheRow copyWithCompanion(AcademicCacheRecordsCompanion data) {
+    return AcademicCacheRow(
+      recordKey: data.recordKey.present ? data.recordKey.value : this.recordKey,
+      source: data.source.present ? data.source.value : this.source,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      title: data.title.present ? data.title.value : this.title,
+      startsAt: data.startsAt.present ? data.startsAt.value : this.startsAt,
+      endsAt: data.endsAt.present ? data.endsAt.value : this.endsAt,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      fingerprint: data.fingerprint.present
+          ? data.fingerprint.value
+          : this.fingerprint,
+      changedFieldsJson: data.changedFieldsJson.present
+          ? data.changedFieldsJson.value
+          : this.changedFieldsJson,
+      lastChangedAt: data.lastChangedAt.present
+          ? data.lastChangedAt.value
+          : this.lastChangedAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AcademicCacheRow(')
+          ..write('recordKey: $recordKey, ')
+          ..write('source: $source, ')
+          ..write('kind: $kind, ')
+          ..write('externalId: $externalId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('startsAt: $startsAt, ')
+          ..write('endsAt: $endsAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fingerprint: $fingerprint, ')
+          ..write('changedFieldsJson: $changedFieldsJson, ')
+          ..write('lastChangedAt: $lastChangedAt, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    recordKey,
+    source,
+    kind,
+    externalId,
+    subjectId,
+    title,
+    startsAt,
+    endsAt,
+    payloadJson,
+    fingerprint,
+    changedFieldsJson,
+    lastChangedAt,
+    syncedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AcademicCacheRow &&
+          other.recordKey == this.recordKey &&
+          other.source == this.source &&
+          other.kind == this.kind &&
+          other.externalId == this.externalId &&
+          other.subjectId == this.subjectId &&
+          other.title == this.title &&
+          other.startsAt == this.startsAt &&
+          other.endsAt == this.endsAt &&
+          other.payloadJson == this.payloadJson &&
+          other.fingerprint == this.fingerprint &&
+          other.changedFieldsJson == this.changedFieldsJson &&
+          other.lastChangedAt == this.lastChangedAt &&
+          other.syncedAt == this.syncedAt);
+}
+
+class AcademicCacheRecordsCompanion extends UpdateCompanion<AcademicCacheRow> {
+  final Value<String> recordKey;
+  final Value<String> source;
+  final Value<String> kind;
+  final Value<String> externalId;
+  final Value<String?> subjectId;
+  final Value<String> title;
+  final Value<DateTime?> startsAt;
+  final Value<DateTime?> endsAt;
+  final Value<String> payloadJson;
+  final Value<String> fingerprint;
+  final Value<String> changedFieldsJson;
+  final Value<DateTime?> lastChangedAt;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const AcademicCacheRecordsCompanion({
+    this.recordKey = const Value.absent(),
+    this.source = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.startsAt = const Value.absent(),
+    this.endsAt = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.fingerprint = const Value.absent(),
+    this.changedFieldsJson = const Value.absent(),
+    this.lastChangedAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AcademicCacheRecordsCompanion.insert({
+    required String recordKey,
+    required String source,
+    required String kind,
+    required String externalId,
+    this.subjectId = const Value.absent(),
+    required String title,
+    this.startsAt = const Value.absent(),
+    this.endsAt = const Value.absent(),
+    required String payloadJson,
+    required String fingerprint,
+    this.changedFieldsJson = const Value.absent(),
+    this.lastChangedAt = const Value.absent(),
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  }) : recordKey = Value(recordKey),
+       source = Value(source),
+       kind = Value(kind),
+       externalId = Value(externalId),
+       title = Value(title),
+       payloadJson = Value(payloadJson),
+       fingerprint = Value(fingerprint),
+       syncedAt = Value(syncedAt);
+  static Insertable<AcademicCacheRow> custom({
+    Expression<String>? recordKey,
+    Expression<String>? source,
+    Expression<String>? kind,
+    Expression<String>? externalId,
+    Expression<String>? subjectId,
+    Expression<String>? title,
+    Expression<DateTime>? startsAt,
+    Expression<DateTime>? endsAt,
+    Expression<String>? payloadJson,
+    Expression<String>? fingerprint,
+    Expression<String>? changedFieldsJson,
+    Expression<DateTime>? lastChangedAt,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (recordKey != null) 'record_key': recordKey,
+      if (source != null) 'source': source,
+      if (kind != null) 'kind': kind,
+      if (externalId != null) 'external_id': externalId,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (title != null) 'title': title,
+      if (startsAt != null) 'starts_at': startsAt,
+      if (endsAt != null) 'ends_at': endsAt,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (fingerprint != null) 'fingerprint': fingerprint,
+      if (changedFieldsJson != null) 'changed_fields_json': changedFieldsJson,
+      if (lastChangedAt != null) 'last_changed_at': lastChangedAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AcademicCacheRecordsCompanion copyWith({
+    Value<String>? recordKey,
+    Value<String>? source,
+    Value<String>? kind,
+    Value<String>? externalId,
+    Value<String?>? subjectId,
+    Value<String>? title,
+    Value<DateTime?>? startsAt,
+    Value<DateTime?>? endsAt,
+    Value<String>? payloadJson,
+    Value<String>? fingerprint,
+    Value<String>? changedFieldsJson,
+    Value<DateTime?>? lastChangedAt,
+    Value<DateTime>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return AcademicCacheRecordsCompanion(
+      recordKey: recordKey ?? this.recordKey,
+      source: source ?? this.source,
+      kind: kind ?? this.kind,
+      externalId: externalId ?? this.externalId,
+      subjectId: subjectId ?? this.subjectId,
+      title: title ?? this.title,
+      startsAt: startsAt ?? this.startsAt,
+      endsAt: endsAt ?? this.endsAt,
+      payloadJson: payloadJson ?? this.payloadJson,
+      fingerprint: fingerprint ?? this.fingerprint,
+      changedFieldsJson: changedFieldsJson ?? this.changedFieldsJson,
+      lastChangedAt: lastChangedAt ?? this.lastChangedAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (recordKey.present) {
+      map['record_key'] = Variable<String>(recordKey.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (startsAt.present) {
+      map['starts_at'] = Variable<DateTime>(startsAt.value);
+    }
+    if (endsAt.present) {
+      map['ends_at'] = Variable<DateTime>(endsAt.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (fingerprint.present) {
+      map['fingerprint'] = Variable<String>(fingerprint.value);
+    }
+    if (changedFieldsJson.present) {
+      map['changed_fields_json'] = Variable<String>(changedFieldsJson.value);
+    }
+    if (lastChangedAt.present) {
+      map['last_changed_at'] = Variable<DateTime>(lastChangedAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AcademicCacheRecordsCompanion(')
+          ..write('recordKey: $recordKey, ')
+          ..write('source: $source, ')
+          ..write('kind: $kind, ')
+          ..write('externalId: $externalId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('title: $title, ')
+          ..write('startsAt: $startsAt, ')
+          ..write('endsAt: $endsAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('fingerprint: $fingerprint, ')
+          ..write('changedFieldsJson: $changedFieldsJson, ')
+          ..write('lastChangedAt: $lastChangedAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AcademicChangeRecordsTable extends AcademicChangeRecords
+    with TableInfo<$AcademicChangeRecordsTable, AcademicChangeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AcademicChangeRecordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _recordKeyMeta = const VerificationMeta(
+    'recordKey',
+  );
+  @override
+  late final GeneratedColumn<String> recordKey = GeneratedColumn<String>(
+    'record_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _previousPayloadJsonMeta =
+      const VerificationMeta('previousPayloadJson');
+  @override
+  late final GeneratedColumn<String> previousPayloadJson =
+      GeneratedColumn<String>(
+        'previous_payload_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _changedFieldsJsonMeta = const VerificationMeta(
+    'changedFieldsJson',
+  );
+  @override
+  late final GeneratedColumn<String> changedFieldsJson =
+      GeneratedColumn<String>(
+        'changed_fields_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _changedAtMeta = const VerificationMeta(
+    'changedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> changedAt = GeneratedColumn<DateTime>(
+    'changed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    recordKey,
+    kind,
+    previousPayloadJson,
+    changedFieldsJson,
+    changedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'academic_change_records';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AcademicChangeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('record_key')) {
+      context.handle(
+        _recordKeyMeta,
+        recordKey.isAcceptableOrUnknown(data['record_key']!, _recordKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordKeyMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('previous_payload_json')) {
+      context.handle(
+        _previousPayloadJsonMeta,
+        previousPayloadJson.isAcceptableOrUnknown(
+          data['previous_payload_json']!,
+          _previousPayloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_previousPayloadJsonMeta);
+    }
+    if (data.containsKey('changed_fields_json')) {
+      context.handle(
+        _changedFieldsJsonMeta,
+        changedFieldsJson.isAcceptableOrUnknown(
+          data['changed_fields_json']!,
+          _changedFieldsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_changedFieldsJsonMeta);
+    }
+    if (data.containsKey('changed_at')) {
+      context.handle(
+        _changedAtMeta,
+        changedAt.isAcceptableOrUnknown(data['changed_at']!, _changedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AcademicChangeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AcademicChangeRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      recordKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_key'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      previousPayloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}previous_payload_json'],
+      )!,
+      changedFieldsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}changed_fields_json'],
+      )!,
+      changedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}changed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AcademicChangeRecordsTable createAlias(String alias) {
+    return $AcademicChangeRecordsTable(attachedDatabase, alias);
+  }
+}
+
+class AcademicChangeRow extends DataClass
+    implements Insertable<AcademicChangeRow> {
+  final int id;
+  final String recordKey;
+  final String kind;
+  final String previousPayloadJson;
+  final String changedFieldsJson;
+  final DateTime changedAt;
+  const AcademicChangeRow({
+    required this.id,
+    required this.recordKey,
+    required this.kind,
+    required this.previousPayloadJson,
+    required this.changedFieldsJson,
+    required this.changedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['record_key'] = Variable<String>(recordKey);
+    map['kind'] = Variable<String>(kind);
+    map['previous_payload_json'] = Variable<String>(previousPayloadJson);
+    map['changed_fields_json'] = Variable<String>(changedFieldsJson);
+    map['changed_at'] = Variable<DateTime>(changedAt);
+    return map;
+  }
+
+  AcademicChangeRecordsCompanion toCompanion(bool nullToAbsent) {
+    return AcademicChangeRecordsCompanion(
+      id: Value(id),
+      recordKey: Value(recordKey),
+      kind: Value(kind),
+      previousPayloadJson: Value(previousPayloadJson),
+      changedFieldsJson: Value(changedFieldsJson),
+      changedAt: Value(changedAt),
+    );
+  }
+
+  factory AcademicChangeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AcademicChangeRow(
+      id: serializer.fromJson<int>(json['id']),
+      recordKey: serializer.fromJson<String>(json['recordKey']),
+      kind: serializer.fromJson<String>(json['kind']),
+      previousPayloadJson: serializer.fromJson<String>(
+        json['previousPayloadJson'],
+      ),
+      changedFieldsJson: serializer.fromJson<String>(json['changedFieldsJson']),
+      changedAt: serializer.fromJson<DateTime>(json['changedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'recordKey': serializer.toJson<String>(recordKey),
+      'kind': serializer.toJson<String>(kind),
+      'previousPayloadJson': serializer.toJson<String>(previousPayloadJson),
+      'changedFieldsJson': serializer.toJson<String>(changedFieldsJson),
+      'changedAt': serializer.toJson<DateTime>(changedAt),
+    };
+  }
+
+  AcademicChangeRow copyWith({
+    int? id,
+    String? recordKey,
+    String? kind,
+    String? previousPayloadJson,
+    String? changedFieldsJson,
+    DateTime? changedAt,
+  }) => AcademicChangeRow(
+    id: id ?? this.id,
+    recordKey: recordKey ?? this.recordKey,
+    kind: kind ?? this.kind,
+    previousPayloadJson: previousPayloadJson ?? this.previousPayloadJson,
+    changedFieldsJson: changedFieldsJson ?? this.changedFieldsJson,
+    changedAt: changedAt ?? this.changedAt,
+  );
+  AcademicChangeRow copyWithCompanion(AcademicChangeRecordsCompanion data) {
+    return AcademicChangeRow(
+      id: data.id.present ? data.id.value : this.id,
+      recordKey: data.recordKey.present ? data.recordKey.value : this.recordKey,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      previousPayloadJson: data.previousPayloadJson.present
+          ? data.previousPayloadJson.value
+          : this.previousPayloadJson,
+      changedFieldsJson: data.changedFieldsJson.present
+          ? data.changedFieldsJson.value
+          : this.changedFieldsJson,
+      changedAt: data.changedAt.present ? data.changedAt.value : this.changedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AcademicChangeRow(')
+          ..write('id: $id, ')
+          ..write('recordKey: $recordKey, ')
+          ..write('kind: $kind, ')
+          ..write('previousPayloadJson: $previousPayloadJson, ')
+          ..write('changedFieldsJson: $changedFieldsJson, ')
+          ..write('changedAt: $changedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    recordKey,
+    kind,
+    previousPayloadJson,
+    changedFieldsJson,
+    changedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AcademicChangeRow &&
+          other.id == this.id &&
+          other.recordKey == this.recordKey &&
+          other.kind == this.kind &&
+          other.previousPayloadJson == this.previousPayloadJson &&
+          other.changedFieldsJson == this.changedFieldsJson &&
+          other.changedAt == this.changedAt);
+}
+
+class AcademicChangeRecordsCompanion
+    extends UpdateCompanion<AcademicChangeRow> {
+  final Value<int> id;
+  final Value<String> recordKey;
+  final Value<String> kind;
+  final Value<String> previousPayloadJson;
+  final Value<String> changedFieldsJson;
+  final Value<DateTime> changedAt;
+  const AcademicChangeRecordsCompanion({
+    this.id = const Value.absent(),
+    this.recordKey = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.previousPayloadJson = const Value.absent(),
+    this.changedFieldsJson = const Value.absent(),
+    this.changedAt = const Value.absent(),
+  });
+  AcademicChangeRecordsCompanion.insert({
+    this.id = const Value.absent(),
+    required String recordKey,
+    required String kind,
+    required String previousPayloadJson,
+    required String changedFieldsJson,
+    required DateTime changedAt,
+  }) : recordKey = Value(recordKey),
+       kind = Value(kind),
+       previousPayloadJson = Value(previousPayloadJson),
+       changedFieldsJson = Value(changedFieldsJson),
+       changedAt = Value(changedAt);
+  static Insertable<AcademicChangeRow> custom({
+    Expression<int>? id,
+    Expression<String>? recordKey,
+    Expression<String>? kind,
+    Expression<String>? previousPayloadJson,
+    Expression<String>? changedFieldsJson,
+    Expression<DateTime>? changedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (recordKey != null) 'record_key': recordKey,
+      if (kind != null) 'kind': kind,
+      if (previousPayloadJson != null)
+        'previous_payload_json': previousPayloadJson,
+      if (changedFieldsJson != null) 'changed_fields_json': changedFieldsJson,
+      if (changedAt != null) 'changed_at': changedAt,
+    });
+  }
+
+  AcademicChangeRecordsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? recordKey,
+    Value<String>? kind,
+    Value<String>? previousPayloadJson,
+    Value<String>? changedFieldsJson,
+    Value<DateTime>? changedAt,
+  }) {
+    return AcademicChangeRecordsCompanion(
+      id: id ?? this.id,
+      recordKey: recordKey ?? this.recordKey,
+      kind: kind ?? this.kind,
+      previousPayloadJson: previousPayloadJson ?? this.previousPayloadJson,
+      changedFieldsJson: changedFieldsJson ?? this.changedFieldsJson,
+      changedAt: changedAt ?? this.changedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (recordKey.present) {
+      map['record_key'] = Variable<String>(recordKey.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (previousPayloadJson.present) {
+      map['previous_payload_json'] = Variable<String>(
+        previousPayloadJson.value,
+      );
+    }
+    if (changedFieldsJson.present) {
+      map['changed_fields_json'] = Variable<String>(changedFieldsJson.value);
+    }
+    if (changedAt.present) {
+      map['changed_at'] = Variable<DateTime>(changedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AcademicChangeRecordsCompanion(')
+          ..write('id: $id, ')
+          ..write('recordKey: $recordKey, ')
+          ..write('kind: $kind, ')
+          ..write('previousPayloadJson: $previousPayloadJson, ')
+          ..write('changedFieldsJson: $changedFieldsJson, ')
+          ..write('changedAt: $changedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ClassSyncDatabase extends GeneratedDatabase {
   _$ClassSyncDatabase(QueryExecutor e) : super(e);
   $ClassSyncDatabaseManager get managers => $ClassSyncDatabaseManager(this);
@@ -4788,6 +5988,10 @@ abstract class _$ClassSyncDatabase extends GeneratedDatabase {
   );
   late final $ClassificationCorrectionsTable classificationCorrections =
       $ClassificationCorrectionsTable(this);
+  late final $AcademicCacheRecordsTable academicCacheRecords =
+      $AcademicCacheRecordsTable(this);
+  late final $AcademicChangeRecordsTable academicChangeRecords =
+      $AcademicChangeRecordsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4799,6 +6003,8 @@ abstract class _$ClassSyncDatabase extends GeneratedDatabase {
     syncCursors,
     settingsRecords,
     classificationCorrections,
+    academicCacheRecords,
+    academicChangeRecords,
   ];
 }
 
@@ -7226,6 +8432,620 @@ typedef $$ClassificationCorrectionsTableProcessedTableManager =
       ClassificationCorrectionRow,
       PrefetchHooks Function()
     >;
+typedef $$AcademicCacheRecordsTableCreateCompanionBuilder =
+    AcademicCacheRecordsCompanion Function({
+      required String recordKey,
+      required String source,
+      required String kind,
+      required String externalId,
+      Value<String?> subjectId,
+      required String title,
+      Value<DateTime?> startsAt,
+      Value<DateTime?> endsAt,
+      required String payloadJson,
+      required String fingerprint,
+      Value<String> changedFieldsJson,
+      Value<DateTime?> lastChangedAt,
+      required DateTime syncedAt,
+      Value<int> rowid,
+    });
+typedef $$AcademicCacheRecordsTableUpdateCompanionBuilder =
+    AcademicCacheRecordsCompanion Function({
+      Value<String> recordKey,
+      Value<String> source,
+      Value<String> kind,
+      Value<String> externalId,
+      Value<String?> subjectId,
+      Value<String> title,
+      Value<DateTime?> startsAt,
+      Value<DateTime?> endsAt,
+      Value<String> payloadJson,
+      Value<String> fingerprint,
+      Value<String> changedFieldsJson,
+      Value<DateTime?> lastChangedAt,
+      Value<DateTime> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$AcademicCacheRecordsTableFilterComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicCacheRecordsTable> {
+  $$AcademicCacheRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get recordKey => $composableBuilder(
+    column: $table.recordKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startsAt => $composableBuilder(
+    column: $table.startsAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endsAt => $composableBuilder(
+    column: $table.endsAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastChangedAt => $composableBuilder(
+    column: $table.lastChangedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AcademicCacheRecordsTableOrderingComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicCacheRecordsTable> {
+  $$AcademicCacheRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get recordKey => $composableBuilder(
+    column: $table.recordKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startsAt => $composableBuilder(
+    column: $table.startsAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endsAt => $composableBuilder(
+    column: $table.endsAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastChangedAt => $composableBuilder(
+    column: $table.lastChangedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AcademicCacheRecordsTableAnnotationComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicCacheRecordsTable> {
+  $$AcademicCacheRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get recordKey =>
+      $composableBuilder(column: $table.recordKey, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startsAt =>
+      $composableBuilder(column: $table.startsAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endsAt =>
+      $composableBuilder(column: $table.endsAt, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastChangedAt => $composableBuilder(
+    column: $table.lastChangedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$AcademicCacheRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$ClassSyncDatabase,
+          $AcademicCacheRecordsTable,
+          AcademicCacheRow,
+          $$AcademicCacheRecordsTableFilterComposer,
+          $$AcademicCacheRecordsTableOrderingComposer,
+          $$AcademicCacheRecordsTableAnnotationComposer,
+          $$AcademicCacheRecordsTableCreateCompanionBuilder,
+          $$AcademicCacheRecordsTableUpdateCompanionBuilder,
+          (
+            AcademicCacheRow,
+            BaseReferences<
+              _$ClassSyncDatabase,
+              $AcademicCacheRecordsTable,
+              AcademicCacheRow
+            >,
+          ),
+          AcademicCacheRow,
+          PrefetchHooks Function()
+        > {
+  $$AcademicCacheRecordsTableTableManager(
+    _$ClassSyncDatabase db,
+    $AcademicCacheRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AcademicCacheRecordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AcademicCacheRecordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AcademicCacheRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> recordKey = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> externalId = const Value.absent(),
+                Value<String?> subjectId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<DateTime?> startsAt = const Value.absent(),
+                Value<DateTime?> endsAt = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<String> fingerprint = const Value.absent(),
+                Value<String> changedFieldsJson = const Value.absent(),
+                Value<DateTime?> lastChangedAt = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AcademicCacheRecordsCompanion(
+                recordKey: recordKey,
+                source: source,
+                kind: kind,
+                externalId: externalId,
+                subjectId: subjectId,
+                title: title,
+                startsAt: startsAt,
+                endsAt: endsAt,
+                payloadJson: payloadJson,
+                fingerprint: fingerprint,
+                changedFieldsJson: changedFieldsJson,
+                lastChangedAt: lastChangedAt,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String recordKey,
+                required String source,
+                required String kind,
+                required String externalId,
+                Value<String?> subjectId = const Value.absent(),
+                required String title,
+                Value<DateTime?> startsAt = const Value.absent(),
+                Value<DateTime?> endsAt = const Value.absent(),
+                required String payloadJson,
+                required String fingerprint,
+                Value<String> changedFieldsJson = const Value.absent(),
+                Value<DateTime?> lastChangedAt = const Value.absent(),
+                required DateTime syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => AcademicCacheRecordsCompanion.insert(
+                recordKey: recordKey,
+                source: source,
+                kind: kind,
+                externalId: externalId,
+                subjectId: subjectId,
+                title: title,
+                startsAt: startsAt,
+                endsAt: endsAt,
+                payloadJson: payloadJson,
+                fingerprint: fingerprint,
+                changedFieldsJson: changedFieldsJson,
+                lastChangedAt: lastChangedAt,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AcademicCacheRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ClassSyncDatabase,
+      $AcademicCacheRecordsTable,
+      AcademicCacheRow,
+      $$AcademicCacheRecordsTableFilterComposer,
+      $$AcademicCacheRecordsTableOrderingComposer,
+      $$AcademicCacheRecordsTableAnnotationComposer,
+      $$AcademicCacheRecordsTableCreateCompanionBuilder,
+      $$AcademicCacheRecordsTableUpdateCompanionBuilder,
+      (
+        AcademicCacheRow,
+        BaseReferences<
+          _$ClassSyncDatabase,
+          $AcademicCacheRecordsTable,
+          AcademicCacheRow
+        >,
+      ),
+      AcademicCacheRow,
+      PrefetchHooks Function()
+    >;
+typedef $$AcademicChangeRecordsTableCreateCompanionBuilder =
+    AcademicChangeRecordsCompanion Function({
+      Value<int> id,
+      required String recordKey,
+      required String kind,
+      required String previousPayloadJson,
+      required String changedFieldsJson,
+      required DateTime changedAt,
+    });
+typedef $$AcademicChangeRecordsTableUpdateCompanionBuilder =
+    AcademicChangeRecordsCompanion Function({
+      Value<int> id,
+      Value<String> recordKey,
+      Value<String> kind,
+      Value<String> previousPayloadJson,
+      Value<String> changedFieldsJson,
+      Value<DateTime> changedAt,
+    });
+
+class $$AcademicChangeRecordsTableFilterComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicChangeRecordsTable> {
+  $$AcademicChangeRecordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordKey => $composableBuilder(
+    column: $table.recordKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get previousPayloadJson => $composableBuilder(
+    column: $table.previousPayloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get changedAt => $composableBuilder(
+    column: $table.changedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AcademicChangeRecordsTableOrderingComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicChangeRecordsTable> {
+  $$AcademicChangeRecordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordKey => $composableBuilder(
+    column: $table.recordKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get previousPayloadJson => $composableBuilder(
+    column: $table.previousPayloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get changedAt => $composableBuilder(
+    column: $table.changedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AcademicChangeRecordsTableAnnotationComposer
+    extends Composer<_$ClassSyncDatabase, $AcademicChangeRecordsTable> {
+  $$AcademicChangeRecordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get recordKey =>
+      $composableBuilder(column: $table.recordKey, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get previousPayloadJson => $composableBuilder(
+    column: $table.previousPayloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get changedFieldsJson => $composableBuilder(
+    column: $table.changedFieldsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get changedAt =>
+      $composableBuilder(column: $table.changedAt, builder: (column) => column);
+}
+
+class $$AcademicChangeRecordsTableTableManager
+    extends
+        RootTableManager<
+          _$ClassSyncDatabase,
+          $AcademicChangeRecordsTable,
+          AcademicChangeRow,
+          $$AcademicChangeRecordsTableFilterComposer,
+          $$AcademicChangeRecordsTableOrderingComposer,
+          $$AcademicChangeRecordsTableAnnotationComposer,
+          $$AcademicChangeRecordsTableCreateCompanionBuilder,
+          $$AcademicChangeRecordsTableUpdateCompanionBuilder,
+          (
+            AcademicChangeRow,
+            BaseReferences<
+              _$ClassSyncDatabase,
+              $AcademicChangeRecordsTable,
+              AcademicChangeRow
+            >,
+          ),
+          AcademicChangeRow,
+          PrefetchHooks Function()
+        > {
+  $$AcademicChangeRecordsTableTableManager(
+    _$ClassSyncDatabase db,
+    $AcademicChangeRecordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AcademicChangeRecordsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$AcademicChangeRecordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AcademicChangeRecordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> recordKey = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> previousPayloadJson = const Value.absent(),
+                Value<String> changedFieldsJson = const Value.absent(),
+                Value<DateTime> changedAt = const Value.absent(),
+              }) => AcademicChangeRecordsCompanion(
+                id: id,
+                recordKey: recordKey,
+                kind: kind,
+                previousPayloadJson: previousPayloadJson,
+                changedFieldsJson: changedFieldsJson,
+                changedAt: changedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String recordKey,
+                required String kind,
+                required String previousPayloadJson,
+                required String changedFieldsJson,
+                required DateTime changedAt,
+              }) => AcademicChangeRecordsCompanion.insert(
+                id: id,
+                recordKey: recordKey,
+                kind: kind,
+                previousPayloadJson: previousPayloadJson,
+                changedFieldsJson: changedFieldsJson,
+                changedAt: changedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AcademicChangeRecordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ClassSyncDatabase,
+      $AcademicChangeRecordsTable,
+      AcademicChangeRow,
+      $$AcademicChangeRecordsTableFilterComposer,
+      $$AcademicChangeRecordsTableOrderingComposer,
+      $$AcademicChangeRecordsTableAnnotationComposer,
+      $$AcademicChangeRecordsTableCreateCompanionBuilder,
+      $$AcademicChangeRecordsTableUpdateCompanionBuilder,
+      (
+        AcademicChangeRow,
+        BaseReferences<
+          _$ClassSyncDatabase,
+          $AcademicChangeRecordsTable,
+          AcademicChangeRow
+        >,
+      ),
+      AcademicChangeRow,
+      PrefetchHooks Function()
+    >;
 
 class $ClassSyncDatabaseManager {
   final _$ClassSyncDatabase _db;
@@ -7245,4 +9065,8 @@ class $ClassSyncDatabaseManager {
         _db,
         _db.classificationCorrections,
       );
+  $$AcademicCacheRecordsTableTableManager get academicCacheRecords =>
+      $$AcademicCacheRecordsTableTableManager(_db, _db.academicCacheRecords);
+  $$AcademicChangeRecordsTableTableManager get academicChangeRecords =>
+      $$AcademicChangeRecordsTableTableManager(_db, _db.academicChangeRecords);
 }

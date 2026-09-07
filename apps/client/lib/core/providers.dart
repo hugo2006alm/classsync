@@ -1,13 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/academic/academic_models.dart';
+import '../domain/academic/academic_hub_models.dart';
+import '../domain/academic/academic_hub_actions.dart';
 import '../domain/settings/app_settings.dart';
 import '../domain/sync/sync_coordinator.dart';
 import '../domain/sync/sync_models.dart';
 import 'database/classsync_database.dart';
+import 'academic/academic_sync_service.dart';
 import 'integrations/fireflies/fireflies_client.dart';
 import 'integrations/gemini/gemini_client.dart';
 import 'integrations/notion/notion_client.dart';
+import 'integrations/moodle/moodle_client.dart';
+import 'integrations/portal/isep_portal_client.dart';
 import 'integrations/relay/relay_client.dart';
 import 'integrations/relay/account_sync_client.dart';
 import 'notifications/classsync_notification_service.dart';
@@ -25,6 +30,10 @@ final credentialConfiguredProvider = FutureProvider.family<bool, CredentialKey>(
 final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());
+final portalClientProvider = Provider<PortalAdapter>(
+  (ref) => IsepPortalClient(),
+);
+final moodleClientProvider = Provider((ref) => MoodleClient());
 final relayClientProvider = Provider((ref) => RelayClient());
 final accountSyncClientProvider = Provider((ref) => AccountSyncClient());
 final notificationServiceProvider = Provider(
@@ -51,6 +60,28 @@ final deviceSyncServiceProvider = Provider(
 
 final activeSubjectsProvider = StreamProvider<List<AcademicSubject>>(
   (ref) => ref.watch(databaseProvider).watchActiveSubjects(),
+);
+
+final academicRecordsProvider = StreamProvider<List<AcademicRecord>>(
+  (ref) => ref.watch(databaseProvider).watchAcademicRecords(),
+);
+
+final academicChangesProvider = StreamProvider<List<AcademicChangeRow>>(
+  (ref) => ref.watch(databaseProvider).watchAcademicChanges(),
+);
+
+final academicSyncServiceProvider = Provider(
+  (ref) => AcademicSyncService(
+    database: ref.watch(databaseProvider),
+    credentials: ref.watch(credentialStoreProvider),
+    portal: ref.watch(portalClientProvider),
+    moodle: ref.watch(moodleClientProvider),
+    notifications: ref.watch(notificationServiceProvider),
+  ),
+);
+
+final academicHubActionsProvider = Provider<AcademicHubActions>(
+  (ref) => ref.watch(academicSyncServiceProvider),
 );
 
 class NotionLibraryData {
@@ -126,10 +157,11 @@ final syncCoordinatorProvider = Provider(
 );
 
 class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
-  SyncController(this._coordinator, this._deviceSync)
+  SyncController(this._coordinator, this._deviceSync, this._academicSync)
     : super(const AsyncData(null));
   final SyncCoordinator _coordinator;
   final DeviceSyncService _deviceSync;
+  final AcademicSyncService _academicSync;
 
   Future<void> run(SyncReason reason) async {
     if (state.isLoading) return;
@@ -141,6 +173,11 @@ class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
         // Cloud state is an optional accelerator; lecture processing remains local-first.
       }
       final result = await _coordinator.run(reason);
+      try {
+        await _academicSync.synchronize();
+      } catch (_) {
+        // Academic sources are optional; they cannot break lecture processing.
+      }
       try {
         await _deviceSync.synchronize();
       } catch (_) {
@@ -156,6 +193,7 @@ final syncControllerProvider =
       (ref) => SyncController(
         ref.watch(syncCoordinatorProvider),
         ref.watch(deviceSyncServiceProvider),
+        ref.watch(academicSyncServiceProvider),
       ),
     );
 

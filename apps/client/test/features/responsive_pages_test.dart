@@ -9,6 +9,7 @@ import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/features/classes/class_detail_screen.dart';
+import 'package:classsync/features/academic/academic_screen.dart';
 import 'package:classsync/features/overview/overview_screen.dart';
 import 'package:classsync/features/library/library_screen.dart';
 import 'package:classsync/features/settings/settings_screen.dart';
@@ -39,6 +40,23 @@ void main() {
 
     expect(find.text('Active classes'), findsWidgets);
     expect(find.text('3º Ano · 1º Semestre'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('phone academic hub keeps all sections reachable', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    await tester.pumpWidget(
+      _app(database, const AcademicScreen(), subjects: [_subject]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Timetable'), findsWidgets);
+    expect(find.text('Evaluations'), findsOneWidget);
+    expect(find.text('Grades'), findsOneWidget);
+    expect(find.text('Moodle'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

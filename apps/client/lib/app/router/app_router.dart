@@ -5,6 +5,7 @@ import '../../features/classes/classes_screen.dart';
 import '../../features/classes/class_detail_screen.dart';
 import '../../features/overview/overview_screen.dart';
 import '../../features/library/library_screen.dart';
+import '../../features/academic/academic_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/sync/job_detail_screen.dart';
 import '../../features/sync/sync_screen.dart';
@@ -38,6 +39,11 @@ final routerProvider = Provider<GoRouter>(
                 ),
               ),
             ],
+          ),
+          GoRoute(
+            path: '/academic',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AcademicScreen()),
           ),
           GoRoute(
             path: '/sync',
