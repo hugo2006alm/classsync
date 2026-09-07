@@ -17,6 +17,7 @@ enum AcademicRecordKind {
   moodleCourse,
   announcement,
   portalNotification,
+  tuitionCharge,
   fucProfile,
   lessonSummary,
   lectureTask,
@@ -146,6 +147,119 @@ class PortalNotification {
     'sourceUrl': sourceUrl,
     'read': false,
   };
+}
+
+enum TuitionPaymentState { pending, partial, paid, overdue, cancelled, unknown }
+
+/// A read-only, locally cached Portal charge. Payment references are deliberately
+/// reduced to an availability flag and masked hint before this model is created.
+class TuitionCharge {
+  const TuitionCharge({
+    required this.id,
+    required this.title,
+    required this.state,
+    required this.sourceUrl,
+    this.academicYear,
+    this.installment,
+    this.amount,
+    this.outstandingAmount,
+    this.dueAt,
+    this.paidAt,
+    this.hasLateInterest = false,
+    this.paymentReferenceAvailable = false,
+    this.paymentReferenceHint,
+    this.reminderMinutes,
+    this.overdueReminder = false,
+  });
+
+  final String id;
+  final String title;
+  final TuitionPaymentState state;
+  final String sourceUrl;
+  final String? academicYear;
+  final String? installment;
+  final double? amount;
+  final double? outstandingAmount;
+  final DateTime? dueAt;
+  final DateTime? paidAt;
+  final bool hasLateInterest;
+  final bool paymentReferenceAvailable;
+  final String? paymentReferenceHint;
+  final int? reminderMinutes;
+  final bool overdueReminder;
+
+  bool isOpenAt(DateTime instant) =>
+      state != TuitionPaymentState.paid &&
+      state != TuitionPaymentState.cancelled;
+
+  bool isOverdueAt(DateTime instant) =>
+      state == TuitionPaymentState.overdue ||
+      (isOpenAt(instant) && dueAt != null && dueAt!.isBefore(instant));
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'state': state.name,
+    'sourceUrl': sourceUrl,
+    'academicYear': academicYear,
+    'installment': installment,
+    'amount': amount,
+    'outstandingAmount': outstandingAmount,
+    'dueAt': dueAt?.toIso8601String(),
+    'paidAt': paidAt?.toIso8601String(),
+    'hasLateInterest': hasLateInterest,
+    // Never persist the full Portal payment reference.
+    'paymentReferenceAvailable': paymentReferenceAvailable,
+    'paymentReferenceHint': paymentReferenceHint,
+    'reminderMinutes': reminderMinutes,
+    'overdueReminder': overdueReminder,
+  };
+
+  factory TuitionCharge.fromJson(Map<String, dynamic> json) => TuitionCharge(
+    id: json['id'] as String? ?? '',
+    title: json['title'] as String? ?? 'Portal charge',
+    state: TuitionPaymentState.values.firstWhere(
+      (item) => item.name == json['state'],
+      orElse: () => TuitionPaymentState.unknown,
+    ),
+    sourceUrl: json['sourceUrl'] as String? ?? '',
+    academicYear: json['academicYear'] as String?,
+    installment: json['installment'] as String?,
+    amount: (json['amount'] as num?)?.toDouble(),
+    outstandingAmount: (json['outstandingAmount'] as num?)?.toDouble(),
+    dueAt: DateTime.tryParse(json['dueAt'] as String? ?? ''),
+    paidAt: DateTime.tryParse(json['paidAt'] as String? ?? ''),
+    hasLateInterest: json['hasLateInterest'] as bool? ?? false,
+    paymentReferenceAvailable:
+        json['paymentReferenceAvailable'] as bool? ?? false,
+    paymentReferenceHint: json['paymentReferenceHint'] as String?,
+    reminderMinutes: (json['reminderMinutes'] as num?)?.toInt(),
+    overdueReminder: json['overdueReminder'] as bool? ?? false,
+  );
+
+  TuitionCharge copyWith({
+    int? reminderMinutes,
+    bool clearReminder = false,
+    bool? overdueReminder,
+  }) => TuitionCharge(
+    id: id,
+    title: title,
+    state: state,
+    sourceUrl: sourceUrl,
+    academicYear: academicYear,
+    installment: installment,
+    amount: amount,
+    outstandingAmount: outstandingAmount,
+    dueAt: dueAt,
+    paidAt: paidAt,
+    hasLateInterest: hasLateInterest,
+    paymentReferenceAvailable: paymentReferenceAvailable,
+    paymentReferenceHint: paymentReferenceHint,
+    reminderMinutes: clearReminder
+        ? null
+        : reminderMinutes ?? this.reminderMinutes,
+    overdueReminder: overdueReminder ?? this.overdueReminder,
+  );
 }
 
 class FucProfile {

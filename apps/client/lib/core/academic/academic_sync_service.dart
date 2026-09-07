@@ -456,6 +456,64 @@ class AcademicSyncService implements AcademicHubActions {
     }
 
     try {
+      final previous = await _database.readAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.tuitionCharge,
+      );
+      final previousByKey = {for (final item in previous) item.key: item};
+      final charges = await _portal.getTuitionCharges();
+      final records = charges.map((charge) {
+        final title = [
+          charge.title,
+          if (charge.installment?.isNotEmpty == true) charge.installment!,
+        ].join(' · ');
+        return AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.portal,
+            AcademicRecordKind.tuitionCharge,
+            charge.id,
+          ),
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.tuitionCharge,
+          externalId: charge.id,
+          title: title,
+          startsAt: charge.dueAt,
+          payload: charge.toJson(),
+          syncedAt: DateTime.now().toUtc(),
+        );
+      }).toList();
+      await _replaceTuitionCharges(records);
+      final savedCharges = await _database.readAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.tuitionCharge,
+      );
+      final settings = await _database.readSettings();
+      final now = DateTime.now();
+      for (final record in savedCharges) {
+        final charge = TuitionCharge.fromJson(record.payload);
+        final previousCharge = previousByKey[record.key] == null
+            ? null
+            : TuitionCharge.fromJson(previousByKey[record.key]!.payload);
+        if (previousCharge != null &&
+            !previousCharge.isOverdueAt(now) &&
+            charge.isOverdueAt(now) &&
+            charge.overdueReminder &&
+            settings.notificationsEnabled) {
+          await _notifications.showAcademicUpdate(
+            id: record.key,
+            title: 'Payment overdue · ${record.title}',
+            body:
+                'Review this read-only Portal charge. ClassSync cannot make payments.',
+            section: 7,
+          );
+        }
+      }
+      saved += records.length;
+    } on IntegrationException catch (error) {
+      errors.add(error.userMessage);
+    }
+
+    try {
       final jobs = await _database.readJobs();
       final summaries = await _portal.getLessonSummaries();
       final records = summaries.map((item) {
@@ -893,6 +951,97 @@ class AcademicSyncService implements AcademicHubActions {
     );
     if (minutes != null) await _notifications.requestPermissions();
     await _scheduleReminder(record.key, updated);
+  }
+
+  @override
+  Future<void> setTuitionReminder(
+    AcademicRecord record,
+    int? minutes, {
+    required bool overdueReminder,
+  }) async {
+    final charge = TuitionCharge.fromJson(record.payload).copyWith(
+      reminderMinutes: minutes,
+      clearReminder: minutes == null,
+      overdueReminder: overdueReminder,
+    );
+    final updated = AcademicRecord(
+      key: record.key,
+      source: record.source,
+      kind: record.kind,
+      externalId: record.externalId,
+      title: record.title,
+      startsAt: charge.dueAt,
+      payload: {...charge.toJson(), 'overdueReminderConfigured': true},
+      syncedAt: DateTime.now().toUtc(),
+    );
+    await _database.upsertAcademicRecord(updated);
+    if (minutes != null || overdueReminder) {
+      await _notifications.requestPermissions();
+    }
+    await _scheduleTuitionReminder(updated.key, charge);
+    final settings = await _database.readSettings();
+    if (overdueReminder &&
+        charge.isOverdueAt(DateTime.now()) &&
+        settings.notificationsEnabled) {
+      await _notifications.showAcademicUpdate(
+        id: updated.key,
+        title: 'Payment overdue · ${updated.title}',
+        body:
+            'Review this read-only Portal charge. ClassSync cannot make payments.',
+        section: 7,
+      );
+    }
+  }
+
+  Future<void> _replaceTuitionCharges(List<AcademicRecord> records) async {
+    final old = await _database.readAcademicRecords(
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.tuitionCharge,
+    );
+    final incomingKeys = records.map((item) => item.key).toSet();
+    await _database.replaceAcademicRecords(
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.tuitionCharge,
+      records: records,
+    );
+    for (final removed in old.where(
+      (item) => !incomingKeys.contains(item.key),
+    )) {
+      await _notifications.cancelAcademicReminder(removed.key);
+    }
+    final saved = await _database.readAcademicRecords(
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.tuitionCharge,
+    );
+    for (final record in saved) {
+      await _scheduleTuitionReminder(
+        record.key,
+        TuitionCharge.fromJson(record.payload),
+      );
+    }
+  }
+
+  Future<void> _scheduleTuitionReminder(
+    String key,
+    TuitionCharge charge,
+  ) async {
+    await _notifications.cancelAcademicReminder(key);
+    if (!charge.isOpenAt(DateTime.now()) ||
+        charge.reminderMinutes == null ||
+        charge.dueAt == null) {
+      return;
+    }
+    final notifyAt = charge.dueAt!.subtract(
+      Duration(minutes: charge.reminderMinutes!),
+    );
+    if (notifyAt.isAfter(DateTime.now())) {
+      await _notifications.scheduleAcademicReminder(
+        id: key,
+        title: 'Payment due · ${charge.title}',
+        scheduledAt: notifyAt,
+        section: 7,
+      );
+    }
   }
 
   Future<void> _replaceEvaluations(

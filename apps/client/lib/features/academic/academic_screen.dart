@@ -23,7 +23,7 @@ class AcademicScreen extends ConsumerStatefulWidget {
 }
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen> {
-  late int _section = widget.initialSection.clamp(0, 6).toInt();
+  late int _section = widget.initialSection.clamp(0, 7).toInt();
   late DateTime _weekStart = _startOfWeek(DateTime.now());
 
   @override
@@ -119,6 +119,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                     icon: Icon(Icons.manage_search_rounded),
                     label: Text('Search & ask'),
                   ),
+                  ButtonSegment(
+                    value: 7,
+                    icon: Icon(Icons.account_balance_wallet_outlined),
+                    label: Text('Finance'),
+                  ),
                 ],
                 selected: {_section},
                 onSelectionChanged: (value) =>
@@ -193,9 +198,18 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         onConnect: () => _showConnections(context),
                       )
                     : _CourseContextSection(records: records),
-              _ => _AcademicSearchSection(
+              6 => _AcademicSearchSection(
                 subjects: ref.watch(subjectsProvider).valueOrNull ?? const [],
               ),
+              _ =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail:
+                            'Connect Portal to load tuition, fees, and payment deadlines.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _FinanceSection(records: records),
             },
           ],
         ),
@@ -662,6 +676,208 @@ class _ProgressSection extends StatelessWidget {
     );
   }
 }
+
+class _FinanceSection extends ConsumerWidget {
+  const _FinanceSection({required this.records});
+  final List<AcademicRecord> records;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = DateTime.now();
+    final charges =
+        records
+            .where((item) => item.kind == AcademicRecordKind.tuitionCharge)
+            .toList()
+          ..sort((a, b) {
+            final aCharge = TuitionCharge.fromJson(a.payload);
+            final bCharge = TuitionCharge.fromJson(b.payload);
+            final overdue = bCharge.isOverdueAt(now) == aCharge.isOverdueAt(now)
+                ? 0
+                : bCharge.isOverdueAt(now)
+                ? 1
+                : -1;
+            if (overdue != 0) return overdue;
+            return (aCharge.dueAt ?? DateTime(9999)).compareTo(
+              bCharge.dueAt ?? DateTime(9999),
+            );
+          });
+    final open = charges
+        .map((record) => TuitionCharge.fromJson(record.payload))
+        .where((charge) => charge.isOpenAt(now))
+        .toList();
+    final outstanding = open.fold<double>(
+      0,
+      (sum, charge) => sum + (charge.outstandingAmount ?? charge.amount ?? 0),
+    );
+    final overdueCount = open.where((charge) => charge.isOverdueAt(now)).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Icon(
+                  overdueCount > 0
+                      ? Icons.warning_amber_rounded
+                      : Icons.account_balance_wallet_outlined,
+                  size: 36,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_euro(outstanding)} currently open',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(
+                        overdueCount > 0
+                            ? '$overdueCount overdue item${overdueCount == 1 ? '' : 's'} · verify in Portal'
+                            : '${open.length} open item${open.length == 1 ? '' : 's'} · read-only Portal data',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        const _Banner(
+          icon: Icons.lock_outline_rounded,
+          text:
+              'ClassSync only tracks official Portal charges. It never makes, guarantees, or stores payment details.',
+        ),
+        const SizedBox(height: 14),
+        if (charges.isEmpty)
+          const EmptyState(
+            icon: Icons.receipt_long_outlined,
+            title: 'No tuition or fee items cached',
+            message:
+                'Refresh after Portal exposes your financial page. No payment is made through ClassSync.',
+          )
+        else
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var index = 0; index < charges.length; index++) ...[
+                  _TuitionChargeTile(record: charges[index]),
+                  if (index < charges.length - 1) const Divider(height: 1),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TuitionChargeTile extends ConsumerWidget {
+  const _TuitionChargeTile({required this.record});
+  final AcademicRecord record;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final charge = TuitionCharge.fromJson(record.payload);
+    final now = DateTime.now();
+    final overdue = charge.isOverdueAt(now);
+    final paid = charge.state == TuitionPaymentState.paid;
+    final amount = charge.outstandingAmount ?? charge.amount;
+    final state = overdue
+        ? 'Overdue'
+        : paid
+        ? 'Paid'
+        : charge.state.name;
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: overdue
+            ? Theme.of(context).colorScheme.errorContainer
+            : null,
+        child: Icon(
+          paid
+              ? Icons.check_rounded
+              : overdue
+              ? Icons.priority_high_rounded
+              : Icons.receipt_long_outlined,
+        ),
+      ),
+      title: Row(
+        children: [
+          Expanded(child: Text(record.title)),
+          if (record.changedFields.isNotEmpty)
+            const Tooltip(
+              message: 'Official amount, date, or payment state changed',
+              child: Icon(Icons.change_circle_rounded),
+            ),
+        ],
+      ),
+      subtitle: Text(
+        [
+          state,
+          if (amount != null) _euro(amount),
+          if (charge.dueAt != null)
+            'due ${DateFormat.yMMMd().format(charge.dueAt!)}',
+          if (charge.academicYear != null) charge.academicYear!,
+          if (charge.hasLateInterest) 'late interest reported',
+          if (charge.paymentReferenceHint != null)
+            'ref ${charge.paymentReferenceHint}',
+        ].join(' · '),
+      ),
+      onTap: charge.sourceUrl.isEmpty
+          ? null
+          : () => unawaited(
+              ref.read(academicHubActionsProvider).openSource(charge.sourceUrl),
+            ),
+      trailing: PopupMenuButton<String>(
+        tooltip: 'Payment reminder',
+        icon: Icon(
+          charge.reminderMinutes == null && !charge.overdueReminder
+              ? Icons.notifications_none_rounded
+              : Icons.notifications_active_rounded,
+        ),
+        onSelected: (value) => unawaited(
+          ref.read(academicHubActionsProvider).setTuitionReminder(
+            record,
+            switch (value) {
+              'day' => 1440,
+              'week' => 10080,
+              _ => null,
+            },
+            overdueReminder: value == 'overdue'
+                ? !charge.overdueReminder
+                : charge.overdueReminder,
+          ),
+        ),
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'day', child: Text('1 day before')),
+          const PopupMenuItem(value: 'week', child: Text('1 week before')),
+          PopupMenuItem(
+            value: 'overdue',
+            child: Text(
+              charge.overdueReminder
+                  ? 'Turn overdue alert off'
+                  : 'Alert when overdue',
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'off',
+            child: Text('Turn due reminder off'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _euro(double amount) => NumberFormat.currency(
+  locale: 'pt_PT',
+  symbol: '€',
+  decimalDigits: 2,
+).format(amount);
 
 class _UpdatesSection extends ConsumerWidget {
   const _UpdatesSection({required this.records, required this.subjects});

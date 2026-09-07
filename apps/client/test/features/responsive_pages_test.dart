@@ -79,6 +79,7 @@ void main() {
     expect(find.text('Updates'), findsOneWidget);
     expect(find.text('Course context'), findsOneWidget);
     expect(find.text('Search & ask'), findsOneWidget);
+    expect(find.text('Finance'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

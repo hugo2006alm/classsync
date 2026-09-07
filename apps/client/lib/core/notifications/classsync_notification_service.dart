@@ -43,6 +43,7 @@ class ClassSyncNotificationService implements SyncNotifier {
     required String id,
     required String title,
     required DateTime scheduledAt,
+    int section = 2,
   }) => _plugin.zonedSchedule(
     id: _stableNotificationId(id),
     title: 'ClassSync academic reminder',
@@ -61,7 +62,7 @@ class ClassSyncNotificationService implements SyncNotifier {
       windows: WindowsNotificationDetails(),
     ),
     androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-    payload: 'academic:2:$id',
+    payload: 'academic:$section:$id',
   );
 
   Future<void> cancelAcademicReminder(String id) =>
@@ -71,11 +72,12 @@ class ClassSyncNotificationService implements SyncNotifier {
     required String id,
     required String title,
     required String body,
+    int section = 4,
   }) => _plugin.show(
     id: _stableNotificationId(id),
     title: title,
     body: body,
-    payload: 'academic:4:$id',
+    payload: 'academic:$section:$id',
     notificationDetails: const NotificationDetails(
       android: AndroidNotificationDetails(
         'classsync_academic_updates',

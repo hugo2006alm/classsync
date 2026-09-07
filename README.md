@@ -39,6 +39,8 @@ them with Gemini, and publishes structured study notes to Notion.
 - Read-only Portal notices, official lesson summaries, exam-registration
   windows, enrolment/history, and ECTS progress with stable provenance and
   change detection.
+- Read-only Portal tuition, fee, and payment-deadline tracking with local
+  reminders and no full payment-reference storage.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.

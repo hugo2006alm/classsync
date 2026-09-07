@@ -64,6 +64,26 @@ void main() {
             .subjectId,
         _subjectOne.notionId,
       );
+      final charge = (await database.readAcademicRecords(
+        kind: AcademicRecordKind.tuitionCharge,
+      )).single;
+      expect(charge.payload['paymentReferenceAvailable'], isTrue);
+      expect(charge.payload.values.join(' '), isNot(contains('123456789')));
+      await service.setTuitionReminder(charge, 1440, overdueReminder: true);
+      expect(notifications.scheduled, contains(charge.key));
+      portal.tuitionCharges = [
+        const TuitionCharge(
+          id: 'fee-1',
+          title: 'Tuition fee',
+          state: TuitionPaymentState.paid,
+          sourceUrl: 'https://portal.isep.ipp.pt/payments',
+          installment: 'Installment 1',
+          amount: 120.5,
+          outstandingAmount: 0,
+        ),
+      ];
+      await service.synchronize();
+      expect(notifications.cancelled, contains(charge.key));
 
       final formulaRecord = (await database.readAcademicRecords(
         kind: AcademicRecordKind.gradeFormula,
@@ -207,6 +227,20 @@ class _MemoryCredentials extends SecureCredentialStore {
 class _FakePortal implements PortalAdapter {
   bool authenticated = false;
   String? lastUsername;
+  List<TuitionCharge> tuitionCharges = [
+    TuitionCharge(
+      id: 'fee-1',
+      title: 'Tuition fee',
+      state: TuitionPaymentState.pending,
+      sourceUrl: 'https://portal.isep.ipp.pt/payments',
+      installment: 'Installment 1',
+      amount: 120.5,
+      outstandingAmount: 120.5,
+      dueAt: DateTime.now().add(const Duration(days: 8)),
+      paymentReferenceAvailable: true,
+      paymentReferenceHint: '•••• 6789',
+    ),
+  ];
 
   @override
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
@@ -333,6 +367,9 @@ class _FakePortal implements PortalAdapter {
 
   @override
   Future<List<OfficialLessonSummary>> getLessonSummaries() async => const [];
+
+  @override
+  Future<List<TuitionCharge>> getTuitionCharges() async => tuitionCharges;
 }
 
 class _FakeMoodle extends MoodleClient {
@@ -393,6 +430,7 @@ class _FakeNotifications extends ClassSyncNotificationService {
     required String id,
     required String title,
     required DateTime scheduledAt,
+    int section = 2,
   }) async {
     scheduled.add(id);
   }
@@ -407,6 +445,7 @@ class _FakeNotifications extends ClassSyncNotificationService {
     required String id,
     required String title,
     required String body,
+    int section = 4,
   }) async {
     shown.add(id);
   }
