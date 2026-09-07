@@ -35,6 +35,10 @@ class ExamRegistration {
     required this.examType,
     required this.state,
     required this.sourceUrl,
+    this.registrationOpensAt,
+    this.registrationClosesAt,
+    this.examAt,
+    this.fee,
   });
 
   final String externalId;
@@ -43,6 +47,23 @@ class ExamRegistration {
   final String examType;
   final ExamRegistrationState state;
   final String sourceUrl;
+  final DateTime? registrationOpensAt;
+  final DateTime? registrationClosesAt;
+  final DateTime? examAt;
+  final String? fee;
+
+  Map<String, dynamic> toJson() => {
+    'externalId': externalId,
+    'subjectCode': subjectCode,
+    'subjectName': subjectName,
+    'examType': examType,
+    'state': state.name,
+    'sourceUrl': sourceUrl,
+    'registrationOpensAt': registrationOpensAt?.toIso8601String(),
+    'registrationClosesAt': registrationClosesAt?.toIso8601String(),
+    'examAt': examAt?.toIso8601String(),
+    'fee': fee,
+  };
 }
 
 abstract interface class PortalAdapter {
@@ -55,6 +76,9 @@ abstract interface class PortalAdapter {
   Future<List<ExamRegistration>> getExamRegistrations();
   Future<List<GradeComponent>> getGrades();
   Future<List<AssessmentFormula>> getFucFormulas();
+  Future<List<FucProfile>> getFucProfiles();
+  Future<List<PortalNotification>> getNotifications();
+  Future<List<OfficialLessonSummary>> getLessonSummaries();
 }
 
 class IsepPortalClient implements PortalAdapter {
@@ -192,6 +216,31 @@ class IsepPortalClient implements PortalAdapter {
       'método de avaliação',
     ]);
     return _parser.parseFucFormulas(page.html, sourceUrl: page.url);
+  }
+
+  @override
+  Future<List<FucProfile>> getFucProfiles() async {
+    final page = await _featurePage(const [
+      'ficha de unidade curricular',
+      'fuc',
+    ]);
+    return _parser.parseFucProfiles(page.html, sourceUrl: page.url);
+  }
+
+  @override
+  Future<List<PortalNotification>> getNotifications() async {
+    final page = await _featurePage(const [
+      'notificações eletrónicas',
+      'notificacoes eletronicas',
+      'notificações',
+    ]);
+    return _parser.parseNotifications(page.html, sourceUrl: page.url);
+  }
+
+  @override
+  Future<List<OfficialLessonSummary>> getLessonSummaries() async {
+    final page = await _featurePage(const ['sumários', 'sumarios']);
+    return _parser.parseLessonSummaries(page.html, sourceUrl: page.url);
   }
 
   Future<PortalDocument> _featurePage(List<String> labels) async {
@@ -426,6 +475,11 @@ class IsepPortalParser {
           academicYear: year,
           semester: semester,
           sourceUrl: sourceUrl,
+          status: _value(row, const ['estado', 'situacao']).ifEmpty('current'),
+          ects: _number(_value(row, const ['ects', 'creditos'])),
+          courseContext: _nullable(
+            _value(row, const ['curso', 'plano estudos', 'ramo']),
+          ),
         ),
       );
     }
@@ -573,7 +627,7 @@ class IsepPortalParser {
         'avaliacao',
       ]).ifEmpty('Exam');
       final state = _registrationState(
-        _value(row, const ['inscricao', 'estado inscricao', 'estado']),
+        _value(row, const ['estado inscricao', 'estado', 'inscricao']),
       );
       result.add(
         ExamRegistration(
@@ -583,6 +637,19 @@ class IsepPortalParser {
           examType: type,
           state: state,
           sourceUrl: sourceUrl,
+          registrationOpensAt: _dateTime(
+            _value(row, const ['inicio inscricao', 'abertura']),
+            _value(row, const ['hora abertura']),
+          ),
+          registrationClosesAt: _dateTime(
+            _value(row, const ['fim inscricao', 'fecho', 'limite inscricao']),
+            _value(row, const ['hora fecho']),
+          ),
+          examAt: _dateTime(
+            _value(row, const ['data exame', 'data']),
+            _value(row, const ['hora exame', 'hora']),
+          ),
+          fee: _nullable(_value(row, const ['taxa', 'valor', 'emolumento'])),
         ),
       );
     }
@@ -623,11 +690,20 @@ class IsepPortalParser {
       final value = _number(
         _value(row, const ['classificacao', 'nota', 'resultado', 'valor']),
       );
-      if ((name.isEmpty && code.isEmpty) || value == null) continue;
+      final rawStatus = _value(row, const [
+        'estado',
+        'resultado final',
+        'situacao',
+      ]);
+      final parsedEcts = _number(_value(row, const ['ects', 'creditos']));
+      if ((name.isEmpty && code.isEmpty) ||
+          (value == null &&
+              (!forceHistorical ||
+                  (rawStatus.isEmpty && parsedEcts == null)))) {
+        continue;
+      }
       final academicYear = _nullable(_value(row, const ['ano letivo', 'ano']));
-      final status = _normalize(
-        _value(row, const ['estado', 'resultado final']),
-      );
+      final status = _normalize(rawStatus);
       final isHistorical =
           forceHistorical ||
           row.keys.any((key) => key.contains('ects')) ||
@@ -653,7 +729,11 @@ class IsepPortalParser {
           academicYear: academicYear,
           isFinal: isFinal,
           isHistorical: isHistorical,
-          ects: _number(_value(row, const ['ects', 'creditos'])),
+          ects: parsedEcts,
+          academicStatus: _nullable(rawStatus),
+          courseContext: _nullable(
+            _value(row, const ['curso', 'plano estudos', 'ramo']),
+          ),
           source: GradeValueSource.officialPortal,
           sourceUrl: sourceUrl,
         ),
@@ -741,6 +821,139 @@ class IsepPortalParser {
     return _requireParsed(result, 'FUC evaluation formula');
   }
 
+  List<FucProfile> parseFucProfiles(String html, {required String sourceUrl}) {
+    final result = <FucProfile>[];
+    for (final row in _tableRows(html)) {
+      final name = _value(row, const [
+        'unidade curricular',
+        'disciplina',
+        'uc',
+      ]);
+      final code = _value(row, const ['codigo', 'sigla', 'codigo uc']);
+      if (name.isEmpty && code.isEmpty) continue;
+      final year = _value(row, const ['ano letivo', 'ano', 'versao']);
+      final id = _value(row, const [
+        'id',
+        'codigo uc',
+      ]).ifEmpty('${_normalize(code.ifEmpty(name))}:${_normalize(year)}');
+      result.add(
+        FucProfile(
+          id: id,
+          subjectCode: code,
+          subjectName: name.ifEmpty(code),
+          academicYear: year,
+          responsibleLecturer: _nullable(
+            _value(row, const ['docente responsavel', 'responsavel']),
+          ),
+          lecturers: _splitList(
+            _value(row, const ['outros docentes', 'docentes']),
+          ),
+          workload: _nullable(
+            _value(row, const ['carga horaria', 'horas contacto', 'horas']),
+          ),
+          objectives: _splitList(
+            _value(row, const [
+              'objetivos',
+              'resultados aprendizagem',
+              'competencias',
+            ]),
+          ),
+          syllabus: _splitList(
+            _value(row, const ['programa', 'conteudos', 'syllabus']),
+          ),
+          bibliography: _splitList(_value(row, const ['bibliografia'])),
+          methodologies: _splitList(
+            _value(row, const ['metodologias', 'metodos ensino']),
+          ),
+          evaluationRules: _splitList(
+            _value(row, const [
+              'metodo avaliacao',
+              'avaliacao',
+              'regras avaliacao',
+            ]),
+          ),
+          sourceUrl: sourceUrl,
+        ),
+      );
+    }
+    return _requireParsed(_dedupe(result, (item) => item.id), 'FUC details');
+  }
+
+  List<PortalNotification> parseNotifications(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final result = <PortalNotification>[];
+    for (final row in _tableRows(html)) {
+      final title = _value(row, const ['assunto', 'titulo', 'notificacao']);
+      final message = _value(row, const ['mensagem', 'conteudo', 'texto']);
+      final created = _dateTime(
+        _value(row, const ['data', 'enviado em']),
+        _value(row, const ['hora']),
+      );
+      if ((title.isEmpty && message.isEmpty) || created == null) continue;
+      final sender = _value(row, const ['remetente', 'emissor', 'de']);
+      final id = _value(row, const ['id']).ifEmpty(
+        '${created.toIso8601String()}:${_normalize(title.ifEmpty(message))}',
+      );
+      result.add(
+        PortalNotification(
+          id: id,
+          title: title.ifEmpty('Portal notification'),
+          sender: sender,
+          createdAt: created,
+          message: message,
+          attachments: _splitList(_value(row, const ['anexos', 'ficheiros'])),
+          sourceUrl: sourceUrl,
+        ),
+      );
+    }
+    return _requireParsed(_dedupe(result, (item) => item.id), 'notifications');
+  }
+
+  List<OfficialLessonSummary> parseLessonSummaries(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final result = <OfficialLessonSummary>[];
+    for (final row in _tableRows(html)) {
+      final name = _value(row, const [
+        'unidade curricular',
+        'disciplina',
+        'uc',
+      ]);
+      final code = _value(row, const ['codigo', 'sigla', 'codigo uc']);
+      final text = _value(row, const ['sumario', 'conteudo', 'descricao']);
+      final date = _dateTime(
+        _value(row, const ['data', 'dia']),
+        _value(row, const ['hora', 'inicio']),
+      );
+      if ((name.isEmpty && code.isEmpty) || text.isEmpty || date == null) {
+        continue;
+      }
+      final id = _value(row, const [
+        'id',
+      ]).ifEmpty('${_normalize(code.ifEmpty(name))}:${date.toIso8601String()}');
+      result.add(
+        OfficialLessonSummary(
+          id: id,
+          subjectCode: code,
+          subjectName: name.ifEmpty(code),
+          date: date,
+          text: text,
+          className: _nullable(_value(row, const ['turma', 'classe'])),
+          lessonType: _nullable(_value(row, const ['tipo', 'tipo aula'])),
+          lecturer: _nullable(_value(row, const ['docente', 'professor'])),
+          sourceUrl: sourceUrl,
+        ),
+      );
+    }
+    return _requireParsed(
+      _dedupe(result, (item) => item.id),
+      'lesson summaries',
+    );
+  }
+
   static List<Map<String, String>> _tableRows(String html) {
     final document = html_parser.parse(html);
     final result = <Map<String, String>>[];
@@ -805,6 +1018,12 @@ class IsepPortalParser {
   static double? _number(String value) =>
       double.tryParse(value.replaceAll('%', '').replaceAll(',', '.').trim());
 
+  static List<String> _splitList(String value) => value
+      .split(RegExp(r'(?:\r?\n|;|\s[•·]\s)'))
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+
   static double? _percent(String value) {
     final parsed = _number(value);
     if (parsed == null) return null;
@@ -824,6 +1043,9 @@ class IsepPortalParser {
     }
     if (normalized.contains('abert') || normalized.contains('disponivel')) {
       return ExamRegistrationState.registrationAvailable;
+    }
+    if (normalized.contains('agend') || normalized.contains('marcad')) {
+      return ExamRegistrationState.scheduled;
     }
     return ExamRegistrationState.unknown;
   }

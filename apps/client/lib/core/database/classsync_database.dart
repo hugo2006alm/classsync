@@ -1115,6 +1115,18 @@ Map<String, dynamic> _preserveLocalAcademicFields(
   if (old?['reminderMinutes'] != null && result['reminderMinutes'] == null) {
     result['reminderMinutes'] = old!['reminderMinutes'];
   }
+  if (old?['status'] != null && incoming.containsKey('sourceLectureId')) {
+    result['status'] = old!['status'];
+  }
+  if (old?['userEdited'] == true && incoming.containsKey('sourceLectureId')) {
+    for (final key in const ['title', 'description', 'dueAt']) {
+      result[key] = old![key];
+    }
+    result['userEdited'] = true;
+  }
+  if (old?['read'] == true && incoming.containsKey('read')) {
+    result['read'] = true;
+  }
   return result;
 }
 
@@ -1122,7 +1134,13 @@ List<String> _changedAcademicFields(
   Map<String, dynamic> old,
   Map<String, dynamic> current,
 ) {
-  const ignored = {'reminderMinutes', 'provenance'};
+  const ignored = {
+    'reminderMinutes',
+    'provenance',
+    'status',
+    'userEdited',
+    'read',
+  };
   final keys = {...old.keys, ...current.keys}..removeAll(ignored);
   return keys
       .where(

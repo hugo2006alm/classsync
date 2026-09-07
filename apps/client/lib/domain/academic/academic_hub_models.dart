@@ -10,13 +10,271 @@ enum AcademicSource { portal, moodle, manual, fuc }
 
 enum AcademicRecordKind {
   enrollment,
+  academicHistory,
   timetable,
   evaluation,
+  examRegistration,
   moodleCourse,
   announcement,
+  portalNotification,
+  fucProfile,
+  lessonSummary,
+  lectureTask,
   grade,
   gradeFormula,
   reminderPreference,
+}
+
+enum LectureTaskStatus { pending, completed, dismissed }
+
+class LectureTask {
+  const LectureTask({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.sourceLectureId,
+    required this.sourceLectureTitle,
+    required this.confidence,
+    required this.supportingSegment,
+    required this.status,
+    this.subjectId,
+    this.subjectName,
+    this.dueAt,
+    this.timestampSeconds,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+  final String sourceLectureId;
+  final String sourceLectureTitle;
+  final String? subjectId;
+  final String? subjectName;
+  final DateTime? dueAt;
+  final LectureActionConfidence confidence;
+  final String supportingSegment;
+  final double? timestampSeconds;
+  final LectureTaskStatus status;
+
+  bool get needsReview =>
+      confidence == LectureActionConfidence.ambiguous || dueAt == null;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'description': description,
+    'sourceLectureId': sourceLectureId,
+    'sourceLectureTitle': sourceLectureTitle,
+    'subjectId': subjectId,
+    'subjectName': subjectName,
+    'dueAt': dueAt?.toIso8601String(),
+    'confidence': confidence.name,
+    'supportingSegment': supportingSegment,
+    'timestampSeconds': timestampSeconds,
+    'status': status.name,
+  };
+
+  factory LectureTask.fromJson(Map<String, dynamic> json) => LectureTask(
+    id: json['id'] as String? ?? '',
+    title: json['title'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    sourceLectureId: json['sourceLectureId'] as String? ?? '',
+    sourceLectureTitle: json['sourceLectureTitle'] as String? ?? '',
+    subjectId: json['subjectId'] as String?,
+    subjectName: json['subjectName'] as String?,
+    dueAt: DateTime.tryParse(json['dueAt'] as String? ?? ''),
+    confidence: LectureActionConfidence.values.firstWhere(
+      (value) => value.name == json['confidence'],
+      orElse: () => LectureActionConfidence.ambiguous,
+    ),
+    supportingSegment: json['supportingSegment'] as String? ?? '',
+    timestampSeconds: (json['timestampSeconds'] as num?)?.toDouble(),
+    status: LectureTaskStatus.values.firstWhere(
+      (value) => value.name == json['status'],
+      orElse: () => LectureTaskStatus.pending,
+    ),
+  );
+
+  LectureTask copyWith({
+    String? title,
+    String? description,
+    DateTime? dueAt,
+    bool clearDueAt = false,
+    LectureTaskStatus? status,
+  }) => LectureTask(
+    id: id,
+    title: title ?? this.title,
+    description: description ?? this.description,
+    sourceLectureId: sourceLectureId,
+    sourceLectureTitle: sourceLectureTitle,
+    subjectId: subjectId,
+    subjectName: subjectName,
+    dueAt: clearDueAt ? null : dueAt ?? this.dueAt,
+    confidence: confidence,
+    supportingSegment: supportingSegment,
+    timestampSeconds: timestampSeconds,
+    status: status ?? this.status,
+  );
+}
+
+class PortalNotification {
+  const PortalNotification({
+    required this.id,
+    required this.title,
+    required this.sender,
+    required this.createdAt,
+    required this.message,
+    required this.sourceUrl,
+    this.attachments = const [],
+  });
+
+  final String id;
+  final String title;
+  final String sender;
+  final DateTime createdAt;
+  final String message;
+  final List<String> attachments;
+  final String sourceUrl;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'sender': sender,
+    'createdAt': createdAt.toIso8601String(),
+    'message': message,
+    'attachments': attachments,
+    'sourceUrl': sourceUrl,
+    'read': false,
+  };
+}
+
+class FucProfile {
+  const FucProfile({
+    required this.id,
+    required this.subjectCode,
+    required this.subjectName,
+    required this.academicYear,
+    required this.sourceUrl,
+    this.responsibleLecturer,
+    this.lecturers = const [],
+    this.workload,
+    this.objectives = const [],
+    this.syllabus = const [],
+    this.bibliography = const [],
+    this.methodologies = const [],
+    this.evaluationRules = const [],
+  });
+
+  final String id;
+  final String subjectCode;
+  final String subjectName;
+  final String academicYear;
+  final String? responsibleLecturer;
+  final List<String> lecturers;
+  final String? workload;
+  final List<String> objectives;
+  final List<String> syllabus;
+  final List<String> bibliography;
+  final List<String> methodologies;
+  final List<String> evaluationRules;
+  final String sourceUrl;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'subjectCode': subjectCode,
+    'subjectName': subjectName,
+    'academicYear': academicYear,
+    'responsibleLecturer': responsibleLecturer,
+    'lecturers': lecturers,
+    'workload': workload,
+    'objectives': objectives,
+    'syllabus': syllabus,
+    'bibliography': bibliography,
+    'methodologies': methodologies,
+    'evaluationRules': evaluationRules,
+    'sourceUrl': sourceUrl,
+  };
+}
+
+class OfficialLessonSummary {
+  const OfficialLessonSummary({
+    required this.id,
+    required this.subjectCode,
+    required this.subjectName,
+    required this.date,
+    required this.text,
+    required this.sourceUrl,
+    this.className,
+    this.lessonType,
+    this.lecturer,
+  });
+
+  final String id;
+  final String subjectCode;
+  final String subjectName;
+  final DateTime date;
+  final String text;
+  final String? className;
+  final String? lessonType;
+  final String? lecturer;
+  final String sourceUrl;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'subjectCode': subjectCode,
+    'subjectName': subjectName,
+    'date': date.toIso8601String(),
+    'text': text,
+    'className': className,
+    'lessonType': lessonType,
+    'lecturer': lecturer,
+    'sourceUrl': sourceUrl,
+  };
+}
+
+class AcademicSearchHit {
+  const AcademicSearchHit({
+    required this.id,
+    required this.title,
+    required this.excerpt,
+    required this.kind,
+    required this.source,
+    required this.score,
+    this.subjectId,
+    this.date,
+    this.url,
+  });
+
+  final String id;
+  final String title;
+  final String excerpt;
+  final AcademicRecordKind kind;
+  final AcademicSource source;
+  final int score;
+  final String? subjectId;
+  final DateTime? date;
+  final String? url;
+}
+
+class AcademicGroundedAnswer {
+  const AcademicGroundedAnswer({
+    required this.answer,
+    required this.citationIds,
+    required this.insufficientEvidence,
+  });
+
+  final String answer;
+  final List<String> citationIds;
+  final bool insufficientEvidence;
+
+  factory AcademicGroundedAnswer.fromJson(Map<String, dynamic> json) =>
+      AcademicGroundedAnswer(
+        answer: json['answer'] as String? ?? '',
+        citationIds: (json['citationIds'] as List<dynamic>? ?? const [])
+            .map((item) => item.toString())
+            .toList(),
+        insufficientEvidence: json['insufficientEvidence'] as bool? ?? false,
+      );
 }
 
 class AcademicRecord {
@@ -97,6 +355,9 @@ class EnrollmentSubject {
     required this.semester,
     this.subjectId,
     this.sourceUrl,
+    this.status = 'current',
+    this.ects,
+    this.courseContext,
   });
 
   final String externalId;
@@ -106,6 +367,9 @@ class EnrollmentSubject {
   final String semester;
   final String? subjectId;
   final String? sourceUrl;
+  final String status;
+  final double? ects;
+  final String? courseContext;
 
   Map<String, dynamic> toJson() => {
     'externalId': externalId,
@@ -115,6 +379,9 @@ class EnrollmentSubject {
     'semester': semester,
     'subjectId': subjectId,
     'sourceUrl': sourceUrl,
+    'status': status,
+    'ects': ects,
+    'courseContext': courseContext,
   };
 
   EnrollmentSubject copyWith({String? subjectId}) => EnrollmentSubject(
@@ -125,6 +392,9 @@ class EnrollmentSubject {
     semester: semester,
     subjectId: subjectId ?? this.subjectId,
     sourceUrl: sourceUrl,
+    status: status,
+    ects: ects,
+    courseContext: courseContext,
   );
 }
 
@@ -404,6 +674,8 @@ class GradeComponent {
     this.isFinal = false,
     this.isHistorical = false,
     this.ects,
+    this.academicStatus,
+    this.courseContext,
     this.confirmed = true,
     this.sourceUrl,
   });
@@ -420,6 +692,8 @@ class GradeComponent {
   final bool isFinal;
   final bool isHistorical;
   final double? ects;
+  final String? academicStatus;
+  final String? courseContext;
   final GradeValueSource source;
   final bool confirmed;
   final String? sourceUrl;
@@ -437,6 +711,8 @@ class GradeComponent {
     'isFinal': isFinal,
     'isHistorical': isHistorical,
     'ects': ects,
+    'academicStatus': academicStatus,
+    'courseContext': courseContext,
     'source': source.name,
     'confirmed': confirmed,
     'sourceUrl': sourceUrl,
@@ -455,6 +731,8 @@ class GradeComponent {
     isFinal: json['isFinal'] as bool? ?? false,
     isHistorical: json['isHistorical'] as bool? ?? false,
     ects: (json['ects'] as num?)?.toDouble(),
+    academicStatus: json['academicStatus'] as String?,
+    courseContext: json['courseContext'] as String?,
     source: GradeValueSource.values.firstWhere(
       (item) => item.name == json['source'],
       orElse: () => GradeValueSource.manual,
@@ -481,6 +759,8 @@ class GradeComponent {
     isFinal: isFinal,
     isHistorical: isHistorical,
     ects: ects,
+    academicStatus: academicStatus,
+    courseContext: courseContext,
     source: source,
     confirmed: confirmed ?? this.confirmed,
     sourceUrl: sourceUrl,

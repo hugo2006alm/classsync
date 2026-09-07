@@ -9,7 +9,7 @@ the same. Do not uninstall the app or clear its storage before updating. Android
 also requires the update to use the same signing certificate as the installed
 build.
 
-ClassSync opens an eight-step setup guide on its first launch. You need four
+ClassSync opens a nine-step setup guide on its first launch. You need four
 credentials: a Fireflies API key, a Gemini API key, a Notion integration token,
 and the ClassSync device API token.
 
@@ -32,7 +32,7 @@ generates your account-specific Fireflies signing secret during setup.
 6. Keep the current `DEVICE_API_TOKEN` ready. This is the long Cloudflare
    bootstrap token, not `FIREFLIES_WEBHOOK_SECRET`.
 
-## The eight screens
+## The nine screens
 
 1. **Welcome** lists everything needed and explains what stays local.
 2. **Fireflies** accepts a named API key and tests it before continuing.
@@ -41,17 +41,21 @@ generates your account-specific Fireflies signing secret during setup.
 4. **Notion** discovers every database shared with the integration. Select
    `Lista de Cadeiras` and `Histórico de Resumos`. Keep the recommended
    `Fireflies ID` option enabled for reliable cross-device duplicate detection.
-5. **Relay** already uses
+5. **Academic** optionally tests an ISEP Portal username/password and/or a
+   Moodle Web Services token. Leave both sections blank to skip them and
+   connect later under **Academic → Connections**. Portal access is read-only;
+   ClassSync does not submit exam registrations.
+6. **Relay** already uses
    `https://classsync-relay.classsync-relay.workers.dev`. Paste only the device
    API token. A different URL can be entered under **Use a different relay** for
    self-hosting or staging.
-6. **Account** records the owner's display name, creates a private account for
+7. **Account** records the owner's display name, creates a private account for
    one person, or joins that person's other devices with a recovery code. Copy
    its unique URL and signing secret into Fireflies Webhooks V2 and subscribe
    to `meeting.transcribed`.
-7. **Automation** controls problem notifications and the platform-specific
+8. **Automation** controls problem notifications and the platform-specific
    background option.
-8. **Ready** reviews every verified connection before saving the credentials to
+9. **Ready** reviews every verified connection before saving the credentials to
    OS secure storage.
 
 ## Notion database requirements

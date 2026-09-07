@@ -23,5 +23,15 @@ abstract interface class AcademicHubActions {
     AcademicSubject subject,
   );
   Future<void> confirmFormula(AcademicRecord record);
+  Future<void> updateLectureTask(
+    AcademicRecord record, {
+    String? title,
+    String? description,
+    DateTime? dueAt,
+    bool clearDueAt,
+    LectureTaskStatus? status,
+  });
+  Future<void> markPortalNotificationRead(AcademicRecord record);
+  Future<void> setAcademicUpdateNotifications(String source, bool enabled);
   Future<void> openSource(String url);
 }

@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_hub_actions.dart';
 import '../../domain/academic/academic_models.dart';
@@ -211,17 +213,68 @@ class AcademicSyncService implements AcademicHubActions {
       await _replaceEvaluations(AcademicSource.portal, records);
       saved += records.length;
     }
+    if (registrations.isNotEmpty) {
+      final previousRegistrations = await _database.readAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.examRegistration,
+      );
+      final records = registrations.map((registration) {
+        final subjectId = _mapSubject(
+          registration.subjectCode,
+          registration.subjectName,
+          subjects,
+        );
+        return AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.portal,
+            AcademicRecordKind.examRegistration,
+            registration.externalId,
+          ),
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.examRegistration,
+          externalId: registration.externalId,
+          title: '${registration.examType} · ${registration.subjectName}',
+          subjectId: subjectId,
+          startsAt: registration.examAt ?? registration.registrationOpensAt,
+          endsAt: registration.registrationClosesAt,
+          payload: {...registration.toJson(), 'subjectId': subjectId},
+          syncedAt: DateTime.now().toUtc(),
+        );
+      }).toList();
+      await _database.replaceAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.examRegistration,
+        records: records,
+      );
+      final incomingKeys = records.map((record) => record.key).toSet();
+      for (final removed in previousRegistrations.where(
+        (record) => !incomingKeys.contains(record.key),
+      )) {
+        await _notifications.cancelAcademicReminder(removed.key);
+      }
+      saved += records.length;
+      for (final registration in records) {
+        final closes = registration.endsAt;
+        final reminderAt = closes?.subtract(const Duration(days: 1));
+        if (closes != null &&
+            closes.isAfter(DateTime.now()) &&
+            reminderAt!.isAfter(DateTime.now()) &&
+            registration.payload['state'] !=
+                ExamRegistrationState.registered.name) {
+          await _notifications.scheduleAcademicReminder(
+            id: registration.key,
+            title: 'Exam registration closes: ${registration.title}',
+            scheduledAt: reminderAt,
+          );
+        }
+      }
+    }
 
     final grades = <GradeComponent>[];
     try {
       grades.addAll(await _portal.getGrades());
     } on IntegrationException catch (error) {
       errors.add(error.userMessage);
-    }
-    try {
-      grades.addAll(await _portal.getAcademicHistory());
-    } on IntegrationException catch (error) {
-      if (grades.isEmpty) errors.add(error.userMessage);
     }
     if (grades.isNotEmpty) {
       final records = grades.map((item) {
@@ -255,6 +308,39 @@ class AcademicSyncService implements AcademicHubActions {
     }
 
     try {
+      final history = await _portal.getAcademicHistory();
+      final records = history.map((item) {
+        final subjectId = _mapSubject(
+          item.subjectCode ?? '',
+          item.subjectName,
+          subjects,
+        );
+        return AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.portal,
+            AcademicRecordKind.academicHistory,
+            item.externalId,
+          ),
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.academicHistory,
+          externalId: item.externalId,
+          title: item.subjectName,
+          subjectId: subjectId,
+          payload: {...item.toJson(), 'subjectId': subjectId},
+          syncedAt: DateTime.now().toUtc(),
+        );
+      }).toList();
+      await _database.replaceAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.academicHistory,
+        records: records,
+      );
+      saved += records.length;
+    } on IntegrationException catch (error) {
+      errors.add(error.userMessage);
+    }
+
+    try {
       final previous = await _database.readAcademicRecords(
         source: AcademicSource.fuc,
         kind: AcademicRecordKind.gradeFormula,
@@ -281,6 +367,167 @@ class AcademicSyncService implements AcademicHubActions {
       await _database.replaceAcademicRecords(
         source: AcademicSource.fuc,
         kind: AcademicRecordKind.gradeFormula,
+        records: records,
+      );
+      saved += records.length;
+    } on IntegrationException catch (error) {
+      errors.add(error.userMessage);
+    }
+    try {
+      final profiles = await _portal.getFucProfiles();
+      final records = profiles.map((profile) {
+        final subjectId = _mapSubject(
+          profile.subjectCode,
+          profile.subjectName,
+          subjects,
+        );
+        return AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.fuc,
+            AcademicRecordKind.fucProfile,
+            profile.id,
+          ),
+          source: AcademicSource.fuc,
+          kind: AcademicRecordKind.fucProfile,
+          externalId: profile.id,
+          title: profile.subjectName,
+          subjectId: subjectId,
+          payload: {...profile.toJson(), 'subjectId': subjectId},
+          syncedAt: DateTime.now().toUtc(),
+        );
+      }).toList();
+      await _database.replaceAcademicRecords(
+        source: AcademicSource.fuc,
+        kind: AcademicRecordKind.fucProfile,
+        records: records,
+      );
+      saved += records.length;
+    } on IntegrationException catch (error) {
+      errors.add(error.userMessage);
+    }
+
+    try {
+      final previous = await _database.readAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.portalNotification,
+      );
+      final previousKeys = previous.map((item) => item.key).toSet();
+      final notifications = await _portal.getNotifications();
+      final records = notifications
+          .map(
+            (item) => AcademicRecord(
+              key: AcademicRecord.keyFor(
+                AcademicSource.portal,
+                AcademicRecordKind.portalNotification,
+                item.id,
+              ),
+              source: AcademicSource.portal,
+              kind: AcademicRecordKind.portalNotification,
+              externalId: item.id,
+              title: item.title,
+              startsAt: item.createdAt,
+              payload: item.toJson(),
+              syncedAt: DateTime.now().toUtc(),
+            ),
+          )
+          .toList();
+      await _database.replaceAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.portalNotification,
+        records: records,
+      );
+      final settings = await _database.readSettings();
+      if (previous.isNotEmpty &&
+          settings.notificationsEnabled &&
+          await _academicNotificationEnabled('portalNotification')) {
+        for (final record in records.where(
+          (item) => !previousKeys.contains(item.key),
+        )) {
+          await _notifications.showAcademicUpdate(
+            id: record.key,
+            title: 'ISEP Portal · ${record.title}',
+            body: record.payload['message'] as String? ?? '',
+          );
+        }
+      }
+      saved += records.length;
+    } on IntegrationException catch (error) {
+      errors.add(error.userMessage);
+    }
+
+    try {
+      final jobs = await _database.readJobs();
+      final summaries = await _portal.getLessonSummaries();
+      final records = summaries.map((item) {
+        final subjectId = _mapSubject(
+          item.subjectCode,
+          item.subjectName,
+          subjects,
+        );
+        final candidates =
+            jobs.where((job) {
+              final sameSubject =
+                  subjectId != null && job.subjectId == subjectId;
+              final deltaSeconds = job.meetingDate
+                  .difference(item.date)
+                  .inSeconds
+                  .abs();
+              return sameSubject &&
+                  deltaSeconds <= const Duration(hours: 12).inSeconds;
+            }).toList()..sort(
+              (a, b) => a.meetingDate
+                  .difference(item.date)
+                  .inSeconds
+                  .abs()
+                  .compareTo(
+                    b.meetingDate.difference(item.date).inSeconds.abs(),
+                  ),
+            );
+        final match = candidates.firstOrNull;
+        final matchConfidence = match == null
+            ? 0.0
+            : match.meetingDate.difference(item.date).inMinutes.abs() <= 120
+            ? 0.95
+            : 0.80;
+        final generatedText = match?.summaryJson == null
+            ? ''
+            : LectureSummary.decode(match!.summaryJson!).toJson().toString();
+        final officialTerms = SubjectMapper.normalize(
+          item.text,
+        ).split(' ').toSet();
+        final generatedTerms = SubjectMapper.normalize(
+          generatedText,
+        ).split(' ').toSet();
+        final overlap = officialTerms.isEmpty
+            ? 0.0
+            : officialTerms.intersection(generatedTerms).length /
+                  officialTerms.length;
+        return AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.portal,
+            AcademicRecordKind.lessonSummary,
+            item.id,
+          ),
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.lessonSummary,
+          externalId: item.id,
+          title: item.subjectName,
+          subjectId: subjectId,
+          startsAt: item.date,
+          payload: {
+            ...item.toJson(),
+            'subjectId': subjectId,
+            'matchedLectureId': match?.id,
+            'matchConfidence': matchConfidence,
+            'coverage': overlap,
+            'coverageNeedsReview': match != null && overlap < 0.25,
+          },
+          syncedAt: DateTime.now().toUtc(),
+        );
+      }).toList();
+      await _database.replaceAcademicRecords(
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.lessonSummary,
         records: records,
       );
       saved += records.length;
@@ -379,6 +626,13 @@ class AcademicSyncService implements AcademicHubActions {
       await _replaceEvaluations(AcademicSource.moodle, merged.values.toList());
     }
 
+    final oldAnnouncements = await _database.readAcademicRecords(
+      source: AcademicSource.moodle,
+      kind: AcademicRecordKind.announcement,
+    );
+    final oldAnnouncementKeys = oldAnnouncements
+        .map((item) => item.key)
+        .toSet();
     final announcementRecords = bundle.announcements.map((item) {
       final payload = {
         ...item.toJson(),
@@ -407,11 +661,9 @@ class AcademicSyncService implements AcademicHubActions {
         records: announcementRecords,
       );
     } else {
-      final old = await _database.readAcademicRecords(
-        source: AcademicSource.moodle,
-        kind: AcademicRecordKind.announcement,
-      );
-      final merged = {for (final record in old) record.key: record};
+      final merged = {
+        for (final record in oldAnnouncements) record.key: record,
+      };
       for (final record in announcementRecords) {
         merged[record.key] = record;
       }
@@ -420,6 +672,21 @@ class AcademicSyncService implements AcademicHubActions {
         kind: AcademicRecordKind.announcement,
         records: merged.values.toList(),
       );
+    }
+    final settings = await _database.readSettings();
+    if (since != null &&
+        oldAnnouncements.isNotEmpty &&
+        settings.notificationsEnabled &&
+        await _academicNotificationEnabled('moodleAnnouncement')) {
+      for (final record in announcementRecords.where(
+        (item) => !oldAnnouncementKeys.contains(item.key),
+      )) {
+        await _notifications.showAcademicUpdate(
+          id: record.key,
+          title: 'Moodle · ${record.title}',
+          body: record.payload['preview'] as String? ?? '',
+        );
+      }
     }
     await _database.saveCursor('moodle_academic', syncStarted);
     return courseRecords.length +
@@ -457,6 +724,79 @@ class AcademicSyncService implements AcademicHubActions {
     await _database.upsertAcademicRecord(
       record.copyWith(payload: confirmed.toJson()),
     );
+  }
+
+  @override
+  Future<void> updateLectureTask(
+    AcademicRecord record, {
+    String? title,
+    String? description,
+    DateTime? dueAt,
+    bool clearDueAt = false,
+    LectureTaskStatus? status,
+  }) async {
+    final task = LectureTask.fromJson(record.payload).copyWith(
+      title: title,
+      description: description,
+      dueAt: dueAt,
+      clearDueAt: clearDueAt,
+      status: status,
+    );
+    await _database.upsertAcademicRecord(
+      AcademicRecord(
+        key: record.key,
+        source: record.source,
+        kind: record.kind,
+        externalId: record.externalId,
+        title: task.title,
+        subjectId: task.subjectId,
+        startsAt: task.dueAt,
+        payload: {
+          ...task.toJson(),
+          'userEdited':
+              title != null ||
+              description != null ||
+              dueAt != null ||
+              clearDueAt,
+        },
+        syncedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
+  @override
+  Future<void> markPortalNotificationRead(AcademicRecord record) =>
+      _database.upsertAcademicRecord(
+        record.copyWith(payload: {...record.payload, 'read': true}),
+      );
+
+  @override
+  Future<void> setAcademicUpdateNotifications(String source, bool enabled) =>
+      _database.upsertAcademicRecord(
+        AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.manual,
+            AcademicRecordKind.reminderPreference,
+            'updates:$source',
+          ),
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.reminderPreference,
+          externalId: 'updates:$source',
+          title: '$source update notifications',
+          payload: {'source': source, 'enabled': enabled},
+          syncedAt: DateTime.now().toUtc(),
+        ),
+      );
+
+  Future<bool> _academicNotificationEnabled(String source) async {
+    final record = await _database.readAcademicRecord(
+      AcademicRecord.keyFor(
+        AcademicSource.manual,
+        AcademicRecordKind.reminderPreference,
+        'updates:$source',
+      ),
+    );
+    return record?.payload['enabled'] as bool? ?? true;
   }
 
   @override

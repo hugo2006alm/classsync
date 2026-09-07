@@ -14,20 +14,23 @@ import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 
 class AcademicScreen extends ConsumerStatefulWidget {
-  const AcademicScreen({super.key});
+  const AcademicScreen({super.key, this.initialSection = 0});
+
+  final int initialSection;
 
   @override
   ConsumerState<AcademicScreen> createState() => _AcademicScreenState();
 }
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen> {
-  var _section = 0;
+  late int _section = widget.initialSection.clamp(0, 6).toInt();
   late DateTime _weekStart = _startOfWeek(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
     final recordsValue = ref.watch(academicRecordsProvider);
     final sync = ref.watch(syncControllerProvider);
+    final connections = ref.watch(academicConnectionStateProvider).valueOrNull;
     return PageFrame(
       title: 'Academic',
       subtitle:
@@ -63,6 +66,14 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
         data: (records) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (connections != null && !connections.anyConfigured) ...[
+              _Banner(
+                icon: Icons.link_off_rounded,
+                text:
+                    'Academic sources are not connected yet. Connect ISEP Portal and/or Moodle to replace empty placeholders with your real timetable, grades, notices, and assignments.',
+              ),
+              const SizedBox(height: 12),
+            ],
             _SyncResultBanner(
               loading: sync.isLoading,
               error: sync.error,
@@ -80,18 +91,33 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                   ),
                   ButtonSegment(
                     value: 1,
+                    icon: Icon(Icons.task_alt_rounded),
+                    label: Text('Tasks'),
+                  ),
+                  ButtonSegment(
+                    value: 2,
                     icon: Icon(Icons.event_rounded),
                     label: Text('Evaluations'),
                   ),
                   ButtonSegment(
-                    value: 2,
+                    value: 3,
                     icon: Icon(Icons.calculate_rounded),
-                    label: Text('Grades'),
+                    label: Text('Progress'),
                   ),
                   ButtonSegment(
-                    value: 3,
+                    value: 4,
                     icon: Icon(Icons.campaign_rounded),
-                    label: Text('Moodle'),
+                    label: Text('Updates'),
+                  ),
+                  ButtonSegment(
+                    value: 5,
+                    icon: Icon(Icons.menu_book_rounded),
+                    label: Text('Course context'),
+                  ),
+                  ButtonSegment(
+                    value: 6,
+                    icon: Icon(Icons.manage_search_rounded),
+                    label: Text('Search & ask'),
                   ),
                 ],
                 selected: {_section},
@@ -101,25 +127,74 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
             ),
             const SizedBox(height: 22),
             switch (_section) {
-              0 => _TimetableSection(
-                records: records,
-                weekStart: _weekStart,
-                onWeekChanged: (value) => setState(() => _weekStart = value),
-              ),
-              1 => _EvaluationSection(
-                records: records,
-                subjects:
-                    ref.watch(activeSubjectsProvider).valueOrNull ?? const [],
-              ),
-              2 => _GradesSection(
-                records: records,
-                subjects:
-                    ref.watch(activeSubjectsProvider).valueOrNull ?? const [],
-              ),
-              _ => _MoodleSection(
-                records: records,
-                subjects:
-                    ref.watch(activeSubjectsProvider).valueOrNull ?? const [],
+              0 =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail:
+                            'Connect Portal to load your official schedule.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _TimetableSection(
+                        records: records,
+                        weekStart: _weekStart,
+                        onWeekChanged: (value) =>
+                            setState(() => _weekStart = value),
+                      ),
+              1 => _TasksSection(records: records),
+              2 =>
+                connections?.anyConfigured == false
+                    ? _SourceSetupState(
+                        source: 'Portal or Moodle',
+                        detail:
+                            'Connect a source to load exams and assignments.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _EvaluationSection(
+                        records: records,
+                        subjects:
+                            ref.watch(activeSubjectsProvider).valueOrNull ??
+                            const [],
+                      ),
+              3 =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail:
+                            'Connect Portal to load grades, history, and ECTS progress.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _ProgressSection(
+                        records: records,
+                        subjects:
+                            ref.watch(activeSubjectsProvider).valueOrNull ??
+                            const [],
+                      ),
+              4 =>
+                connections?.anyConfigured == false
+                    ? _SourceSetupState(
+                        source: 'Portal or Moodle',
+                        detail:
+                            'Connect a source to receive official notices and course announcements.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _UpdatesSection(
+                        records: records,
+                        subjects:
+                            ref.watch(activeSubjectsProvider).valueOrNull ??
+                            const [],
+                      ),
+              5 =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail:
+                            'Connect Portal to load FUC data and official lesson summaries.',
+                        onConnect: () => _showConnections(context),
+                      )
+                    : _CourseContextSection(records: records),
+              _ => _AcademicSearchSection(
+                subjects: ref.watch(subjectsProvider).valueOrNull ?? const [],
               ),
             },
           ],
@@ -206,6 +281,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                   await actions.connectMoodle(token.text);
                 }
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
+                ref.invalidate(academicConnectionStateProvider);
               } on AcademicActionFailure catch (error) {
                 if (!dialogContext.mounted) return;
                 ScaffoldMessenger.of(
@@ -250,6 +326,825 @@ class _SyncResultBanner extends StatelessWidget {
       text: 'Sync completed. Academic cache refreshed from configured sources.',
     );
   }
+}
+
+class _SourceSetupState extends StatelessWidget {
+  const _SourceSetupState({
+    required this.source,
+    required this.detail,
+    required this.onConnect,
+  });
+  final String source;
+  final String detail;
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) => EmptyState(
+    icon: Icons.link_off_rounded,
+    title: '$source is not configured',
+    message: detail,
+    action: FilledButton.icon(
+      onPressed: onConnect,
+      icon: const Icon(Icons.link_rounded),
+      label: const Text('Open connections'),
+    ),
+  );
+}
+
+class _TasksSection extends ConsumerWidget {
+  const _TasksSection({required this.records});
+  final List<AcademicRecord> records;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final taskRecords = records
+        .where((record) => record.kind == AcademicRecordKind.lectureTask)
+        .toList();
+    taskRecords.sort((a, b) {
+      final status = (a.payload['status'] as String? ?? '').compareTo(
+        b.payload['status'] as String? ?? '',
+      );
+      if (status != 0) return status;
+      return (a.startsAt ?? DateTime(9999)).compareTo(
+        b.startsAt ?? DateTime(9999),
+      );
+    });
+    if (taskRecords.isEmpty) {
+      return const EmptyState(
+        icon: Icons.task_alt_rounded,
+        title: 'No lecture actions yet',
+        message:
+            'Explicit assignments and deadlines appear here after a lecture is summarized. Ambiguous items wait for your review.',
+      );
+    }
+    final grouped = groupBy(
+      taskRecords,
+      (record) => record.payload['subjectName'] as String? ?? 'Other',
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _Banner(
+          icon: Icons.fact_check_outlined,
+          text:
+              'Only explicit lecture instructions become tasks. Completing, dismissing, or editing one survives summary regeneration.',
+        ),
+        const SizedBox(height: 14),
+        for (final entry in grouped.entries) ...[
+          SectionHeader(entry.key),
+          Card(
+            child: Column(
+              children: [
+                for (final record in entry.value) _TaskTile(record: record),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+      ],
+    );
+  }
+}
+
+class _TaskTile extends ConsumerWidget {
+  const _TaskTile({required this.record});
+  final AcademicRecord record;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final task = LectureTask.fromJson(record.payload);
+    final completed = task.status == LectureTaskStatus.completed;
+    final dismissed = task.status == LectureTaskStatus.dismissed;
+    return ExpansionTile(
+      leading: Icon(
+        completed
+            ? Icons.check_circle_rounded
+            : dismissed
+            ? Icons.cancel_outlined
+            : task.needsReview
+            ? Icons.help_outline_rounded
+            : Icons.radio_button_unchecked_rounded,
+      ),
+      title: Text(
+        task.title,
+        style: TextStyle(
+          decoration: completed || dismissed
+              ? TextDecoration.lineThrough
+              : null,
+        ),
+      ),
+      subtitle: Text(
+        [
+          if (task.dueAt != null)
+            DateFormat.yMMMd().add_Hm().format(task.dueAt!),
+          if (task.dueAt == null) 'No confirmed deadline',
+          if (task.needsReview) 'Needs review',
+        ].join(' · '),
+      ),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            task.description.isEmpty
+                ? task.supportingSegment
+                : task.description,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Evidence: “${task.supportingSegment}”${task.timestampSeconds == null ? '' : ' · ${task.timestampSeconds!.round()}s'}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton.icon(
+              onPressed: () => _editTask(context, ref, record, task),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit'),
+            ),
+            TextButton.icon(
+              onPressed: () => ref
+                  .read(academicHubActionsProvider)
+                  .updateLectureTask(
+                    record,
+                    status: completed
+                        ? LectureTaskStatus.pending
+                        : LectureTaskStatus.completed,
+                  ),
+              icon: Icon(completed ? Icons.undo_rounded : Icons.check_rounded),
+              label: Text(completed ? 'Reopen' : 'Complete'),
+            ),
+            TextButton.icon(
+              onPressed: () => ref
+                  .read(academicHubActionsProvider)
+                  .updateLectureTask(
+                    record,
+                    status: dismissed
+                        ? LectureTaskStatus.pending
+                        : LectureTaskStatus.dismissed,
+                  ),
+              icon: const Icon(Icons.close_rounded),
+              label: Text(dismissed ? 'Restore' : 'Dismiss'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _editTask(
+  BuildContext context,
+  WidgetRef ref,
+  AcademicRecord record,
+  LectureTask task,
+) async {
+  final title = TextEditingController(text: task.title);
+  final description = TextEditingController(text: task.description);
+  var dueAt = task.dueAt;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Review lecture task'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: title,
+                decoration: const InputDecoration(labelText: 'Task'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: description,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Details'),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  dueAt == null
+                      ? 'No confirmed deadline'
+                      : DateFormat.yMMMd().add_Hm().format(dueAt!),
+                ),
+                trailing: const Icon(Icons.calendar_today_outlined),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime.now().subtract(
+                      const Duration(days: 365),
+                    ),
+                    lastDate: DateTime.now().add(const Duration(days: 3650)),
+                    initialDate: dueAt ?? DateTime.now(),
+                  );
+                  if (date != null) setDialogState(() => dueAt = date);
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref
+                  .read(academicHubActionsProvider)
+                  .updateLectureTask(
+                    record,
+                    title: title.text.trim(),
+                    description: description.text.trim(),
+                    dueAt: dueAt,
+                    clearDueAt: dueAt == null,
+                  );
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+  title.dispose();
+  description.dispose();
+}
+
+class _ProgressSection extends StatelessWidget {
+  const _ProgressSection({required this.records, required this.subjects});
+  final List<AcademicRecord> records;
+  final List<AcademicSubject> subjects;
+
+  @override
+  Widget build(BuildContext context) {
+    final history = records
+        .where((item) => item.kind == AcademicRecordKind.academicHistory)
+        .map((item) => GradeComponent.fromJson(item.payload))
+        .toList();
+    final registrations = records
+        .where((item) => item.kind == AcademicRecordKind.examRegistration)
+        .toList();
+    final enrolled = records
+        .where((item) => item.kind == AcademicRecordKind.enrollment)
+        .toList();
+    final earned = history
+        .where((item) {
+          final status = SubjectMapper.normalize(item.academicStatus ?? '');
+          return (item.value != null && item.value! >= 10) ||
+              status.contains('aprov') ||
+              status.contains('credit');
+        })
+        .fold<double>(0, (sum, item) => sum + (item.ects ?? 0));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                const Icon(Icons.workspace_premium_outlined, size: 36),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${earned.toStringAsFixed(1)} ECTS confirmed',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(
+                        '${enrolled.length} currently enrolled · ${history.length} history records · read-only Portal data',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (registrations.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const SectionHeader('Exam registration'),
+          Card(
+            child: Column(
+              children: [
+                for (final record in registrations)
+                  ListTile(
+                    leading: const Icon(Icons.how_to_reg_outlined),
+                    title: Text(record.title),
+                    subtitle: Text(
+                      [
+                        record.payload['state'] as String? ?? 'unknown',
+                        if (record.endsAt != null)
+                          'closes ${DateFormat.yMMMd().format(record.endsAt!)}',
+                        if (record.payload['fee'] case final String fee) fee,
+                      ].join(' · '),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        _GradesSection(records: records, subjects: subjects),
+      ],
+    );
+  }
+}
+
+class _UpdatesSection extends ConsumerWidget {
+  const _UpdatesSection({required this.records, required this.subjects});
+  final List<AcademicRecord> records;
+  final List<AcademicSubject> subjects;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notices =
+        records
+            .where((item) => item.kind == AcademicRecordKind.portalNotification)
+            .toList()
+          ..sort(
+            (a, b) => (b.startsAt ?? DateTime(0)).compareTo(
+              a.startsAt ?? DateTime(0),
+            ),
+          );
+    bool updateEnabled(String source) =>
+        records
+                .where(
+                  (item) =>
+                      item.kind == AcademicRecordKind.reminderPreference &&
+                      item.externalId == 'updates:$source',
+                )
+                .firstOrNull
+                ?.payload['enabled']
+            as bool? ??
+        true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile.adaptive(
+                value: updateEnabled('portalNotification'),
+                onChanged: (value) => ref
+                    .read(academicHubActionsProvider)
+                    .setAcademicUpdateNotifications(
+                      'portalNotification',
+                      value,
+                    ),
+                title: const Text('Portal notice alerts'),
+                subtitle: const Text('New official electronic notices'),
+              ),
+              const Divider(height: 1),
+              SwitchListTile.adaptive(
+                value: updateEnabled('moodleAnnouncement'),
+                onChanged: (value) => ref
+                    .read(academicHubActionsProvider)
+                    .setAcademicUpdateNotifications(
+                      'moodleAnnouncement',
+                      value,
+                    ),
+                title: const Text('Moodle announcement alerts'),
+                subtitle: const Text('Stored independently from Portal alerts'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (notices.isNotEmpty) ...[
+          const SectionHeader('Official Portal notices'),
+          Card(
+            child: Column(
+              children: [
+                for (final notice in notices)
+                  ListTile(
+                    leading: Icon(
+                      notice.payload['read'] == true
+                          ? Icons.drafts_outlined
+                          : Icons.mark_email_unread_outlined,
+                    ),
+                    title: Text(notice.title),
+                    subtitle: Text(
+                      [
+                        if ((notice.payload['sender'] as String? ?? '')
+                            .isNotEmpty)
+                          notice.payload['sender'] as String,
+                        if (notice.startsAt != null)
+                          DateFormat.yMMMd().format(notice.startsAt!),
+                        notice.payload['message'] as String? ?? '',
+                      ].join(' · '),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => ref
+                        .read(academicHubActionsProvider)
+                        .markPortalNotificationRead(notice),
+                    trailing: const Tooltip(
+                      message: 'Official Portal source',
+                      child: Icon(Icons.verified_outlined),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+        _MoodleSection(records: records, subjects: subjects),
+      ],
+    );
+  }
+}
+
+class _CourseContextSection extends StatelessWidget {
+  const _CourseContextSection({required this.records});
+  final List<AcademicRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final profiles = records
+        .where((item) => item.kind == AcademicRecordKind.fucProfile)
+        .toList();
+    final lessons = records
+        .where((item) => item.kind == AcademicRecordKind.lessonSummary)
+        .toList();
+    if (profiles.isEmpty && lessons.isEmpty) {
+      return const EmptyState(
+        icon: Icons.menu_book_outlined,
+        title: 'No course context cached yet',
+        message:
+            'Refresh Portal to import FUC details and official lesson summaries.',
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (profiles.isNotEmpty) ...[
+          const SectionHeader('FUC · approved course information'),
+          for (final profile in profiles)
+            Card(
+              child: ExpansionTile(
+                leading: const Icon(Icons.menu_book_outlined),
+                title: Text(profile.title),
+                subtitle: Text(
+                  '${profile.payload['subjectCode'] ?? ''} · ${profile.payload['academicYear'] ?? ''}',
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                children: [
+                  for (final entry in const {
+                    'objectives': 'Objectives & outcomes',
+                    'syllabus': 'Syllabus',
+                    'methodologies': 'Methodologies',
+                    'evaluationRules': 'Evaluation rules',
+                    'bibliography': 'Bibliography',
+                  }.entries)
+                    if ((profile.payload[entry.key] as List<dynamic>? ??
+                            const [])
+                        .isNotEmpty)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(entry.value),
+                        subtitle: Text(
+                          (profile.payload[entry.key] as List<dynamic>).join(
+                            '\n',
+                          ),
+                        ),
+                      ),
+                ],
+              ),
+            ),
+        ],
+        if (lessons.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const SectionHeader('Official lesson summaries'),
+          Card(
+            child: Column(
+              children: [
+                for (final lesson in lessons)
+                  ListTile(
+                    leading: Icon(
+                      lesson.payload['coverageNeedsReview'] == true
+                          ? Icons.rule_folder_outlined
+                          : Icons.fact_check_outlined,
+                    ),
+                    title: Text(lesson.title),
+                    subtitle: Text(
+                      [
+                        if (lesson.startsAt != null)
+                          DateFormat.yMMMd().format(lesson.startsAt!),
+                        lesson.payload['text'] as String? ?? '',
+                        if (lesson.payload['coverageNeedsReview'] == true)
+                          'Generated notes may not cover the official summary; review both.',
+                      ].join(' · '),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: lesson.payload['matchedLectureId'] == null
+                        ? const Tooltip(
+                            message: 'No lecture match',
+                            child: Icon(Icons.link_off_rounded),
+                          )
+                        : const Tooltip(
+                            message: 'Matched by subject and time',
+                            child: Icon(Icons.compare_arrows_rounded),
+                          ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AcademicSearchSection extends ConsumerStatefulWidget {
+  const _AcademicSearchSection({required this.subjects});
+  final List<AcademicSubject> subjects;
+
+  @override
+  ConsumerState<_AcademicSearchSection> createState() =>
+      _AcademicSearchSectionState();
+}
+
+class _AcademicSearchSectionState
+    extends ConsumerState<_AcademicSearchSection> {
+  final _query = TextEditingController();
+  List<AcademicSearchHit> _hits = const [];
+  AcademicGroundedAnswer? _answer;
+  String? _subjectId;
+  String? _semester;
+  AcademicRecordKind? _kind;
+  int? _recentDays;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run({required bool ask}) async {
+    final query = _query.text.trim();
+    if (query.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _answer = null;
+    });
+    try {
+      final service = ref.read(academicResearchServiceProvider);
+      final semesterIds = _semester == null
+          ? null
+          : widget.subjects
+                .where((subject) => subject.semesterLabel == _semester)
+                .map((subject) => subject.notionId)
+                .toSet();
+      final from = _recentDays == null
+          ? null
+          : DateTime.now().subtract(Duration(days: _recentDays!));
+      final kinds = _kind == null ? null : {_kind!};
+      final hits = await service.search(
+        query,
+        subjectId: _subjectId,
+        subjectIds: semesterIds,
+        kinds: kinds,
+        from: from,
+      );
+      final answer = ask
+          ? await service.ask(
+              query,
+              subjectId: _subjectId,
+              subjectIds: semesterIds,
+              kinds: kinds,
+              from: from,
+            )
+          : null;
+      if (mounted) {
+        setState(() {
+          _hits = hits;
+          _answer = answer;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      TextField(
+        controller: _query,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => _run(ask: false),
+        decoration: const InputDecoration(
+          labelText: 'Search your study content',
+          hintText: 'A concept, deadline, formula, or teacher remark',
+          prefixIcon: Icon(Icons.search_rounded),
+        ),
+      ),
+      const SizedBox(height: 10),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth >= 760
+              ? (constraints.maxWidth - 24) / 4
+              : constraints.maxWidth;
+          final semesters =
+              widget.subjects
+                  .map((subject) => subject.semesterLabel)
+                  .toSet()
+                  .toList()
+                ..sort();
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              SizedBox(
+                width: width,
+                child: DropdownButtonFormField<String?>(
+                  initialValue: _subjectId,
+                  decoration: const InputDecoration(labelText: 'Subject'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All subjects'),
+                    ),
+                    ...widget.subjects.map(
+                      (subject) => DropdownMenuItem<String?>(
+                        value: subject.notionId,
+                        child: Text(subject.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _subjectId = value),
+                ),
+              ),
+              SizedBox(
+                width: width,
+                child: DropdownButtonFormField<String?>(
+                  initialValue: _semester,
+                  decoration: const InputDecoration(labelText: 'Semester'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('All semesters'),
+                    ),
+                    ...semesters.map(
+                      (semester) => DropdownMenuItem<String?>(
+                        value: semester,
+                        child: Text(semester),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _semester = value),
+                ),
+              ),
+              SizedBox(
+                width: width,
+                child: DropdownButtonFormField<AcademicRecordKind?>(
+                  initialValue: _kind,
+                  decoration: const InputDecoration(labelText: 'Content type'),
+                  items: const [
+                    DropdownMenuItem<AcademicRecordKind?>(
+                      value: null,
+                      child: Text('All content'),
+                    ),
+                    DropdownMenuItem(
+                      value: AcademicRecordKind.lessonSummary,
+                      child: Text('Lecture summaries'),
+                    ),
+                    DropdownMenuItem(
+                      value: AcademicRecordKind.fucProfile,
+                      child: Text('FUC / syllabus'),
+                    ),
+                    DropdownMenuItem(
+                      value: AcademicRecordKind.lectureTask,
+                      child: Text('Tasks'),
+                    ),
+                    DropdownMenuItem(
+                      value: AcademicRecordKind.announcement,
+                      child: Text('Announcements'),
+                    ),
+                    DropdownMenuItem(
+                      value: AcademicRecordKind.portalNotification,
+                      child: Text('Portal notices'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _kind = value),
+                ),
+              ),
+              SizedBox(
+                width: width,
+                child: DropdownButtonFormField<int?>(
+                  initialValue: _recentDays,
+                  decoration: const InputDecoration(labelText: 'Date'),
+                  items: const [
+                    DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Any date'),
+                    ),
+                    DropdownMenuItem(value: 30, child: Text('Last 30 days')),
+                    DropdownMenuItem(value: 180, child: Text('Last 6 months')),
+                    DropdownMenuItem(value: 365, child: Text('Last year')),
+                  ],
+                  onChanged: (value) => setState(() => _recentDays = value),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _busy ? null : () => _run(ask: false),
+            icon: const Icon(Icons.search_rounded),
+            label: const Text('Search locally'),
+          ),
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _run(ask: true),
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('Ask from evidence'),
+          ),
+        ],
+      ),
+      if (_busy)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16),
+          child: LinearProgressIndicator(),
+        ),
+      if (_answer case final answer?) ...[
+        const SizedBox(height: 14),
+        Card(
+          color: answer.insufficientEvidence
+              ? Theme.of(context).colorScheme.surfaceContainerHigh
+              : Theme.of(context).colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  answer.insufficientEvidence
+                      ? 'Evidence is incomplete'
+                      : 'Grounded answer',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                SelectableText(answer.answer),
+                if (answer.citationIds.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sources: ${answer.citationIds.join(', ')}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+      const SizedBox(height: 14),
+      if (_hits.isEmpty && !_busy)
+        const EmptyState(
+          icon: Icons.manage_search_rounded,
+          title: 'Search stays local by default',
+          message:
+              'Keyword search does not call Gemini. “Ask from evidence” sends only the matching excerpts and returns source ids.',
+        ),
+      for (final hit in _hits)
+        Card(
+          child: ListTile(
+            leading: Icon(
+              hit.source == AcademicSource.portal
+                  ? Icons.verified_outlined
+                  : Icons.notes_rounded,
+            ),
+            title: Text(hit.title),
+            subtitle: Text(
+              hit.excerpt,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Text('${hit.score}'),
+          ),
+        ),
+    ],
+  );
 }
 
 class _Banner extends StatelessWidget {
@@ -373,15 +1268,39 @@ class _EvaluationSection extends ConsumerWidget {
     final eventRecords = records
         .where((item) => item.kind == AcademicRecordKind.evaluation)
         .toList();
+    final taskEvents = records
+        .where((item) => item.kind == AcademicRecordKind.lectureTask)
+        .map((record) => LectureTask.fromJson(record.payload))
+        .where(
+          (task) =>
+              task.dueAt != null && task.status == LectureTaskStatus.pending,
+        )
+        .map(
+          (task) => EvaluationEvent(
+            externalId: task.id,
+            title: task.title,
+            type: 'Lecture task',
+            subjectName: task.subjectName,
+            subjectId: task.subjectId,
+            start: task.dueAt!,
+            provenance: [
+              AcademicProvenance(
+                source: AcademicSource.manual,
+                externalId: task.sourceLectureId,
+              ),
+            ],
+          ),
+        );
     final events =
-        EvaluationMerger.merge(
-              eventRecords.map(
+        EvaluationMerger.merge([
+              ...eventRecords.map(
                 (record) => EvaluationEvent.fromJson(
                   record.payload,
                   changedFields: record.changedFields,
                 ),
               ),
-            )
+              ...taskEvents,
+            ])
             .where(
               (item) => item.start.isAfter(
                 DateTime.now().subtract(const Duration(days: 1)),

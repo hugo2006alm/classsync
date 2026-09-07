@@ -493,6 +493,15 @@ class SyncCoordinator {
           transcript: transcript,
           subject: subject,
           settings: settings,
+          courseContext: (await _database.readAcademicRecords())
+              .where(
+                (record) =>
+                    record.subjectId == subject!.notionId &&
+                    (record.kind == AcademicRecordKind.fucProfile ||
+                        record.kind == AcademicRecordKind.lessonSummary),
+              )
+              .take(8)
+              .toList(),
           completedPartials: await _database.readSummaryPartials(jobId),
           onCheckpoint: (partials) async {
             await _database.saveSummaryPartials(jobId, partials);
@@ -502,6 +511,7 @@ class SyncCoordinator {
         );
         await _database.saveSummary(jobId, summary);
       }
+      await _saveLectureTasks(job, subject, summary);
 
       final confidence =
           classification?.confidence ?? job.classificationConfidence ?? 1.0;
@@ -641,6 +651,67 @@ class SyncCoordinator {
       );
       return false;
     }
+  }
+
+  Future<void> _saveLectureTasks(
+    SyncJob job,
+    AcademicSubject subject,
+    LectureSummary summary,
+  ) async {
+    final current = await _database.readAcademicRecords(
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+    );
+    final retained = current
+        .where((record) => record.payload['sourceLectureId'] != job.id)
+        .toList();
+    final generated = <AcademicRecord>[];
+    final seen = <String>{};
+    for (final candidate in summary.actionItems) {
+      final normalized = SubjectMapper.normalize(candidate.title);
+      final due = candidate.dueAt?.toUtc().toIso8601String() ?? 'undated';
+      if (normalized.isEmpty || !seen.add('$normalized:$due')) continue;
+      final id = _uuid.v5(
+        Namespace.url.value,
+        'classsync:task:${job.firefliesId}:$normalized:$due',
+      );
+      final task = LectureTask(
+        id: id,
+        title: candidate.title.trim(),
+        description: candidate.description.trim(),
+        sourceLectureId: job.id,
+        sourceLectureTitle: job.title,
+        subjectId: subject.notionId,
+        subjectName: subject.name,
+        dueAt: candidate.dueAt,
+        confidence: candidate.confidence,
+        supportingSegment: candidate.supportingSegment,
+        timestampSeconds: candidate.timestampSeconds,
+        status: LectureTaskStatus.pending,
+      );
+      generated.add(
+        AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.manual,
+            AcademicRecordKind.lectureTask,
+            id,
+          ),
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: id,
+          title: task.title,
+          subjectId: task.subjectId,
+          startsAt: task.dueAt,
+          payload: task.toJson(),
+          syncedAt: DateTime.now().toUtc(),
+        ),
+      );
+    }
+    await _database.replaceAcademicRecords(
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+      records: [...retained, ...generated],
+    );
   }
 
   Future<void> _renewLease(String jobId) async {

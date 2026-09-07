@@ -16,6 +16,7 @@ void main() {
 
     expect(find.text('SETUP SYLLABUS'), findsOneWidget);
     expect(find.text('Have these four things ready'), findsOneWidget);
+    expect(find.text('Academic'), findsOneWidget);
     expect(
       find.text(
         'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
@@ -34,7 +35,7 @@ void main() {
     await tester.pumpWidget(_testApp());
 
     expect(find.text('ClassSync'), findsOneWidget);
-    expect(find.text('1 / 8'), findsOneWidget);
+    expect(find.text('1 / 9'), findsOneWidget);
     expect(find.text('SETUP SYLLABUS'), findsNothing);
     expect(find.widgetWithText(FilledButton, 'Start setup'), findsOneWidget);
     expect(tester.takeException(), isNull);

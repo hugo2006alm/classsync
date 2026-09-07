@@ -101,6 +101,8 @@ class LectureTranscript {
   String get plainText => sentences
       .map(
         (sentence) => [
+          if (sentence.startTimeSeconds case final seconds?)
+            '[${_timestamp(seconds)}]',
           if (sentence.speakerName case final speaker?) '$speaker:',
           sentence.text,
         ].join(' '),
@@ -151,6 +153,15 @@ class LectureTranscript {
   }
 }
 
+String _timestamp(double seconds) {
+  final total = seconds.round().clamp(0, 359999);
+  final hours = total ~/ 3600;
+  final minutes = (total % 3600) ~/ 60;
+  final remaining = total % 60;
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(hours)}:${two(minutes)}:${two(remaining)}';
+}
+
 class LectureSummarySection {
   const LectureSummarySection({
     required this.title,
@@ -188,6 +199,51 @@ class LectureSummarySection {
       );
 }
 
+enum LectureActionConfidence { certain, likely, ambiguous }
+
+class LectureActionCandidate {
+  const LectureActionCandidate({
+    required this.title,
+    required this.description,
+    required this.confidence,
+    required this.supportingSegment,
+    this.dueAt,
+    this.timestampSeconds,
+  });
+
+  final String title;
+  final String description;
+  final DateTime? dueAt;
+  final LectureActionConfidence confidence;
+  final String supportingSegment;
+  final double? timestampSeconds;
+
+  bool get needsReview =>
+      confidence == LectureActionConfidence.ambiguous || dueAt == null;
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'description': description,
+    'dueAt': dueAt?.toIso8601String(),
+    'confidence': confidence.name,
+    'supportingSegment': supportingSegment,
+    'timestampSeconds': timestampSeconds,
+  };
+
+  factory LectureActionCandidate.fromJson(Map<String, dynamic> json) =>
+      LectureActionCandidate(
+        title: json['title'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        dueAt: DateTime.tryParse(json['dueAt'] as String? ?? ''),
+        confidence: LectureActionConfidence.values.firstWhere(
+          (value) => value.name == json['confidence'],
+          orElse: () => LectureActionConfidence.ambiguous,
+        ),
+        supportingSegment: json['supportingSegment'] as String? ?? '',
+        timestampSeconds: (json['timestampSeconds'] as num?)?.toDouble(),
+      );
+}
+
 class LectureSummary {
   const LectureSummary({
     required this.title,
@@ -199,6 +255,7 @@ class LectureSummary {
     this.importantDetails = const [],
     this.questionsAndAnswers = const [],
     this.assignmentsAndDeadlines = const [],
+    this.actionItems = const [],
     this.uncertainties = const [],
     this.conclusions = const [],
     this.tags = const [],
@@ -213,6 +270,7 @@ class LectureSummary {
   final List<String> importantDetails;
   final List<String> questionsAndAnswers;
   final List<String> assignmentsAndDeadlines;
+  final List<LectureActionCandidate> actionItems;
   final List<String> uncertainties;
   final List<String> conclusions;
   final List<String> tags;
@@ -227,6 +285,7 @@ class LectureSummary {
     'importantDetails': importantDetails,
     'questionsAndAnswers': questionsAndAnswers,
     'assignmentsAndDeadlines': assignmentsAndDeadlines,
+    'actionItems': actionItems.map((item) => item.toJson()).toList(),
     'uncertainties': uncertainties,
     'conclusions': conclusions,
     'tags': tags,
@@ -247,6 +306,11 @@ class LectureSummary {
     importantDetails: _stringList(json['importantDetails']),
     questionsAndAnswers: _stringList(json['questionsAndAnswers']),
     assignmentsAndDeadlines: _stringList(json['assignmentsAndDeadlines']),
+    actionItems: (json['actionItems'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(LectureActionCandidate.fromJson)
+        .where((item) => item.title.trim().isNotEmpty)
+        .toList(),
     uncertainties: _stringList(json['uncertainties']),
     conclusions: _stringList(json['conclusions']),
     tags: _stringList(json['tags']),
