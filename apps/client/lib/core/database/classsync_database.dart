@@ -85,6 +85,7 @@ class SyncCursors extends Table {
 @DataClassName('SettingsRow')
 class SettingsRecords extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();
+  TextColumn get displayName => text().withDefault(const Constant(''))();
   BoolColumn get setupComplete => boolean()();
   BoolColumn get automaticSync => boolean()();
   BoolColumn get launchWithWindows => boolean()();
@@ -173,7 +174,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -196,6 +197,9 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
       if (from < 5) {
         await migrator.createTable(academicCacheRecords);
         await migrator.createTable(academicChangeRecords);
+      }
+      if (from < 6) {
+        await migrator.addColumn(settingsRecords, settingsRecords.displayName);
       }
     },
   );
@@ -226,6 +230,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     return into(settingsRecords).insertOnConflictUpdate(
       SettingsRecordsCompanion.insert(
         id: const Value(1),
+        displayName: Value(settings.displayName),
         setupComplete: settings.setupComplete,
         automaticSync: settings.automaticSync,
         launchWithWindows: settings.launchWithWindows,
@@ -468,6 +473,14 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
   Future<SyncJob?> readJob(String id) async => (await (select(
     syncJobs,
   )..where((row) => row.id.equals(id))).getSingleOrNull())?.let(_jobFromRow);
+
+  Future<void> setJobSourceType(String id, String sourceType) =>
+      (update(syncJobs)..where((row) => row.id.equals(id))).write(
+        SyncJobsCompanion(
+          sourceType: Value(sourceType),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
 
   Stream<SyncJob?> watchJob(String id) =>
       (select(syncJobs)..where((row) => row.id.equals(id)))
@@ -1044,6 +1057,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
   );
 
   AppSettings _settingsFromRow(SettingsRow row) => AppSettings(
+    displayName: row.displayName,
     setupComplete: row.setupComplete,
     automaticSync: row.automaticSync,
     launchWithWindows: row.launchWithWindows,

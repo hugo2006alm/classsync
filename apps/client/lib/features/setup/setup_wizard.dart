@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/integrations/notion/notion_client.dart';
 import '../../core/integrations/relay/account_sync_client.dart';
@@ -11,6 +12,7 @@ import '../../core/providers.dart';
 import '../../core/security/trusted_url_launcher.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
+import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
 
@@ -24,6 +26,7 @@ class SetupWizard extends ConsumerStatefulWidget {
 class _SetupWizardState extends ConsumerState<SetupWizard> {
   final _pageController = PageController();
   final _firefliesController = TextEditingController();
+  final _firefliesNameController = TextEditingController(text: 'My Fireflies');
   final _geminiController = TextEditingController();
   final _notionController = TextEditingController();
   final _relayUrlController = TextEditingController(
@@ -32,6 +35,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   final _relayTokenController = TextEditingController();
   final _modelController = TextEditingController(text: 'gemini-3.8-flash');
   final _accountCodeController = TextEditingController();
+  final _accountNameController = TextEditingController();
+  final _primaryFirefliesId = const Uuid().v4();
 
   var _page = 0;
   var _busy = false;
@@ -64,12 +69,14 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   void dispose() {
     _pageController.dispose();
     _firefliesController.dispose();
+    _firefliesNameController.dispose();
     _geminiController.dispose();
     _notionController.dispose();
     _relayUrlController.dispose();
     _relayTokenController.dispose();
     _modelController.dispose();
     _accountCodeController.dispose();
+    _accountNameController.dispose();
     super.dispose();
   }
 
@@ -206,6 +213,17 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           controller: _firefliesController,
           label: 'Fireflies API key',
           hint: 'Paste the key from Developer settings',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _firefliesNameController,
+          maxLength: FirefliesConnection.maxNameLength,
+          decoration: const InputDecoration(
+            labelText: 'Connection name',
+            hintText: 'My Fireflies',
+            helperText:
+                'Use a person or account name so transcript ownership is clear.',
+          ),
         ),
       ],
     ),
@@ -442,6 +460,18 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         'One private account connects your own PCs and phone. Other people create their own account, keys, Notion workspace, and queue.',
     child: Column(
       children: [
+        if (!_joinAccount && _syncAccount == null) ...[
+          TextField(
+            controller: _accountNameController,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 80,
+            decoration: const InputDecoration(
+              labelText: 'Your name',
+              hintText: 'Name shown across your ClassSync devices',
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         SegmentedButton<bool>(
           segments: const [
             ButtonSegment(
@@ -550,6 +580,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       _error = null;
     });
     try {
+      if (!_joinAccount &&
+          (_accountNameController.text.trim().isEmpty ||
+              _accountNameController.text.trim().length > 80)) {
+        throw const FormatException(
+          'Enter an account name of 80 characters or fewer.',
+        );
+      }
       final client = ref.read(accountSyncClientProvider);
       final store = ref.read(credentialStoreProvider);
       final baseUrl = _relayUrlController.text.trim();
@@ -564,6 +601,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               setupToken: _relayTokenController.text.trim(),
               store: store,
             );
+      ref.invalidate(syncAccountProvider);
       if (_joinAccount) {
         await ref.read(deviceSyncServiceProvider).synchronize();
       }
@@ -683,8 +721,15 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       setState(() => _busy = true);
       switch (_page) {
         case 1:
-          if (_firefliesController.text.trim().isEmpty) {
-            throw const FormatException('Enter a Fireflies API key.');
+          if (_firefliesController.text.trim().isEmpty ||
+              _firefliesController.text.trim().length >
+                  FirefliesConnection.maxApiKeyLength ||
+              _firefliesNameController.text.trim().isEmpty ||
+              _firefliesNameController.text.trim().length >
+                  FirefliesConnection.maxNameLength) {
+            throw const FormatException(
+              'Enter a Fireflies API key and connection name.',
+            );
           }
           await ref
               .read(firefliesClientProvider)
@@ -805,27 +850,33 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             summariesDataSourceId: _summariesId!,
           );
     }
-    await credentialStore.write(
-      CredentialKey.relayDeviceToken,
-      _relayTokenController.text.trim(),
-    );
-    if (!_joinedExistingAccount) {
-      await Future.wait([
-        credentialStore.write(
-          CredentialKey.firefliesApiKey,
-          _firefliesController.text.trim(),
+    await credentialStore.writeAll({
+      CredentialKey.relayDeviceToken: _relayTokenController.text.trim(),
+      CredentialKey.geminiApiKey: _geminiController.text.trim(),
+      CredentialKey.notionToken: notionToken,
+    });
+    final firefliesConnections = _joinedExistingAccount
+        ? await credentialStore.readFirefliesConnections()
+        : <FirefliesConnection>[];
+    if (!firefliesConnections.any(
+      (item) => item.apiKey == _firefliesController.text.trim(),
+    )) {
+      firefliesConnections.add(
+        FirefliesConnection(
+          id: _primaryFirefliesId,
+          name: _firefliesNameController.text.trim(),
+          apiKey: _firefliesController.text.trim(),
         ),
-        credentialStore.write(
-          CredentialKey.geminiApiKey,
-          _geminiController.text.trim(),
-        ),
-        credentialStore.write(CredentialKey.notionToken, notionToken),
-      ]);
+      );
     }
+    await credentialStore.writeFirefliesConnections(firefliesConnections);
     final restored = _joinedExistingAccount
         ? await ref.read(databaseProvider).readSettings()
         : AppSettings.defaults;
     final settings = restored.copyWith(
+      displayName: _joinedExistingAccount
+          ? restored.displayName
+          : _accountNameController.text.trim(),
       setupComplete: true,
       launchWithWindows: _launchWithWindows,
       backgroundMobileSync: _backgroundMobile,
@@ -852,6 +903,11 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     }
     await configureMobileBackgroundSync(settings);
     await settingsController.save(settings);
+    ref.invalidate(syncAccountProvider);
+    ref.invalidate(firefliesConnectionsProvider);
+    for (final key in CredentialKey.values) {
+      ref.invalidate(credentialConfiguredProvider(key));
+    }
     unawaited(syncController.run(SyncReason.manual));
   }
 

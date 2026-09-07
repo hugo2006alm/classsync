@@ -7,6 +7,7 @@ class AppSettings {
       'https://classsync-relay.classsync-relay.workers.dev';
 
   const AppSettings({
+    required this.displayName,
     required this.setupComplete,
     required this.automaticSync,
     required this.launchWithWindows,
@@ -32,6 +33,7 @@ class AppSettings {
   });
 
   static const defaults = AppSettings(
+    displayName: '',
     setupComplete: false,
     automaticSync: true,
     launchWithWindows: true,
@@ -54,6 +56,7 @@ class AppSettings {
     relayBaseUrl: productionRelayBaseUrl,
   );
 
+  final String displayName;
   final bool setupComplete;
   final bool automaticSync;
   final bool launchWithWindows;
@@ -78,6 +81,7 @@ class AppSettings {
   final String? relayBaseUrl;
 
   AppSettings copyWith({
+    String? displayName,
     bool? setupComplete,
     bool? automaticSync,
     bool? launchWithWindows,
@@ -101,6 +105,7 @@ class AppSettings {
     Object? notionSummariesDataSourceId = _unsetSetting,
     Object? relayBaseUrl = _unsetSetting,
   }) => AppSettings(
+    displayName: displayName ?? this.displayName,
     setupComplete: setupComplete ?? this.setupComplete,
     automaticSync: automaticSync ?? this.automaticSync,
     launchWithWindows: launchWithWindows ?? this.launchWithWindows,
@@ -136,6 +141,11 @@ class AppSettings {
   );
 
   void validate() {
+    if (displayName.length > 80) {
+      throw const FormatException(
+        'Account name must be 80 characters or fewer.',
+      );
+    }
     if (pollingMinutes < 15 || pollingMinutes > 1440) {
       throw const FormatException('Polling interval must be 15–1440 minutes.');
     }

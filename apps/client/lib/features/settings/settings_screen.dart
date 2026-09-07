@@ -5,11 +5,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
+import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
 import '../shared/page_frame.dart';
@@ -199,19 +201,8 @@ class _SettingsDetailBody extends ConsumerWidget {
                 children: [
                   SizedBox(
                     width: width,
-                    child: _IntegrationTile(
-                      name: 'Fireflies',
-                      icon: Icons.mic_none_rounded,
-                      credential: CredentialKey.firefliesApiKey,
-                      onConfigure: () => _configureSecret(
-                        context,
-                        ref,
-                        name: 'Fireflies',
-                        key: CredentialKey.firefliesApiKey,
-                        tester: (value) => ref
-                            .read(firefliesClientProvider)
-                            .testConnection(value),
-                      ),
+                    child: _FirefliesConnectionsTile(
+                      onManage: () => _manageFirefliesConnections(context, ref),
                     ),
                   ),
                   SizedBox(
@@ -809,6 +800,70 @@ class _IntegrationTile extends ConsumerWidget {
   }
 }
 
+class _FirefliesConnectionsTile extends ConsumerWidget {
+  const _FirefliesConnectionsTile({required this.onManage});
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(firefliesConnectionsProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final (status, detail, color) = value.when(
+      data: (connections) => connections.isEmpty
+          ? ('Not configured', 'Add your first named API key', scheme.error)
+          : (
+              '${connections.length} connected',
+              connections.map((item) => item.name).join(' · '),
+              scheme.primary,
+            ),
+      loading: () => (
+        'Checking secure storage…',
+        'API keys remain encrypted on this device',
+        scheme.onSurfaceVariant,
+      ),
+      error: (error, stack) => (
+        'Could not check secure storage',
+        'Open to retry',
+        scheme.onSurfaceVariant,
+      ),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const CircleAvatar(child: Icon(Icons.mic_none_rounded)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fireflies',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Text(status, style: TextStyle(color: color)),
+                  Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: onManage,
+              icon: const Icon(Icons.manage_accounts_outlined),
+              tooltip: 'Manage Fireflies connections',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingSwitch extends StatelessWidget {
   const _SettingSwitch({
     required this.title,
@@ -921,6 +976,279 @@ class _DiagnosticRow extends StatelessWidget {
       ],
     ),
   );
+}
+
+Future<void> _manageFirefliesConnections(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final connections = List<FirefliesConnection>.of(
+    await ref.read(credentialStoreProvider).readFirefliesConnections(),
+  );
+  if (!context.mounted) return;
+  String? error;
+  var busy = false;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Fireflies connections'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'A webhook announces a transcript, but an API key must still fetch it. Add one named key for each Fireflies account whose recordings ClassSync should process.',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Only add keys shared with permission. Each key can access its Fireflies account.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+              if (connections.isEmpty)
+                const ListTile(
+                  leading: Icon(Icons.key_off_outlined),
+                  title: Text('No Fireflies connections'),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: connections.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) => ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.person_outline_rounded),
+                      ),
+                      title: Text(connections[index].name),
+                      subtitle: const Text('API key stored securely'),
+                      trailing: Wrap(
+                        spacing: 4,
+                        children: [
+                          IconButton(
+                            tooltip: 'Edit connection',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: busy
+                                ? null
+                                : () async {
+                                    final updated =
+                                        await _editFirefliesConnection(
+                                          dialogContext,
+                                          ref,
+                                          existing: connections[index],
+                                        );
+                                    if (updated != null) {
+                                      setState(
+                                        () => connections[index] = updated,
+                                      );
+                                    }
+                                  },
+                          ),
+                          IconButton(
+                            tooltip: 'Remove connection',
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            onPressed: busy
+                                ? null
+                                : () => setState(
+                                    () => connections.removeAt(index),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy ? null : () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton.icon(
+            onPressed:
+                busy || connections.length >= FirefliesConnection.maxConnections
+                ? null
+                : () async {
+                    final added = await _editFirefliesConnection(
+                      dialogContext,
+                      ref,
+                    );
+                    if (added != null) setState(() => connections.add(added));
+                  },
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add key'),
+          ),
+          FilledButton(
+            onPressed: busy
+                ? null
+                : () async {
+                    setState(() {
+                      busy = true;
+                      error = null;
+                    });
+                    try {
+                      await ref
+                          .read(credentialStoreProvider)
+                          .writeFirefliesConnections(connections);
+                      ref.invalidate(firefliesConnectionsProvider);
+                      ref.invalidate(
+                        credentialConfiguredProvider(
+                          CredentialKey.firefliesApiKey,
+                        ),
+                      );
+                      try {
+                        await ref
+                            .read(deviceSyncServiceProvider)
+                            .pushConfiguration();
+                      } catch (_) {
+                        // Saved locally; device sync retries later.
+                      }
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    } catch (failure) {
+                      setState(() {
+                        busy = false;
+                        error = failure.toString();
+                      });
+                    }
+                  },
+            child: busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<FirefliesConnection?> _editFirefliesConnection(
+  BuildContext context,
+  WidgetRef ref, {
+  FirefliesConnection? existing,
+}) async {
+  final nameController = TextEditingController(text: existing?.name);
+  final keyController = TextEditingController();
+  String? error;
+  var busy = false;
+  final result = await showDialog<FirefliesConnection>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: Text(
+          existing == null ? 'Add Fireflies key' : 'Edit Fireflies key',
+        ),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                maxLength: FirefliesConnection.maxNameLength,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'Ana · My Fireflies · Lab recorder',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: keyController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Fireflies API key',
+                  helperText: existing == null
+                      ? 'Connection is tested before saving.'
+                      : 'Leave blank to keep current key.',
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy ? null : () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: busy
+                ? null
+                : () async {
+                    final name = nameController.text.trim();
+                    final enteredKey = keyController.text.trim();
+                    final apiKey = enteredKey.isEmpty
+                        ? existing?.apiKey ?? ''
+                        : enteredKey;
+                    if (name.isEmpty || apiKey.isEmpty) {
+                      setState(
+                        () => error = 'Enter a name and Fireflies API key.',
+                      );
+                      return;
+                    }
+                    final candidate = FirefliesConnection(
+                      id: existing?.id ?? const Uuid().v4(),
+                      name: name,
+                      apiKey: apiKey,
+                    );
+                    setState(() {
+                      busy = true;
+                      error = null;
+                    });
+                    try {
+                      candidate.validate();
+                      if (existing == null || enteredKey.isNotEmpty) {
+                        await ref
+                            .read(firefliesClientProvider)
+                            .testConnection(apiKey);
+                      }
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext, candidate);
+                      }
+                    } catch (failure) {
+                      setState(() {
+                        busy = false;
+                        error = failure.toString();
+                      });
+                    }
+                  },
+            child: busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Test and use'),
+          ),
+        ],
+      ),
+    ),
+  );
+  nameController.dispose();
+  keyController.dispose();
+  return result;
 }
 
 Future<void> _configureSecret(
@@ -1119,7 +1447,7 @@ Future<void> _exportDiagnostics(
     'version': info.version,
     'platform': Platform.operatingSystem,
     'generatedAt': DateTime.now().toUtc().toIso8601String(),
-    'database': {'status': 'ready', 'schemaVersion': 4},
+    'database': {'status': 'ready', 'schemaVersion': 6},
     'queueEntries': jobs.length,
     'pollingMinutes': settings.pollingMinutes,
     'overlapHours': settings.overlapHours,

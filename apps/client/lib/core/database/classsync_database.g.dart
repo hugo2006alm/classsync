@@ -2839,6 +2839,18 @@ class $SettingsRecordsTable extends SettingsRecords
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _setupCompleteMeta = const VerificationMeta(
     'setupComplete',
   );
@@ -3110,6 +3122,7 @@ class $SettingsRecordsTable extends SettingsRecords
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    displayName,
     setupComplete,
     automaticSync,
     launchWithWindows,
@@ -3147,6 +3160,15 @@ class $SettingsRecordsTable extends SettingsRecords
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
     }
     if (data.containsKey('setup_complete')) {
       context.handle(
@@ -3395,6 +3417,10 @@ class $SettingsRecordsTable extends SettingsRecords
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
       setupComplete: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}setup_complete'],
@@ -3494,6 +3520,7 @@ class $SettingsRecordsTable extends SettingsRecords
 
 class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   final int id;
+  final String displayName;
   final bool setupComplete;
   final bool automaticSync;
   final bool launchWithWindows;
@@ -3518,6 +3545,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   final String? relayBaseUrl;
   const SettingsRow({
     required this.id,
+    required this.displayName,
     required this.setupComplete,
     required this.automaticSync,
     required this.launchWithWindows,
@@ -3545,6 +3573,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['display_name'] = Variable<String>(displayName);
     map['setup_complete'] = Variable<bool>(setupComplete);
     map['automatic_sync'] = Variable<bool>(automaticSync);
     map['launch_with_windows'] = Variable<bool>(launchWithWindows);
@@ -3583,6 +3612,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   SettingsRecordsCompanion toCompanion(bool nullToAbsent) {
     return SettingsRecordsCompanion(
       id: Value(id),
+      displayName: Value(displayName),
       setupComplete: Value(setupComplete),
       automaticSync: Value(automaticSync),
       launchWithWindows: Value(launchWithWindows),
@@ -3623,6 +3653,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return SettingsRow(
       id: serializer.fromJson<int>(json['id']),
+      displayName: serializer.fromJson<String>(json['displayName']),
       setupComplete: serializer.fromJson<bool>(json['setupComplete']),
       automaticSync: serializer.fromJson<bool>(json['automaticSync']),
       launchWithWindows: serializer.fromJson<bool>(json['launchWithWindows']),
@@ -3670,6 +3701,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'displayName': serializer.toJson<String>(displayName),
       'setupComplete': serializer.toJson<bool>(setupComplete),
       'automaticSync': serializer.toJson<bool>(automaticSync),
       'launchWithWindows': serializer.toJson<bool>(launchWithWindows),
@@ -3703,6 +3735,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
 
   SettingsRow copyWith({
     int? id,
+    String? displayName,
     bool? setupComplete,
     bool? automaticSync,
     bool? launchWithWindows,
@@ -3727,6 +3760,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     Value<String?> relayBaseUrl = const Value.absent(),
   }) => SettingsRow(
     id: id ?? this.id,
+    displayName: displayName ?? this.displayName,
     setupComplete: setupComplete ?? this.setupComplete,
     automaticSync: automaticSync ?? this.automaticSync,
     launchWithWindows: launchWithWindows ?? this.launchWithWindows,
@@ -3759,6 +3793,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   SettingsRow copyWithCompanion(SettingsRecordsCompanion data) {
     return SettingsRow(
       id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
       setupComplete: data.setupComplete.present
           ? data.setupComplete.value
           : this.setupComplete,
@@ -3832,6 +3869,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   String toString() {
     return (StringBuffer('SettingsRow(')
           ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
           ..write('setupComplete: $setupComplete, ')
           ..write('automaticSync: $automaticSync, ')
           ..write('launchWithWindows: $launchWithWindows, ')
@@ -3861,6 +3899,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   @override
   int get hashCode => Object.hashAll([
     id,
+    displayName,
     setupComplete,
     automaticSync,
     launchWithWindows,
@@ -3889,6 +3928,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       identical(this, other) ||
       (other is SettingsRow &&
           other.id == this.id &&
+          other.displayName == this.displayName &&
           other.setupComplete == this.setupComplete &&
           other.automaticSync == this.automaticSync &&
           other.launchWithWindows == this.launchWithWindows &&
@@ -3916,6 +3956,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
 
 class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   final Value<int> id;
+  final Value<String> displayName;
   final Value<bool> setupComplete;
   final Value<bool> automaticSync;
   final Value<bool> launchWithWindows;
@@ -3940,6 +3981,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   final Value<String?> relayBaseUrl;
   const SettingsRecordsCompanion({
     this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
     this.setupComplete = const Value.absent(),
     this.automaticSync = const Value.absent(),
     this.launchWithWindows = const Value.absent(),
@@ -3965,6 +4007,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   });
   SettingsRecordsCompanion.insert({
     this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
     required bool setupComplete,
     required bool automaticSync,
     required bool launchWithWindows,
@@ -4007,6 +4050,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
        notionMetadataEnabled = Value(notionMetadataEnabled);
   static Insertable<SettingsRow> custom({
     Expression<int>? id,
+    Expression<String>? displayName,
     Expression<bool>? setupComplete,
     Expression<bool>? automaticSync,
     Expression<bool>? launchWithWindows,
@@ -4032,6 +4076,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
       if (setupComplete != null) 'setup_complete': setupComplete,
       if (automaticSync != null) 'automatic_sync': automaticSync,
       if (launchWithWindows != null) 'launch_with_windows': launchWithWindows,
@@ -4068,6 +4113,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
 
   SettingsRecordsCompanion copyWith({
     Value<int>? id,
+    Value<String>? displayName,
     Value<bool>? setupComplete,
     Value<bool>? automaticSync,
     Value<bool>? launchWithWindows,
@@ -4093,6 +4139,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   }) {
     return SettingsRecordsCompanion(
       id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
       setupComplete: setupComplete ?? this.setupComplete,
       automaticSync: automaticSync ?? this.automaticSync,
       launchWithWindows: launchWithWindows ?? this.launchWithWindows,
@@ -4129,6 +4176,9 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
     }
     if (setupComplete.present) {
       map['setup_complete'] = Variable<bool>(setupComplete.value);
@@ -4217,6 +4267,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   String toString() {
     return (StringBuffer('SettingsRecordsCompanion(')
           ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
           ..write('setupComplete: $setupComplete, ')
           ..write('automaticSync: $automaticSync, ')
           ..write('launchWithWindows: $launchWithWindows, ')
@@ -7569,6 +7620,7 @@ typedef $$SyncCursorsTableProcessedTableManager =
 typedef $$SettingsRecordsTableCreateCompanionBuilder =
     SettingsRecordsCompanion Function({
       Value<int> id,
+      Value<String> displayName,
       required bool setupComplete,
       required bool automaticSync,
       required bool launchWithWindows,
@@ -7595,6 +7647,7 @@ typedef $$SettingsRecordsTableCreateCompanionBuilder =
 typedef $$SettingsRecordsTableUpdateCompanionBuilder =
     SettingsRecordsCompanion Function({
       Value<int> id,
+      Value<String> displayName,
       Value<bool> setupComplete,
       Value<bool> automaticSync,
       Value<bool> launchWithWindows,
@@ -7630,6 +7683,11 @@ class $$SettingsRecordsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7758,6 +7816,11 @@ class $$SettingsRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get setupComplete => $composableBuilder(
     column: $table.setupComplete,
     builder: (column) => ColumnOrderings(column),
@@ -7880,6 +7943,11 @@ class $$SettingsRecordsTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get setupComplete => $composableBuilder(
     column: $table.setupComplete,
@@ -8030,6 +8098,7 @@ class $$SettingsRecordsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
                 Value<bool> setupComplete = const Value.absent(),
                 Value<bool> automaticSync = const Value.absent(),
                 Value<bool> launchWithWindows = const Value.absent(),
@@ -8056,6 +8125,7 @@ class $$SettingsRecordsTableTableManager
                 Value<String?> relayBaseUrl = const Value.absent(),
               }) => SettingsRecordsCompanion(
                 id: id,
+                displayName: displayName,
                 setupComplete: setupComplete,
                 automaticSync: automaticSync,
                 launchWithWindows: launchWithWindows,
@@ -8082,6 +8152,7 @@ class $$SettingsRecordsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
                 required bool setupComplete,
                 required bool automaticSync,
                 required bool launchWithWindows,
@@ -8108,6 +8179,7 @@ class $$SettingsRecordsTableTableManager
                 Value<String?> relayBaseUrl = const Value.absent(),
               }) => SettingsRecordsCompanion.insert(
                 id: id,
+                displayName: displayName,
                 setupComplete: setupComplete,
                 automaticSync: automaticSync,
                 launchWithWindows: launchWithWindows,

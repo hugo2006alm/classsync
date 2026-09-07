@@ -12,7 +12,8 @@ them with Gemini, and publishes structured study notes to Notion.
   remains preview-only. iOS automation is not configured.
 - Durable Drift/SQLite queue with retries, review states, local cache, manual
   transcript import, and per-job timelines.
-- Fireflies GraphQL pagination plus signed Webhooks V2 ingestion.
+- Multiple named Fireflies GraphQL connections with independent pagination,
+  plus signed Webhooks V2 ingestion.
 - Gemini structured classification and long-transcript summarization.
 - Notion schema validation, subject filtering, D1-backed global processing
   claims, and retry-safe ClassSync-owned page sections.
@@ -72,11 +73,12 @@ flutter run -d android
 
 The first-run wizard links to the public
 [ClassSync Notion template](https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332),
-tests Fireflies, Gemini, and Notion; discovers the shared
+tests a named Fireflies connection, Gemini, and Notion; discovers the shared
 Notion data sources; asks before adding the optional `Fireflies ID` property;
 uses the hosted production relay URL by default; creates or joins a private
-device account; shows its unique Fireflies webhook settings; and configures
-automation.
+device account with a display name; shows its unique Fireflies webhook
+settings; and configures automation. More named Fireflies keys can be added for
+permitted colleague recorders without sharing the ClassSync recovery code.
 See the [step-by-step setup guide](docs/setup.md). No private Fireflies, Gemini,
 Notion, relay, or
 Firebase service-account credential is compiled into the app. FlutterFire's

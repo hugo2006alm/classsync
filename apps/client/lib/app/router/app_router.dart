@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,13 +12,22 @@ import '../../features/sync/job_detail_screen.dart';
 import '../../features/sync/sync_screen.dart';
 import '../shell/adaptive_app_shell.dart';
 
+final _shellNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>(
   (ref) => GoRouter(
     initialLocation: '/overview',
     routes: [
       ShellRoute(
-        builder: (context, state, child) =>
-            AdaptiveAppShell(location: state.uri.path, child: child),
+        navigatorKey: _shellNavigatorKey,
+        builder: (context, state, child) => AdaptiveAppShell(
+          location: state.uri.path,
+          onNavigate: (path) {
+            _shellNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+            context.go(path);
+          },
+          child: child,
+        ),
         routes: [
           GoRoute(
             path: '/overview',

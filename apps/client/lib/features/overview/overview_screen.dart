@@ -17,6 +17,11 @@ class OverviewScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subjects = ref.watch(activeSubjectsProvider).valueOrNull ?? const [];
     final jobs = ref.watch(syncJobsProvider).valueOrNull ?? const [];
+    final displayName = ref
+        .watch(settingsProvider)
+        .valueOrNull
+        ?.displayName
+        .trim();
     final syncState = ref.watch(syncControllerProvider);
     final semester = AcademicSemester.derive(subjects);
     final pending = jobs
@@ -39,7 +44,8 @@ class OverviewScreen extends ConsumerWidget {
         .toList();
 
     return PageFrame(
-      title: '${_greeting()}, ClassSync',
+      title:
+          '${_greeting()}, ${displayName?.isNotEmpty == true ? displayName : 'ClassSync'}',
       subtitle: semester?.label ?? 'University overview',
       actions: [
         FilledButton.icon(

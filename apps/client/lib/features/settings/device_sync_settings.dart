@@ -110,10 +110,12 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Private device account',
+                  widget.settings.displayName.trim().isEmpty
+                      ? 'Private device account'
+                      : widget.settings.displayName,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
-                Text('Connected · ${account.id.substring(0, 8)}'),
+                Text('ClassSync account · ${account.id.substring(0, 8)}'),
               ],
             ),
           ),
@@ -132,6 +134,11 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
             onPressed: _busy ? null : _sync,
             icon: const Icon(Icons.sync_rounded),
             label: const Text('Sync devices now'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _editName,
+            icon: const Icon(Icons.badge_outlined),
+            label: const Text('Edit name'),
           ),
           OutlinedButton.icon(
             onPressed: _busy
@@ -155,6 +162,8 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
   );
 
   Future<void> _create() async {
+    final name = await _requestName();
+    if (name == null) return;
     await _run(() async {
       final store = ref.read(credentialStoreProvider);
       final setupToken = await store.read(CredentialKey.relayDeviceToken);
@@ -170,11 +179,13 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
             setupToken: setupToken,
             store: store,
           );
+      ref.invalidate(syncAccountProvider);
+      await ref
+          .read(settingsControllerProvider)
+          .save(widget.settings.copyWith(displayName: name));
       await ref
           .read(deviceSyncServiceProvider)
           .synchronize(pushConfiguration: true);
-      await ref.read(settingsControllerProvider).save(widget.settings);
-      ref.invalidate(syncAccountProvider);
       await _copy(
         account.recoveryCode,
         'Account created and recovery code copied. Save it securely.',
@@ -221,20 +232,35 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
             recoveryCode: code,
             store: ref.read(credentialStoreProvider),
           );
-      await ref.read(deviceSyncServiceProvider).synchronize();
       ref.invalidate(syncAccountProvider);
+      try {
+        await ref.read(deviceSyncServiceProvider).synchronize();
+      } catch (error) {
+        for (final key in CredentialKey.values) {
+          ref.invalidate(credentialConfiguredProvider(key));
+        }
+        ref.invalidate(firefliesConnectionsProvider);
+        setState(
+          () => _message =
+              'Account joined. Private settings will retry syncing: $error',
+        );
+        return;
+      }
       for (final key in CredentialKey.values) {
         ref.invalidate(credentialConfiguredProvider(key));
       }
+      ref.invalidate(firefliesConnectionsProvider);
       setState(() => _message = 'Device joined and private settings restored.');
     });
   }
 
   Future<void> _sync() => _run(() async {
     await ref.read(deviceSyncServiceProvider).synchronize();
+    ref.invalidate(syncAccountProvider);
     for (final key in CredentialKey.values) {
       ref.invalidate(credentialConfiguredProvider(key));
     }
+    ref.invalidate(firefliesConnectionsProvider);
     setState(() => _message = 'Devices are up to date.');
   });
 
@@ -254,7 +280,7 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
         builder: (context) => AlertDialog(
           title: const Text('Your Fireflies webhook'),
           content: SelectableText(
-            'URL\n${config.webhookUrl}\n\nSigning secret\n${config.signingSecret}',
+            'URL\n${config.webhookUrl}\n\nSigning secret\n${config.signingSecret}\n\nThe same URL can receive permitted colleagues’ recordings. Add each colleague’s named Fireflies API key under Connections so ClassSync can fetch their transcript.',
           ),
           actions: [
             TextButton(
@@ -285,6 +311,54 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
       () => _message = 'This device is disconnected. Local data remains.',
     );
   });
+
+  Future<void> _editName() async {
+    final name = await _requestName(current: widget.settings.displayName);
+    if (name == null) return;
+    await _run(() async {
+      await ref
+          .read(settingsControllerProvider)
+          .save(widget.settings.copyWith(displayName: name));
+      setState(() => _message = 'Account name updated.');
+    });
+  }
+
+  Future<String?> _requestName({String current = ''}) async {
+    final controller = TextEditingController(text: current);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Account name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          maxLength: 80,
+          decoration: const InputDecoration(
+            labelText: 'Your name',
+            hintText: 'Shown on Overview and your devices',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return null;
+    if (value.isEmpty) {
+      setState(() => _message = 'Account name cannot be empty.');
+      return null;
+    }
+    return value;
+  }
 
   Future<void> _copy(String value, String message) async {
     await Clipboard.setData(ClipboardData(text: value));

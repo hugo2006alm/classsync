@@ -5,11 +5,13 @@ class AdaptiveAppShell extends StatelessWidget {
   const AdaptiveAppShell({
     required this.location,
     required this.child,
+    this.onNavigate,
     super.key,
   });
 
   final String location;
   final Widget child;
+  final ValueChanged<String>? onNavigate;
 
   static const _destinations = <_Destination>[
     _Destination('Overview', Icons.home_rounded, '/overview'),
@@ -37,7 +39,7 @@ class AdaptiveAppShell extends StatelessWidget {
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) =>
-                context.go(_destinations[index].path),
+                _navigate(context, _destinations[index].path),
             destinations: _destinations
                 .map(
                   (destination) => NavigationDestination(
@@ -63,7 +65,7 @@ class AdaptiveAppShell extends StatelessWidget {
                   minExtendedWidth: 260,
                   selectedIndex: _selectedIndex,
                   onDestinationSelected: (index) =>
-                      context.go(_destinations[index].path),
+                      _navigate(context, _destinations[index].path),
                   leading: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 22, 12, 34),
                     child: _BrandMark(showName: extended),
@@ -85,6 +87,15 @@ class AdaptiveAppShell extends StatelessWidget {
       );
     },
   );
+
+  void _navigate(BuildContext context, String path) {
+    final callback = onNavigate;
+    if (callback != null) {
+      callback(path);
+    } else {
+      context.go(path);
+    }
+  }
 }
 
 class _BrandMark extends StatelessWidget {

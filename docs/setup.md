@@ -35,7 +35,7 @@ generates your account-specific Fireflies signing secret during setup.
 ## The eight screens
 
 1. **Welcome** lists everything needed and explains what stays local.
-2. **Fireflies** accepts the API key and tests it before continuing.
+2. **Fireflies** accepts a named API key and tests it before continuing.
 3. **Gemini** accepts the API key and tests the recommended model. The model is
    under Advanced because most users should not change it.
 4. **Notion** discovers every database shared with the integration. Select
@@ -45,9 +45,10 @@ generates your account-specific Fireflies signing secret during setup.
    `https://classsync-relay.classsync-relay.workers.dev`. Paste only the device
    API token. A different URL can be entered under **Use a different relay** for
    self-hosting or staging.
-6. **Account** creates a private account for one person, or joins that person's
-   other devices with a recovery code. Copy its unique URL and signing secret
-   into Fireflies Webhooks V2 and subscribe to `meeting.transcribed`.
+6. **Account** records the owner's display name, creates a private account for
+   one person, or joins that person's other devices with a recovery code. Copy
+   its unique URL and signing secret into Fireflies Webhooks V2 and subscribe
+   to `meeting.transcribed`.
 7. **Automation** controls problem notifications and the platform-specific
    background option.
 8. **Ready** reviews every verified connection before saving the credentials to
@@ -71,6 +72,15 @@ to another Worker name, Cloudflare account, custom domain, or staging relay.
 The bootstrap device API token authorizes creation of a random private account.
 It cannot open an existing account. The recovery code contains separate relay
 authentication and encryption secrets; store it in a password manager.
+
+## Colleague recordings
+
+A colleague does not need ClassSync on their phone and must not receive your
+ClassSync recovery code. Configure your account's webhook URL and signing
+secret in their Fireflies account, then add their Fireflies API key with their
+name under **Settings → Connections → Fireflies**. The webhook announces the
+transcript; their key authorizes ClassSync to fetch it. Your own key works only
+if Fireflies already grants it access to that transcript.
 
 ## Already configured outside the app
 

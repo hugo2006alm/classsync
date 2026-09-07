@@ -22,6 +22,8 @@ class JobDetailScreen extends ConsumerWidget {
     final timeline =
         ref.watch(jobTimelineProvider(jobId)).valueOrNull ?? const [];
     final subjects = ref.watch(activeSubjectsProvider).valueOrNull ?? const [];
+    final connections =
+        ref.watch(firefliesConnectionsProvider).valueOrNull ?? const [];
     return jobValue.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stack) => Center(child: Text(error.toString())),
@@ -38,9 +40,17 @@ class JobDetailScreen extends ConsumerWidget {
         }
         return PageFrame(
           title: job.title,
-          subtitle: DateFormat.yMMMMd().add_Hm().format(
-            job.meetingDate.toLocal(),
-          ),
+          subtitle: [
+            DateFormat.yMMMMd().add_Hm().format(job.meetingDate.toLocal()),
+            if (job.sourceType == 'manual')
+              'Manual import'
+            else
+              connections
+                      .where((item) => job.sourceType == 'fireflies:${item.id}')
+                      .firstOrNull
+                      ?.name ??
+                  'Fireflies',
+          ].join(' · '),
           actions: [
             if (job.firefliesUrl case final url?)
               OutlinedButton.icon(
