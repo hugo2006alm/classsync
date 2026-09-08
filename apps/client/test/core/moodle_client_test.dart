@@ -4,6 +4,71 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('exchanges credentials for a Moodle mobile token using POST', () async {
+    late RequestOptions request;
+    final dio = Dio(BaseOptions(baseUrl: 'https://moodle.isep.ipp.pt'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          request = options;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {'token': 'mobile-token'},
+            ),
+          );
+        },
+      ),
+    );
+
+    final token = await MoodleClient(dio: dio)
+        .authenticate(username: ' student ', password: 'secret');
+
+    expect(token, 'mobile-token');
+    expect(request.method, 'POST');
+    expect(request.uri.path, '/login/token.php');
+    expect(request.queryParameters, isEmpty);
+    expect(request.contentType, Headers.formUrlEncodedContentType);
+    expect(request.data, {
+      'username': 'student',
+      'password': 'secret',
+      'service': MoodleClient.mobileService,
+    });
+  });
+
+  test('maps rejected Moodle credentials to an actionable error', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://moodle.isep.ipp.pt'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<dynamic>(
+            requestOptions: options,
+            statusCode: 200,
+            data: {
+              'error': 'Invalid login, please try again',
+              'errorcode': 'invalidlogin',
+            },
+          ),
+        ),
+      ),
+    );
+
+    await expectLater(
+      MoodleClient(dio: dio)
+          .authenticate(username: 'student', password: 'wrong'),
+      throwsA(
+        isA<IntegrationException>()
+            .having((error) => error.code, 'code', 'invalidlogin')
+            .having(
+              (error) => error.userMessage,
+              'message',
+              'The Moodle username or password is incorrect.',
+            ),
+      ),
+    );
+  });
+
   test('decodes stable Moodle course IDs', () {
     final values = MoodleClient.decodeCourses([
       {'id': 42, 'fullname': 'Bases de Dados', 'shortname': 'BDAD'},

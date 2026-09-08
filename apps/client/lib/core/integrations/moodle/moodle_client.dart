@@ -50,6 +50,8 @@ class MoodleSyncBundle {
 }
 
 class MoodleClient {
+  static const mobileService = 'moodle_mobile_app';
+
   MoodleClient({Dio? dio})
     : _dio =
           dio ??
@@ -65,6 +67,67 @@ class MoodleClient {
           );
 
   final Dio _dio;
+
+  Future<String> authenticate({
+    required String username,
+    required String password,
+  }) async {
+    final cleanUsername = username.trim();
+    if (cleanUsername.isEmpty || password.isEmpty) {
+      throw const IntegrationException(
+        integration: 'Moodle',
+        code: 'missing_credentials',
+        userMessage: 'Enter your Moodle username and password.',
+        retryable: false,
+      );
+    }
+    final endpoint = _trustedEndpoint('/login/token.php');
+    try {
+      final response = await _dio.post<dynamic>(
+        endpoint.toString(),
+        data: {
+          'username': cleanUsername,
+          'password': password,
+          'service': mobileService,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          responseType: ResponseType.stream,
+        ),
+      );
+      final bytes = await readBoundedResponse(response.data, response.headers);
+      final data = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+      if (data is Map) {
+        final token = data['token']?.toString().trim() ?? '';
+        if (token.isNotEmpty) return token;
+        final code = data['errorcode']?.toString() ?? 'authentication_failed';
+        throw IntegrationException(
+          integration: 'Moodle',
+          code: code,
+          userMessage: _authenticationMessage(code),
+          retryable: false,
+        );
+      }
+      throw const FormatException('Expected a Moodle authentication object.');
+    } on IntegrationPayloadTooLarge {
+      throw const IntegrationException(
+        integration: 'Moodle',
+        code: 'response_too_large',
+        userMessage:
+            'Moodle returned more data than ClassSync can safely process.',
+        retryable: false,
+      );
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('Moodle', error);
+    } on FormatException {
+      throw const IntegrationException(
+        integration: 'Moodle',
+        code: 'invalid_response',
+        userMessage: 'Moodle returned an invalid login response.',
+        retryable: false,
+      );
+    }
+  }
 
   Future<String> testConnection(String token) async {
     final site = await _call(token, 'core_webservice_get_site_info');
@@ -141,9 +204,10 @@ class MoodleClient {
           'courseids[$index]': ids[index],
       },
     );
-    final newsForums = _asList(
-      forumsJson,
-    ).where((item) => item['type'] == 'news').take(100).toList();
+    final newsForums = _asList(forumsJson)
+        .where((item) => item['type'] == 'news')
+        .take(100)
+        .toList();
     final announcements = <MoodleAnnouncement>[];
     for (final forum in newsForums) {
       final forumId = forum['id'];
@@ -178,18 +242,7 @@ class MoodleClient {
     String function, {
     Map<String, dynamic> parameters = const {},
   }) async {
-    final base = Uri.parse(_dio.options.baseUrl);
-    final endpoint = base.resolve('/webservice/rest/server.php');
-    if (endpoint.scheme != 'https' ||
-        endpoint.host.toLowerCase() != 'moodle.isep.ipp.pt' ||
-        (endpoint.hasPort && endpoint.port != 443)) {
-      throw const IntegrationException(
-        integration: 'Moodle',
-        code: 'unsafe_moodle_url',
-        userMessage: 'Moodle must use the trusted ISEP HTTPS host.',
-        retryable: false,
-      );
-    }
+    final endpoint = _trustedEndpoint('/webservice/rest/server.php');
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         final response = await _dio.get<dynamic>(
@@ -213,7 +266,7 @@ class MoodleClient {
             integration: 'Moodle',
             code: code,
             userMessage: code == 'invalidtoken'
-                ? 'Moodle access expired or was revoked. Save a new token.'
+                ? 'Moodle access expired or was revoked. Connect again.'
                 : 'Moodle rejected $function: ${data['message'] ?? code}',
             retryable: false,
           );
@@ -243,6 +296,29 @@ class MoodleClient {
     }
     throw StateError('Moodle retry loop completed unexpectedly.');
   }
+
+  Uri _trustedEndpoint(String path) {
+    final base = Uri.parse(_dio.options.baseUrl);
+    final endpoint = base.resolve(path);
+    if (endpoint.scheme != 'https' ||
+        endpoint.host.toLowerCase() != 'moodle.isep.ipp.pt' ||
+        (endpoint.hasPort && endpoint.port != 443)) {
+      throw const IntegrationException(
+        integration: 'Moodle',
+        code: 'unsafe_moodle_url',
+        userMessage: 'Moodle must use the trusted ISEP HTTPS host.',
+        retryable: false,
+      );
+    }
+    return endpoint;
+  }
+
+  static String _authenticationMessage(String code) => switch (code) {
+    'invalidlogin' => 'The Moodle username or password is incorrect.',
+    'servicenotavailable' =>
+      'ISEP has not enabled Moodle app access for this account.',
+    _ => 'Moodle could not create an app connection for this account.',
+  };
 
   static List<MoodleCourse> decodeCourses(
     dynamic json, {

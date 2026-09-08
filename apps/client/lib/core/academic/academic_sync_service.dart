@@ -73,17 +73,21 @@ class AcademicSyncService implements AcademicHubActions {
   }
 
   @override
-  Future<void> connectMoodle(String token) async {
-    final cleanToken = token.trim();
-    if (cleanToken.isEmpty) {
-      throw const AcademicActionFailure('Enter a Moodle Web Services token.');
-    }
+  Future<void> connectMoodle({
+    required String username,
+    required String password,
+  }) async {
+    String token;
     try {
-      await _moodle.testConnection(cleanToken);
+      token = await _moodle.authenticate(
+        username: username,
+        password: password,
+      );
+      await _moodle.testConnection(token);
     } on IntegrationException catch (error) {
       throw AcademicActionFailure(error.userMessage);
     }
-    await _credentials.write(CredentialKey.moodleToken, cleanToken);
+    await _credentials.write(CredentialKey.moodleToken, token);
   }
 
   @override
@@ -499,8 +503,7 @@ class AcademicSyncService implements AcademicHubActions {
           await _notifications.showAcademicUpdate(
             id: record.key,
             title: 'Payment overdue · ${record.title}',
-            body:
-                'Review this read-only Portal charge. ClassSync cannot make payments.',
+            body: 'Review this read-only Portal charge. ClassSync cannot make payments.',
             section: 7,
           );
         }
@@ -547,12 +550,12 @@ class AcademicSyncService implements AcademicHubActions {
         final generatedText = match?.summaryJson == null
             ? ''
             : LectureSummary.decode(match!.summaryJson!).toJson().toString();
-        final officialTerms = SubjectMapper.normalize(
-          item.text,
-        ).split(' ').toSet();
-        final generatedTerms = SubjectMapper.normalize(
-          generatedText,
-        ).split(' ').toSet();
+        final officialTerms = SubjectMapper.normalize(item.text)
+            .split(' ')
+            .toSet();
+        final generatedTerms = SubjectMapper.normalize(generatedText)
+            .split(' ')
+            .toSet();
         final overlap = officialTerms.isEmpty
             ? 0.0
             : officialTerms.intersection(generatedTerms).length /
@@ -983,8 +986,7 @@ class AcademicSyncService implements AcademicHubActions {
       await _notifications.showAcademicUpdate(
         id: updated.key,
         title: 'Payment overdue · ${updated.title}',
-        body:
-            'Review this read-only Portal charge. ClassSync cannot make payments.',
+        body: 'Review this read-only Portal charge. ClassSync cannot make payments.',
         section: 7,
       );
     }

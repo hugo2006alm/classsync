@@ -13,7 +13,10 @@ class AcademicActionFailure implements Exception {
 abstract interface class AcademicHubActions {
   Future<String> readPortalUsername();
   Future<void> connectPortal({required String username, String? password});
-  Future<void> connectMoodle(String token);
+  Future<void> connectMoodle({
+    required String username,
+    required String password,
+  });
   Future<void> addManualEvaluation(EvaluationEvent event);
   Future<void> addManualGrade(GradeComponent component);
   Future<void> setEvaluationReminder(AcademicRecord record, int? minutes);

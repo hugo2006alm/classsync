@@ -190,9 +190,14 @@ void main() {
       expect(credentials.values[CredentialKey.portalPassword], 'new-secret');
       expect(portal.lastPassword, 'new-secret');
 
-      await service.connectMoodle('new-token');
+      await service.connectMoodle(
+        username: 'new-student',
+        password: 'moodle-secret',
+      );
       expect(credentials.values[CredentialKey.moodleToken], 'new-token');
       expect(moodle.testedToken, 'new-token');
+      expect(moodle.authenticatedUsername, 'new-student');
+      expect(moodle.authenticatedPassword, 'moodle-secret');
     },
   );
 }
@@ -385,6 +390,18 @@ class _FakeMoodle extends MoodleClient {
   bool incremental = false;
   DateTime? lastSince;
   String? testedToken;
+  String? authenticatedUsername;
+  String? authenticatedPassword;
+
+  @override
+  Future<String> authenticate({
+    required String username,
+    required String password,
+  }) async {
+    authenticatedUsername = username;
+    authenticatedPassword = password;
+    return 'new-token';
+  }
 
   @override
   Future<String> testConnection(String token) async {

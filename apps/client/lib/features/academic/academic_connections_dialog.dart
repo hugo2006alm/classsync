@@ -43,7 +43,8 @@ class _AcademicConnectionsDialogState
     extends ConsumerState<_AcademicConnectionsDialog> {
   late final TextEditingController _username;
   final _password = TextEditingController();
-  final _moodleToken = TextEditingController();
+  late final TextEditingController _moodleUsername;
+  final _moodlePassword = TextEditingController();
   late bool _portalConfigured = widget.portalConfigured;
   late bool _moodleConfigured = widget.moodleConfigured;
   bool _portalBusy = false;
@@ -55,13 +56,15 @@ class _AcademicConnectionsDialogState
   void initState() {
     super.initState();
     _username = TextEditingController(text: widget.initialUsername);
+    _moodleUsername = TextEditingController(text: widget.initialUsername);
   }
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
-    _moodleToken.dispose();
+    _moodleUsername.dispose();
+    _moodlePassword.dispose();
     super.dispose();
   }
 
@@ -87,8 +90,7 @@ class _AcademicConnectionsDialogState
                   enableSuggestions: false,
                   decoration: const InputDecoration(
                     labelText: 'Portal username or ISEP email',
-                    helperText:
-                        'Use exactly the username or email accepted by portal.isep.ipp.pt.',
+                    helperText: 'Use exactly the username or email accepted by portal.isep.ipp.pt.',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -131,15 +133,25 @@ class _AcademicConnectionsDialogState
               error: _moodleError,
               children: [
                 TextField(
-                  controller: _moodleToken,
+                  controller: _moodleUsername,
+                  enabled: !_moodleBusy,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Moodle username or ISEP email',
+                    helperText: 'Usually the same username as the Portal.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _moodlePassword,
                   enabled: !_moodleBusy,
                   obscureText: true,
                   autocorrect: false,
                   enableSuggestions: false,
                   decoration: const InputDecoration(
-                    labelText: 'Web Services token',
-                    helperText:
-                        'Moodle is independent from Portal. Only this token is required.',
+                    labelText: 'Password',
+                    helperText: 'Used once to obtain a Moodle token; the password is not saved.',
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -206,15 +218,18 @@ class _AcademicConnectionsDialogState
     try {
       await ref
           .read(academicHubActionsProvider)
-          .connectMoodle(_moodleToken.text);
+          .connectMoodle(
+            username: _moodleUsername.text,
+            password: _moodlePassword.text,
+          );
       if (!mounted) return;
-      _moodleToken.clear();
       setState(() => _moodleConfigured = true);
       ref.invalidate(academicConnectionStateProvider);
       _showSuccess('Moodle connected.');
     } on AcademicActionFailure catch (error) {
       if (mounted) setState(() => _moodleError = error.message);
     } finally {
+      _moodlePassword.clear();
       if (mounted) setState(() => _moodleBusy = false);
     }
   }
