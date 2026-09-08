@@ -6,10 +6,13 @@ ClassSync uses Moodle's official Web Services REST endpoint:
 https://moodle.isep.ipp.pt/webservice/rest/server.php
 ```
 
-The endpoint and its `invalidtoken` response were verified on 2026-09-06.
-ClassSync requires a user-scoped Web Services token and never stores a Moodle
-password. The token stays in OS secure storage and is sent only to the HTTPS
-Moodle host. It never enters the relay, SQLite, logs, or diagnostics.
+The REST endpoint and its `invalidtoken` response were verified on 2026-09-06.
+Users connect with their normal Moodle username and password. ClassSync sends
+them once, over HTTPS, to Moodle's official `/login/token.php` endpoint with the
+`moodle_mobile_app` service shortname. If ISEP enables that service, Moodle
+returns a user-scoped Web Services token. ClassSync stores only that token in OS
+secure storage and does not retain the password. Neither credential enters
+the relay, SQLite, logs, or diagnostics.
 
 ## Read-only functions
 
@@ -42,7 +45,9 @@ open on the trusted `isep.ipp.pt` host.
 
 ## Permissions
 
-The Moodle administrator controls which Web Service functions a token may use.
-If ISEP does not expose one of the functions above to student tokens, that
-feature cannot synchronize through the supported API; ClassSync does not fall
-back to password scraping.
+The Moodle administrator controls whether `moodle_mobile_app` can issue tokens
+and which Web Service functions those tokens may use. If ISEP disables the
+service, ClassSync reports that Moodle app access is unavailable. If one of the
+functions above is not exposed to student tokens, that feature cannot
+synchronize through the supported API. ClassSync does not scrape authenticated
+Moodle pages and never retains the Moodle password.

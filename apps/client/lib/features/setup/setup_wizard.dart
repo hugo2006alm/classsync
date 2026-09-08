@@ -31,7 +31,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   final _notionController = TextEditingController();
   final _portalUsernameController = TextEditingController();
   final _portalPasswordController = TextEditingController();
-  final _moodleTokenController = TextEditingController();
+  final _moodleUsernameController = TextEditingController();
+  final _moodlePasswordController = TextEditingController();
   final _relayUrlController = TextEditingController(
     text: AppSettings.productionRelayBaseUrl,
   );
@@ -78,7 +79,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     _notionController.dispose();
     _portalUsernameController.dispose();
     _portalPasswordController.dispose();
-    _moodleTokenController.dispose();
+    _moodleUsernameController.dispose();
+    _moodlePasswordController.dispose();
     _relayUrlController.dispose();
     _relayTokenController.dispose();
     _modelController.dispose();
@@ -171,8 +173,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'WELCOME TO YOUR STUDY DESK',
     icon: Icons.auto_stories_rounded,
     title: 'From lecture to study notes, quietly.',
-    description:
-        'Nine short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
+    description: 'Nine short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
     child: Column(
       children: const [
         _GuideCard(
@@ -187,14 +188,12 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         SizedBox(height: 14),
         _InfoStrip(
           icon: Icons.check_circle_outline_rounded,
-          message:
-              'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
+          message: 'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
         ),
         SizedBox(height: 10),
         _InfoStrip(
           icon: Icons.lock_outline_rounded,
-          message:
-              'Your API keys stay in OS secure storage. The relay receives identifiers and timestamps, never transcript text or summaries.',
+          message: 'Your API keys stay in OS secure storage. The relay receives identifiers and timestamps, never transcript text or summaries.',
         ),
       ],
     ),
@@ -204,8 +203,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'SOURCE · 1 OF 4',
     icon: Icons.mic_none_rounded,
     title: 'Bring in your lectures.',
-    description:
-        'ClassSync uses your API key to find completed meetings and fetch speaker-aware transcripts.',
+    description: 'ClassSync uses your API key to find completed meetings and fetch speaker-aware transcripts.',
     child: Column(
       children: [
         const _GuideCard(
@@ -229,8 +227,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           decoration: const InputDecoration(
             labelText: 'Connection name',
             hintText: 'My Fireflies',
-            helperText:
-                'Use a person or account name so transcript ownership is clear.',
+            helperText: 'Use a person or account name so transcript ownership is clear.',
           ),
         ),
       ],
@@ -241,8 +238,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'AI · 2 OF 4',
     icon: Icons.auto_awesome_rounded,
     title: 'Shape raw speech into notes.',
-    description:
-        'Gemini matches each lecture to an active subject and produces structured study notes in Portuguese.',
+    description: 'Gemini matches each lecture to an active subject and produces structured study notes in Portuguese.',
     child: Column(
       children: [
         const _GuideCard(
@@ -274,8 +270,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 controller: _modelController,
                 decoration: const InputDecoration(
                   labelText: 'Gemini model',
-                  helperText:
-                      'ClassSync falls back automatically when this model is unavailable.',
+                  helperText: 'ClassSync falls back automatically when this model is unavailable.',
                 ),
               ),
             ],
@@ -289,8 +284,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'DESTINATION · 3 OF 4',
     icon: Icons.account_tree_outlined,
     title: 'Point to your study workspace.',
-    description:
-        'ClassSync discovers the databases that your integration can access. It will never recreate or rename your existing workspace.',
+    description: 'ClassSync discovers the databases that your integration can access. It will never recreate or rename your existing workspace.',
     child: Column(
       children: [
         SizedBox(
@@ -377,8 +371,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           const SizedBox(height: 8),
           const _InfoStrip(
             icon: Icons.rule_rounded,
-            message:
-                'Required: Lista de Cadeiras needs Nome, Ano, Semestre and Status. Histórico de Resumos needs Nome, Data and Cadeira.',
+            message: 'Required: Lista de Cadeiras needs Nome, Ano, Semestre and Status. Histórico de Resumos needs Nome, Data and Cadeira.',
           ),
         ],
       ],
@@ -389,8 +382,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'DELIVERY · 4 OF 4',
     icon: Icons.cloud_queue_rounded,
     title: 'Connect this device.',
-    description:
-        'The hosted relay URL is built in. App and relay updates keep the same address, so you only need to paste the bootstrap device token.',
+    description: 'The hosted relay URL is built in. App and relay updates keep the same address, so you only need to paste the bootstrap device token.',
     child: Column(
       children: [
         Card(
@@ -432,8 +424,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         const SizedBox(height: 10),
         const _InfoStrip(
           icon: Icons.info_outline_rounded,
-          message:
-              'This is DEVICE_API_TOKEN from Cloudflare—not the Fireflies webhook secret. It is used once to enroll this installation.',
+          message: 'This is DEVICE_API_TOKEN from Cloudflare—not the Fireflies webhook secret. It is used once to enroll this installation.',
         ),
         const SizedBox(height: 12),
         Card(
@@ -464,14 +455,12 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'ACADEMIC SOURCES · OPTIONAL',
     icon: Icons.school_outlined,
     title: 'Bring the official context with you.',
-    description:
-        'Portal adds your timetable, grades, enrolment, exam registrations, official lesson summaries, FUC details, and notices. Moodle adds assignments and announcements. Leave everything blank to skip this step.',
+    description: 'Portal adds your timetable, grades, enrolment, exam registrations, official lesson summaries, FUC details, and notices. Moodle adds assignments and announcements. Leave everything blank to skip this step.',
     child: Column(
       children: [
         const _InfoStrip(
           icon: Icons.lock_outline_rounded,
-          message:
-              'These credentials stay in this device’s OS secure storage. ClassSync only reads academic data and never submits an exam registration.',
+          message: 'These credentials stay in this device’s OS secure storage. ClassSync only reads academic data and never submits an exam registration.',
         ),
         const SizedBox(height: 14),
         Card(
@@ -487,8 +476,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 autofillHints: const [AutofillHints.username],
                 decoration: const InputDecoration(
                   labelText: 'Portal username or ISEP email',
-                  helperText:
-                      'Username and password are both required on the first connection.',
+                  helperText: 'Username and password are both required on the first connection.',
                 ),
               ),
               const SizedBox(height: 12),
@@ -505,13 +493,41 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           child: ExpansionTile(
             leading: const Icon(Icons.hub_outlined),
             title: const Text('Moodle ISEP'),
-            subtitle: const Text('Optional · Web Services token'),
+            subtitle: const Text('Optional · ISEP username and password'),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    _moodleUsernameController.text =
+                        _portalUsernameController.text;
+                    _moodlePasswordController.text =
+                        _portalPasswordController.text;
+                  }),
+                  icon: const Icon(Icons.copy_all_outlined),
+                  label: const Text('Use Portal credentials'),
+                ),
+              ),
+              TextField(
+                controller: _moodleUsernameController,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  labelText: 'Moodle username or ISEP email',
+                  hintText: 'Usually the same username as the Portal',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
               _SecretField(
-                controller: _moodleTokenController,
-                label: 'Moodle Web Services token',
+                controller: _moodlePasswordController,
+                label: 'Moodle password',
                 hint: 'Leave blank to connect later',
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'ClassSync exchanges these credentials for a Moodle app token, stores only the token, and immediately discards the password.',
               ),
             ],
           ),
@@ -528,8 +544,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'YOUR DEVICES',
     icon: Icons.devices_rounded,
     title: 'Keep each person separate.',
-    description:
-        'One private account connects your own PCs and phone. Other people create their own account, keys, Notion workspace, and queue.',
+    description: 'One private account connects your own PCs and phone. Other people create their own account, keys, Notion workspace, and queue.',
     child: Column(
       children: [
         if (!_joinAccount && _syncAccount == null) ...[
@@ -638,8 +653,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           const SizedBox(height: 10),
           const _InfoStrip(
             icon: Icons.security_rounded,
-            message:
-                'Save the recovery code in a password manager. The relay cannot decrypt your synced API keys or settings.',
+            message: 'Save the recovery code in a password manager. The relay cannot decrypt your synced API keys or settings.',
           ),
         ],
       ],
@@ -698,8 +712,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'PREFERENCES',
     icon: Icons.settings_suggest_rounded,
     title: 'Choose how quietly it works.',
-    description:
-        'Successful automation stays out of your way. Reviews and failures remain visible and actionable.',
+    description: 'Successful automation stays out of your way. Reviews and failures remain visible and actionable.',
     child: Card(
       child: Column(
         children: [
@@ -740,8 +753,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     eyebrow: 'READY',
     icon: Icons.check_circle_outline_rounded,
     title: 'Your study desk is ready.',
-    description:
-        'Finish setup and ClassSync will perform its first sync. Healthy runs stay quiet; anything uncertain waits for your review.',
+    description: 'Finish setup and ClassSync will perform its first sync. Healthy runs stay quiet; anything uncertain waits for your review.',
     child: Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -844,11 +856,24 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 .read(academicHubActionsProvider)
                 .connectPortal(username: portalUser, password: portalPassword);
           }
-          final moodleToken = _moodleTokenController.text.trim();
-          if (moodleToken.isNotEmpty) {
-            await ref
-                .read(academicHubActionsProvider)
-                .connectMoodle(moodleToken);
+          final moodleUser = _moodleUsernameController.text.trim();
+          final moodlePassword = _moodlePasswordController.text;
+          if (moodleUser.isNotEmpty || moodlePassword.isNotEmpty) {
+            if (moodleUser.isEmpty || moodlePassword.isEmpty) {
+              throw const FormatException(
+                'Enter both Moodle fields, or leave both blank to skip.',
+              );
+            }
+            try {
+              await ref
+                  .read(academicHubActionsProvider)
+                  .connectMoodle(
+                    username: moodleUser,
+                    password: moodlePassword,
+                  );
+            } finally {
+              _moodlePasswordController.clear();
+            }
           }
         case 5:
           if (_relayUrlController.text.trim().isEmpty ||
@@ -1059,9 +1084,8 @@ class _SetupRail extends StatelessWidget {
                     'ClassSync',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleLarge?.copyWith(color: scheme.onPrimary),
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(color: scheme.onPrimary),
                   ),
                 ),
               ],
@@ -1087,16 +1111,14 @@ class _SetupRail extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               'Private by design',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: scheme.onPrimary),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(color: scheme.onPrimary),
             ),
             const SizedBox(height: 4),
             Text(
               'Credentials stay in secure storage on this device.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onPrimary.withValues(alpha: 0.78),
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onPrimary.withValues(alpha: 0.78)),
             ),
           ],
         ),
@@ -1361,9 +1383,8 @@ class _StepBody extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   description,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 26),
                 child,

@@ -41,10 +41,12 @@ generates your account-specific Fireflies signing secret during setup.
 4. **Notion** discovers every database shared with the integration. Select
    `Lista de Cadeiras` and `Histórico de Resumos`. Keep the recommended
    `Fireflies ID` option enabled for reliable cross-device duplicate detection.
-5. **Academic** optionally tests an ISEP Portal username/password and/or a
-   Moodle Web Services token. Leave both sections blank to skip them and
-   connect later under **Academic → Connections**. Portal access is read-only;
-   ClassSync does not submit exam registrations.
+5. **Academic** optionally tests ISEP Portal and Moodle using their normal
+   username/password sign-ins. Moodle exchanges the credentials for an app
+   token and stores only that token; its password is not retained.
+   Leave either section blank to skip it and connect later under
+   **Academic → Connections**. Portal access is read-only; ClassSync does not
+   submit exam registrations.
 6. **Relay** already uses
    `https://classsync-relay.classsync-relay.workers.dev`. Paste only the device
    API token. A different URL can be entered under **Use a different relay** for

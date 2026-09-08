@@ -104,8 +104,10 @@ Required Notion data-source properties:
 
 Optional academic integrations can be skipped during first-run setup and are
 also configured under **Academic → Connections**.
-Portal username/password and the Moodle Web Services token stay in OS secure
-storage. Portal login recognizes the actual sign-in form, including when the
+Portal username/password and the Moodle app token stay in OS secure storage.
+Moodle obtains its token from the official login endpoint using the normal ISEP
+credentials and never stores the submitted Moodle password. Portal login
+recognizes the actual sign-in form, including when the
 authenticated dashboard contains account password controls. A local Windows
 login diagnostic is documented in the Portal guide. Academic records remain in the local offline cache and never pass
 through the relay. See [ISEP Portal details](docs/isep-portal.md) and
@@ -150,6 +152,19 @@ real credentials and publishes a Windows installer artifact.
 Pushing a `v*` tag validates both projects, requires Android and Windows signing
 secrets, builds APK/AAB plus Authenticode-signed Windows installer, generates
 checksums and provenance, then publishes every artifact in one gated job.
+
+To build and optionally publish the APK and Windows installer entirely on a
+Windows development machine, without GitHub Actions, run:
+
+```powershell
+.\tool\release-local.ps1
+.\tool\release-local.ps1 -Publish -NotesFile .\release-notes.md
+```
+
+The publishing mode requires GitHub CLI authentication, the existing Android
+signing configuration, and `[skip ci]` in the release commit. It refuses to
+push the version tag otherwise, preventing the tag-triggered workflow from
+starting.
 
 ## Privacy and failure behavior
 
