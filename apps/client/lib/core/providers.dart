@@ -170,6 +170,31 @@ final notionPageContentProvider =
           .readPageContent(token: token, pageId: pageId);
     });
 
+final notionSubjectSummariesProvider =
+    FutureProvider.family<List<NotionSummaryRecord>, String>((
+      ref,
+      subjectId,
+    ) async {
+      final settings = await ref.watch(settingsProvider.future);
+      final token = await ref
+          .watch(credentialStoreProvider)
+          .read(CredentialKey.notionToken);
+      final summariesId = settings.notionSummariesDataSourceId;
+      if (token == null ||
+          token.isEmpty ||
+          summariesId == null ||
+          summariesId.isEmpty) {
+        return const [];
+      }
+      return ref
+          .watch(notionClientProvider)
+          .queryRecentSummariesForSubject(
+            token: token,
+            dataSourceId: summariesId,
+            subjectId: subjectId,
+          );
+    });
+
 final syncJobsProvider = StreamProvider<List<SyncJob>>(
   (ref) => ref.watch(databaseProvider).watchJobs(),
 );

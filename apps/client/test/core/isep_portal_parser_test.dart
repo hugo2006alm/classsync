@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:classsync/core/integrations/integration_exception.dart';
@@ -255,6 +256,11 @@ void main() {
                 options.headers['cookie'],
                 contains('ASP.NET_SessionId=session'),
               );
+              expect(options.headers['origin'], 'https://portal.isep.ipp.pt');
+              expect(
+                options.headers['referer'],
+                'https://portal.isep.ipp.pt/intranet/',
+              );
               authenticated = true;
               handler.resolve(_htmlResponse(options, _dashboardHtml));
               return;
@@ -289,6 +295,51 @@ void main() {
       expect(await client.validateSession(), isTrue);
       expect(await client.getTimetable(), hasLength(1));
       expect(requests.where((item) => item.method == 'POST'), hasLength(1));
+    },
+  );
+
+  test(
+    'decodes the live Portal Latin-1 dashboard before route matching',
+    () async {
+      var authenticated = false;
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.method == 'POST') {
+              authenticated = true;
+              handler.resolve(
+                _bytesResponse(
+                  options,
+                  '<span id="CurrentUser">Hugo</span>'
+                  '<a href="academic/horario.aspx">Horário</a>',
+                ),
+              );
+              return;
+            }
+            if (authenticated && options.path.contains('horario.aspx')) {
+              handler.resolve(_htmlResponse(options, _fixture('timetable')));
+              return;
+            }
+            handler.resolve(
+              _bytesResponse(
+                options,
+                '<input type="hidden" name="__VIEWSTATE" value="state">'
+                '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+                '<input type="password">',
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = IsepPortalClient(dio: dio);
+      await client.authenticate(
+        const PortalCredentials(username: '1234567', password: 'secret'),
+      );
+      expect(await client.getTimetable(), hasLength(1));
     },
   );
 
@@ -458,3 +509,13 @@ Response<String> _htmlResponse(
   data: body,
   headers: headers,
 );
+
+Response<List<int>> _bytesResponse(RequestOptions options, String body) =>
+    Response<List<int>>(
+      requestOptions: options,
+      statusCode: 200,
+      data: latin1.encode(body),
+      headers: Headers.fromMap({
+        Headers.contentTypeHeader: ['text/html; charset=iso-8859-1'],
+      }),
+    );

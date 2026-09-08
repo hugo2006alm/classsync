@@ -60,7 +60,7 @@ class JobDetailScreen extends ConsumerWidget {
               ),
             if (job.notionUrl case final url?)
               OutlinedButton.icon(
-                onPressed: () => _openUrl(context, url, const {'notion.so'}),
+                onPressed: () => _openUrl(context, url, trustedNotionHosts),
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: const Text('Notion'),
               ),

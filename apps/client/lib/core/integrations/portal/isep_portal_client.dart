@@ -93,7 +93,12 @@ class IsepPortalClient implements PortalAdapter {
               receiveTimeout: const Duration(seconds: 45),
               sendTimeout: const Duration(seconds: 30),
               responseType: ResponseType.plain,
-              headers: const {'accept': 'text/html,application/xhtml+xml'},
+              headers: const {
+                'accept': 'text/html,application/xhtml+xml',
+                'accept-language': 'pt-PT,pt;q=0.9,en;q=0.7',
+                'user-agent':
+                    'Mozilla/5.0 ClassSync/0.3 (ISEP Portal read-only client)',
+              },
             ),
           ),
       _parser = parser ?? const IsepPortalParser();
@@ -338,11 +343,20 @@ class IsepPortalClient implements PortalAdapter {
               ? null
               : Headers.formUrlEncodedContentType,
           headers: _cookies.isEmpty
-              ? null
+              ? {
+                  if (requestData != null) ...{
+                    'origin': '${url.scheme}://${url.host}',
+                    'referer': url.toString(),
+                  },
+                }
               : {
                   'cookie': _cookies.entries
                       .map((item) => '${item.key}=${item.value}')
                       .join('; '),
+                  if (requestData != null) ...{
+                    'origin': '${url.scheme}://${url.host}',
+                    'referer': url.toString(),
+                  },
                 },
           followRedirects: false,
           validateStatus: (status) =>
@@ -373,7 +387,12 @@ class IsepPortalClient implements PortalAdapter {
           response.data,
           response.headers,
         );
-        final body = utf8.decode(bytes, allowMalformed: true);
+        final contentType = response.headers
+            .value(Headers.contentTypeHeader)
+            ?.toLowerCase();
+        final body = contentType?.contains('iso-8859-1') == true
+            ? latin1.decode(bytes, allowInvalid: true)
+            : utf8.decode(bytes, allowMalformed: true);
         return _PortalResponse(url: url, document: html_parser.parse(body));
       } on IntegrationPayloadTooLarge {
         throw const IntegrationException(

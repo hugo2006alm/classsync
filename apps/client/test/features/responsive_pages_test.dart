@@ -223,6 +223,53 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('done class loads newest Notion summaries without local jobs', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final done = _copySubject(
+      id: 'done-subject',
+      name: 'Completed systems',
+      status: 'Done',
+    );
+    final notionSummaries = [
+      NotionSummaryRecord(
+        id: 'older',
+        title: 'Older lecture',
+        date: DateTime(2026, 8, 20),
+        subjectIds: const ['done-subject'],
+        url: 'https://www.notion.so/older',
+      ),
+      NotionSummaryRecord(
+        id: 'newer',
+        title: 'Newest lecture',
+        date: DateTime(2026, 9, 7),
+        subjectIds: const ['done-subject'],
+        url: 'https://www.notion.so/newer',
+      ),
+    ];
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const ClassDetailScreen(subjectId: 'done-subject'),
+        subjects: [done],
+        subjectSummaries: notionSummaries,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Newest lecture'), findsOneWidget);
+    expect(find.text('Older lecture'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Newest lecture')).dy,
+      lessThan(tester.getTopLeft(find.text('Older lecture')).dy),
+    );
+    expect(find.textContaining('Notion'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
   testWidgets('classes keep future and previous subjects in compact drawers', (
     tester,
   ) async {
@@ -343,6 +390,7 @@ Widget _app(
   TargetPlatform? platform,
   NotionLibraryData? library,
   List<NotionContentBlock>? notionBlocks,
+  List<NotionSummaryRecord>? subjectSummaries,
   AppSettings settings = AppSettings.defaults,
 }) => ProviderScope(
   overrides: [
@@ -366,6 +414,9 @@ Widget _app(
       notionPageContentProvider.overrideWith(
         (ref, pageId) async => notionBlocks,
       ),
+    notionSubjectSummariesProvider.overrideWith(
+      (ref, subjectId) async => subjectSummaries ?? const [],
+    ),
   ],
   child: MaterialApp(
     theme: ClassSyncTheme.light().copyWith(platform: platform),

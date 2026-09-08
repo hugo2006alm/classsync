@@ -297,10 +297,19 @@ class LibraryDetailScreen extends ConsumerWidget {
           if (effectiveUrl != null)
             IconButton(
               tooltip: 'Open in Notion',
-              onPressed: () => launchTrustedUrl(
-                effectiveUrl,
-                allowedHosts: const {'notion.so', 'notion.site'},
-              ),
+              onPressed: () async {
+                final opened = await launchTrustedUrl(
+                  effectiveUrl,
+                  allowedHosts: trustedNotionHosts,
+                );
+                if (!opened && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Could not open this Notion page.'),
+                    ),
+                  );
+                }
+              },
               icon: const Icon(Icons.open_in_new_rounded),
             ),
         ],

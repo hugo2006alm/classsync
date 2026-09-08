@@ -1,5 +1,6 @@
 import 'package:classsync/core/integrations/notion/notion_client.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -99,4 +100,70 @@ void main() {
     expect(summary.date, DateTime(2026, 9, 6));
     expect(summary.subjectIds, ['subject-1']);
   });
+
+  test(
+    'class summary query is subject-filtered, sorted, and bounded',
+    () async {
+      Map<String, dynamic>? requestBody;
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.notion.com/v1'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requestBody = options.data as Map<String, dynamic>;
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'has_more': true,
+                  'results': [
+                    {
+                      'id': 'summary-newest',
+                      'url': 'https://www.notion.so/summary-newest',
+                      'properties': {
+                        'Nome': {
+                          'type': 'title',
+                          'title': [
+                            {'plain_text': 'Newest lecture'},
+                          ],
+                        },
+                        'Data': {
+                          'type': 'date',
+                          'date': {'start': '2026-09-08'},
+                        },
+                        'Cadeira': {
+                          'type': 'relation',
+                          'relation': [
+                            {'id': 'subject-1'},
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final values = await NotionClient(dio: dio)
+          .queryRecentSummariesForSubject(
+            token: 'secret',
+            dataSourceId: 'summaries',
+            subjectId: 'subject-1',
+          );
+
+      expect(values.single.title, 'Newest lecture');
+      expect(requestBody?['page_size'], 20);
+      expect(requestBody?['filter'], {
+        'property': 'Cadeira',
+        'relation': {'contains': 'subject-1'},
+      });
+      expect(requestBody?['sorts'], [
+        {'property': 'Data', 'direction': 'descending'},
+      ]);
+      expect(requestBody?.containsKey('start_cursor'), isFalse);
+    },
+  );
 }

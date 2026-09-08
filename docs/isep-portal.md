@@ -6,7 +6,7 @@ enter SQLite, diagnostics, the Cloudflare relay, or source control.
 
 ## Authentication and session flow
 
-The public login flow verified on 2026-09-06 is:
+The public login flow verified on 2026-09-08 is:
 
 1. `GET /intranet/` to receive the session cookie plus WebForms hidden state.
 2. `POST /intranet/` as `application/x-www-form-urlencoded`, including all
@@ -19,10 +19,18 @@ The public login flow verified on 2026-09-06 is:
 4. Treat any response containing the password/login controls as an expired or
    rejected session.
 
+The submitted username is preserved exactly after trimming outer whitespace;
+ClassSync does not add or remove the `@isep.ipp.pt` suffix. Portal pages declare
+ISO-8859-1, so the adapter decodes that charset before matching Portuguese
+navigation labels. Browser-equivalent origin, referrer, language, and user-agent
+headers accompany the login form.
+
 The username and password are stored only in platform secure storage so a
 background refresh can establish a new short-lived session. Login replays all
 hidden WebForms fields, including `__VIEWSTATE` and `__EVENTVALIDATION` when
-present. Academic-state-changing postbacks are not exposed in the UI.
+present. Both fields are required for the first connection. Later connection
+tests may leave the password blank to reuse the device's stored password.
+Academic-state-changing postbacks are not exposed in the UI.
 
 ## Feature route discovery
 

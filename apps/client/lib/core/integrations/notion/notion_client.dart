@@ -206,6 +206,40 @@ class NotionClient {
     return results;
   }
 
+  /// Loads only the newest summaries related to one subject. Class pages use
+  /// this bounded query so opening an old subject never downloads the entire
+  /// summaries database.
+  Future<List<NotionSummaryRecord>> queryRecentSummariesForSubject({
+    required String token,
+    required String dataSourceId,
+    required String subjectId,
+    int limit = 20,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/data_sources/${Uri.encodeComponent(dataSourceId)}/query',
+        data: {
+          'page_size': limit.clamp(1, 100),
+          'filter': {
+            'property': 'Cadeira',
+            'relation': {'contains': subjectId},
+          },
+          'sorts': [
+            {'property': 'Data', 'direction': 'descending'},
+          ],
+        },
+        options: _options(token),
+      );
+      final data = response.data ?? const {};
+      return (data['results'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(summaryFromPage)
+          .toList();
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('Notion', error);
+    }
+  }
+
   Future<List<NotionContentBlock>> readPageContent({
     required String token,
     required String pageId,

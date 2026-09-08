@@ -180,8 +180,15 @@ void main() {
         username: '1234567@isep.ipp.pt',
         password: 'new-secret',
       );
-      expect(credentials.values[CredentialKey.portalUsername], '1234567');
-      expect(portal.lastUsername, '1234567');
+      expect(
+        credentials.values[CredentialKey.portalUsername],
+        '1234567@isep.ipp.pt',
+      );
+      expect(portal.lastUsername, '1234567@isep.ipp.pt');
+
+      await service.connectPortal(username: '1234567@isep.ipp.pt');
+      expect(credentials.values[CredentialKey.portalPassword], 'new-secret');
+      expect(portal.lastPassword, 'new-secret');
 
       await service.connectMoodle('new-token');
       expect(credentials.values[CredentialKey.moodleToken], 'new-token');
@@ -227,6 +234,7 @@ class _MemoryCredentials extends SecureCredentialStore {
 class _FakePortal implements PortalAdapter {
   bool authenticated = false;
   String? lastUsername;
+  String? lastPassword;
   List<TuitionCharge> tuitionCharges = [
     TuitionCharge(
       id: 'fee-1',
@@ -246,6 +254,7 @@ class _FakePortal implements PortalAdapter {
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
     authenticated = true;
     lastUsername = credentials.username;
+    lastPassword = credentials.password;
     return const PortalProfile(displayName: 'Student');
   }
 
