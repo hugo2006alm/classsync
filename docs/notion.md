@@ -33,6 +33,11 @@ relation against `Lista de Cadeiras`, and groups pages by academic year and
 semester. Selecting a lecture reads its Notion blocks inside ClassSync; the
 external Notion page remains one tap away.
 
+Opening a class uses a separate relation-filtered query for only its 20 newest
+Notion summaries, sorted by `Data` descending. This keeps completed classes
+useful when their summaries were created on another device without downloading
+the full history. Full page blocks are fetched only after a summary is opened.
+
 ClassSync can later offer **Create workspace** instead. The user must first
 grant an integration `insert content` access and select a parent page. The app
 can then create the databases and properties under that page through Notion's

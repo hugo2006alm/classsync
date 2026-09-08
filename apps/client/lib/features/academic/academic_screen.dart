@@ -80,55 +80,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
               completed: sync.valueOrNull != null,
             ),
             const SizedBox(height: 16),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(
-                    value: 0,
-                    icon: Icon(Icons.view_week_rounded),
-                    label: Text('Timetable'),
-                  ),
-                  ButtonSegment(
-                    value: 1,
-                    icon: Icon(Icons.task_alt_rounded),
-                    label: Text('Tasks'),
-                  ),
-                  ButtonSegment(
-                    value: 2,
-                    icon: Icon(Icons.event_rounded),
-                    label: Text('Evaluations'),
-                  ),
-                  ButtonSegment(
-                    value: 3,
-                    icon: Icon(Icons.calculate_rounded),
-                    label: Text('Progress'),
-                  ),
-                  ButtonSegment(
-                    value: 4,
-                    icon: Icon(Icons.campaign_rounded),
-                    label: Text('Updates'),
-                  ),
-                  ButtonSegment(
-                    value: 5,
-                    icon: Icon(Icons.menu_book_rounded),
-                    label: Text('Course context'),
-                  ),
-                  ButtonSegment(
-                    value: 6,
-                    icon: Icon(Icons.manage_search_rounded),
-                    label: Text('Search & ask'),
-                  ),
-                  ButtonSegment(
-                    value: 7,
-                    icon: Icon(Icons.account_balance_wallet_outlined),
-                    label: Text('Finance'),
-                  ),
-                ],
-                selected: {_section},
-                onSelectionChanged: (value) =>
-                    setState(() => _section = value.single),
-              ),
+            _AcademicSectionNavigation(
+              selected: _section,
+              onSelected: (value) => setState(() => _section = value),
             ),
             const SizedBox(height: 22),
             switch (_section) {
@@ -219,6 +173,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
 
   Future<void> _showConnections(BuildContext context) async {
     final actions = ref.read(academicHubActionsProvider);
+    final portalConfigured = (await ref.read(
+      academicConnectionStateProvider.future,
+    )).portalConfigured;
     final existingUser = await actions.readPortalUsername();
     if (!context.mounted) return;
     final user = TextEditingController(text: existingUser);
@@ -252,10 +209,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                 TextField(
                   controller: password,
                   obscureText: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Password',
-                    helperText:
-                        'Stored only in OS secure storage. Leave blank to keep current password.',
+                    helperText: portalConfigured
+                        ? 'Leave blank to keep the password already stored on this device.'
+                        : 'Required on the first connection. Stored only in OS secure storage.',
                   ),
                 ),
                 const SizedBox(height: 22),
@@ -312,6 +270,161 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     password.dispose();
     token.dispose();
   }
+}
+
+class _AcademicSectionNavigation extends StatelessWidget {
+  const _AcademicSectionNavigation({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  static const _study = [
+    _AcademicDestination(0, Icons.view_week_rounded, 'Timetable'),
+    _AcademicDestination(1, Icons.task_alt_rounded, 'Tasks'),
+    _AcademicDestination(2, Icons.event_rounded, 'Evaluations'),
+    _AcademicDestination(3, Icons.calculate_rounded, 'Progress'),
+  ];
+
+  static const _reference = [
+    _AcademicDestination(4, Icons.campaign_rounded, 'Updates'),
+    _AcademicDestination(5, Icons.menu_book_rounded, 'Course context'),
+    _AcademicDestination(6, Icons.manage_search_rounded, 'Search & ask'),
+    _AcademicDestination(7, Icons.account_balance_wallet_outlined, 'Finance'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final cards = [
+        _AcademicNavCard(
+          index: '01',
+          title: 'Study',
+          subtitle: 'Plan, tasks, assessment',
+          destinations: _study,
+          selected: selected,
+          onSelected: onSelected,
+        ),
+        _AcademicNavCard(
+          index: '02',
+          title: 'Reference & admin',
+          subtitle: 'Official context and services',
+          destinations: _reference,
+          selected: selected,
+          onSelected: onSelected,
+        ),
+      ];
+      if (constraints.maxWidth >= 900) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: cards.first),
+            const SizedBox(width: 12),
+            Expanded(child: cards.last),
+          ],
+        );
+      }
+      return Column(
+        children: [cards.first, const SizedBox(height: 10), cards.last],
+      );
+    },
+  );
+}
+
+class _AcademicNavCard extends StatelessWidget {
+  const _AcademicNavCard({
+    required this.index,
+    required this.title,
+    required this.subtitle,
+    required this.destinations,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String index;
+  final String title;
+  final String subtitle;
+  final List<_AcademicDestination> destinations;
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 5, color: colors.tertiary),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          index,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: colors.tertiary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title, style: theme.textTheme.titleMedium),
+                              Text(
+                                subtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final destination in destinations)
+                          ChoiceChip(
+                            avatar: Icon(destination.icon, size: 18),
+                            label: Text(destination.label),
+                            selected: selected == destination.value,
+                            onSelected: (_) => onSelected(destination.value),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AcademicDestination {
+  const _AcademicDestination(this.value, this.icon, this.label);
+
+  final int value;
+  final IconData icon;
+  final String label;
 }
 
 class _SyncResultBanner extends StatelessWidget {

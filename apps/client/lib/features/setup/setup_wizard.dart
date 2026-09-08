@@ -487,7 +487,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 autofillHints: const [AutofillHints.username],
                 decoration: const InputDecoration(
                   labelText: 'Portal username or ISEP email',
-                  helperText: 'The @isep.ipp.pt suffix is accepted.',
+                  helperText:
+                      'Username and password are both required on the first connection.',
                 ),
               ),
               const SizedBox(height: 12),
