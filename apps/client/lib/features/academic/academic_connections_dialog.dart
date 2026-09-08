@@ -90,7 +90,8 @@ class _AcademicConnectionsDialogState
                   enableSuggestions: false,
                   decoration: const InputDecoration(
                     labelText: 'Portal username or ISEP email',
-                    helperText: 'Use exactly the username or email accepted by portal.isep.ipp.pt.',
+                    helperText:
+                        'Use exactly the username or email accepted by portal.isep.ipp.pt.',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -151,7 +152,8 @@ class _AcademicConnectionsDialogState
                   enableSuggestions: false,
                   decoration: const InputDecoration(
                     labelText: 'Password',
-                    helperText: 'Used once to obtain a Moodle token; the password is not saved.',
+                    helperText:
+                        'Used once to obtain a Moodle token; the password is not saved.',
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -298,3 +300,4 @@ class _ConnectionPanel extends StatelessWidget {
     );
   }
 }
+

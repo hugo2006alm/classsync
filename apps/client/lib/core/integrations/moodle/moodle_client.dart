@@ -204,10 +204,9 @@ class MoodleClient {
           'courseids[$index]': ids[index],
       },
     );
-    final newsForums = _asList(forumsJson)
-        .where((item) => item['type'] == 'news')
-        .take(100)
-        .toList();
+    final newsForums = _asList(
+      forumsJson,
+    ).where((item) => item['type'] == 'news').take(100).toList();
     final announcements = <MoodleAnnouncement>[];
     for (final forum in newsForums) {
       final forumId = forum['id'];
@@ -441,3 +440,4 @@ List<Map<String, dynamic>> _asList(dynamic value) =>
           (item) => item.map((key, value) => MapEntry(key.toString(), value)),
         )
         .toList();
+
