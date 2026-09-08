@@ -230,7 +230,7 @@ void main() {
   });
 
   test(
-    'WebForms authentication replays hidden state and validates cookie session',
+    'authenticates and validates dashboard containing an account password field',
     () async {
       var authenticated = false;
       final requests = <RequestOptions>[];
@@ -338,6 +338,97 @@ void main() {
       expect(postedForm, isNot(contains('a%C3%A7%C3%A3o')));
     },
   );
+
+  test('posts to the form action after the login page redirects', () async {
+    final dio = Dio(
+      BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+    );
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.method == 'POST') {
+            expect(options.uri.path, '/intranet/permit/signin.aspx');
+            handler.resolve(_htmlResponse(options, _dashboardHtml));
+          } else if (options.uri.path == '/intranet/') {
+            handler.resolve(
+              Response<String>(
+                requestOptions: options,
+                statusCode: 302,
+                headers: Headers.fromMap({
+                  'location': ['permit/login.aspx'],
+                }),
+              ),
+            );
+          } else {
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<form action="signin.aspx"><input id="ContentPlaceHolderMain_txtLoginISEP"></form>',
+              ),
+            );
+          }
+        },
+      ),
+    );
+    await IsepPortalClient(dio: dio).authenticate(
+      const PortalCredentials(username: 'student', password: 'secret'),
+    );
+  });
+
+  for (final failure in {
+    'portal_login_incomplete':
+        '<input id="ContentPlaceHolderMain_txtLoginISEP">',
+  }.entries) {
+    test('reports ${failure.key} without blaming credentials', () async {
+      var posts = 0;
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.method == 'POST') {
+              posts++;
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  posts == 1 ? _dashboardHtml : failure.value,
+                  headers: Headers.fromMap({
+                    'set-cookie': ['session=old; Path=/'],
+                  }),
+                ),
+              );
+            } else {
+              expect(options.headers['cookie'], isNull);
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  '<input id="ContentPlaceHolderMain_txtLoginISEP">',
+                ),
+              );
+            }
+          },
+        ),
+      );
+      final client = IsepPortalClient(dio: dio);
+      const credentials = PortalCredentials(
+        username: 'student',
+        password: 'secret',
+      );
+      await client.authenticate(credentials);
+      await expectLater(
+        client.authenticate(credentials),
+        throwsA(
+          isA<IntegrationException>().having(
+            (e) => e.code,
+            'code',
+            failure.key,
+          ),
+        ),
+      );
+      expect(await client.validateSession(), isFalse);
+    });
+  }
 
   test(
     'decodes the live Portal Latin-1 dashboard before route matching',
@@ -536,6 +627,7 @@ String _fixture(String name) =>
 const _dashboardHtml = '''
 <html><body>
   <span id="CurrentUser">Student Example</span>
+  <input type="password" name="accountPassword" style="display:none">
   <a href="academic/horario.aspx">Horário</a>
 </body></html>
 ''';

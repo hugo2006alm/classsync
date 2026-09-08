@@ -17,8 +17,20 @@ The public login flow verified on 2026-09-08 is:
    - the image-button `.x` and `.y` fields
 3. Follow at most five same-host HTTPS redirects and keep cookies in memory for
    that sync.
-4. Treat any response containing the password/login controls as an expired or
-   rejected session.
+4. Detect the named ISEP sign-in controls to identify an incomplete or expired
+   login. The authenticated account dashboard also contains a password field;
+   its presence alone is not evidence of a rejected login. Guest pages never
+   count as successful account authentication.
+
+Each connection test clears previous cookies and dashboard state and submits
+to the form action resolved against the final login-page URL.
+
+For a local interactive diagnostic, run `pwsh -STA -File
+apps/client/tool/portal_login_probe.ps1` from the repository root after
+`flutter pub get`. This Windows window invokes the actual Dart adapter and
+shows request paths, statuses, cookie names, and the result code. Credentials
+travel over the child process's standard input, never command-line arguments;
+passwords, cookie values, response bodies, and profile data are not logged.
 
 The submitted username is preserved exactly after trimming outer whitespace;
 ClassSync does not add or remove the `@isep.ipp.pt` suffix. Portal pages declare
