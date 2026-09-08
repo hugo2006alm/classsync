@@ -105,7 +105,9 @@ Required Notion data-source properties:
 Optional academic integrations can be skipped during first-run setup and are
 also configured under **Academic → Connections**.
 Portal username/password and the Moodle Web Services token stay in OS secure
-storage. Academic records remain in the local offline cache and never pass
+storage. Portal login recognizes the actual sign-in form, including when the
+authenticated dashboard contains account password controls. A local Windows
+login diagnostic is documented in the Portal guide. Academic records remain in the local offline cache and never pass
 through the relay. See [ISEP Portal details](docs/isep-portal.md) and
 [Moodle details](docs/moodle.md).
 

@@ -111,13 +111,19 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
+    // A connection test must authenticate the supplied account, never reuse a
+    // previous account's dashboard or cookies after a failed attempt.
+    _cookies.clear();
+    _dashboard = null;
+    _dashboardUrl = null;
     try {
       // `/` resolves to host root and loses WebForms fields when redirected.
       // `./` targets the real form action at `/intranet/`.
       final login = await _request('./');
       final state = _hiddenFields(login.document);
+      final action = login.document.querySelector('form')?.attributes['action'];
       final response = await _request(
-        './',
+        login.url.resolve(action ?? '').toString(),
         method: 'POST',
         data: {
           ...state,
@@ -131,8 +137,21 @@ class IsepPortalClient implements PortalAdapter {
       if (_isLoginPage(response.document)) {
         throw const IntegrationException(
           integration: 'ISEP Portal',
-          code: 'invalid_credentials',
-          userMessage: 'ISEP Portal rejected the username or password.',
+          code: 'portal_login_incomplete',
+          userMessage:
+              'ISEP Portal returned its sign-in page without completing login. '
+              'If these credentials work in your browser, ClassSync may not '
+              'support that sign-in flow yet.',
+          retryable: false,
+        );
+      }
+      if (response.url.path.toLowerCase().endsWith('/guest.aspx')) {
+        throw const IntegrationException(
+          integration: 'ISEP Portal',
+          code: 'portal_guest_session',
+          userMessage:
+              'ISEP Portal opened a guest session instead of your account. '
+              'Sign in to Portal in your browser, then reconnect.',
           retryable: false,
         );
       }
@@ -475,9 +494,15 @@ class IsepPortalClient implements PortalAdapter {
       input.attributes['name']!: input.attributes['value'] ?? '',
   };
 
+  // The authenticated account dashboard also has password controls. Only the
+  // actual sign-in controls identify an unauthenticated response.
   static bool _isLoginPage(Document document) =>
-      document.querySelector('input[type="password"]') != null ||
-      document.querySelector('#ContentPlaceHolderMain_txtLoginISEP') != null;
+      document.querySelector('#ContentPlaceHolderMain_txtLoginISEP') != null ||
+      document.querySelector(
+            'input[name="ctl00\$ContentPlaceHolderMain\$txtLoginISEP"], '
+            'input[name="ctl00\$ContentPlaceHolderMain\$txtPasswordISEP"]',
+          ) !=
+          null;
 }
 
 class _PortalResponse {
