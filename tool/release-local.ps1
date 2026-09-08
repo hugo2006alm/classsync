@@ -67,11 +67,14 @@ try {
 
     $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if (-not $iscc) {
-        $defaultIscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-        if (-not (Test-Path $defaultIscc)) {
+        $isccPath = @(
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+            'C:\Program Files\Inno Setup 6\ISCC.exe'
+            (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
+        ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+        if (-not $isccPath) {
             throw 'Install Inno Setup 6 or add ISCC.exe to PATH.'
         }
-        $isccPath = $defaultIscc
     }
     else {
         $isccPath = $iscc.Source
