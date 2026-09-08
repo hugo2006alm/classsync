@@ -7,11 +7,11 @@ import 'package:intl/intl.dart';
 import 'package:collection/collection.dart';
 
 import '../../core/providers.dart';
-import '../../domain/academic/academic_hub_actions.dart';
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_models.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
+import 'academic_connections_dialog.dart';
 
 class AcademicScreen extends ConsumerStatefulWidget {
   const AcademicScreen({super.key, this.initialSection = 0});
@@ -37,7 +37,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
           'Portal, timetable, evaluations, Moodle, and grades — cached locally',
       actions: [
         OutlinedButton.icon(
-          onPressed: () => _showConnections(context),
+          onPressed: () => showAcademicConnectionsDialog(context, ref),
           icon: const Icon(Icons.link_rounded),
           label: const Text('Connections'),
         ),
@@ -92,7 +92,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'ISEP Portal',
                         detail:
                             'Connect Portal to load your official schedule.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _TimetableSection(
                         records: records,
@@ -107,7 +108,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'Portal or Moodle',
                         detail:
                             'Connect a source to load exams and assignments.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _EvaluationSection(
                         records: records,
@@ -121,7 +123,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'ISEP Portal',
                         detail:
                             'Connect Portal to load grades, history, and ECTS progress.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _ProgressSection(
                         records: records,
@@ -135,7 +138,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'Portal or Moodle',
                         detail:
                             'Connect a source to receive official notices and course announcements.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _UpdatesSection(
                         records: records,
@@ -149,7 +153,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'ISEP Portal',
                         detail:
                             'Connect Portal to load FUC data and official lesson summaries.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _CourseContextSection(records: records),
               6 => _AcademicSearchSection(
@@ -161,7 +166,8 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         source: 'ISEP Portal',
                         detail:
                             'Connect Portal to load tuition, fees, and payment deadlines.',
-                        onConnect: () => _showConnections(context),
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
                       )
                     : _FinanceSection(records: records),
             },
@@ -169,106 +175,6 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _showConnections(BuildContext context) async {
-    final actions = ref.read(academicHubActionsProvider);
-    final portalConfigured = (await ref.read(
-      academicConnectionStateProvider.future,
-    )).portalConfigured;
-    final existingUser = await actions.readPortalUsername();
-    if (!context.mounted) return;
-    final user = TextEditingController(text: existingUser);
-    final password = TextEditingController();
-    final token = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Academic connections'),
-        content: SizedBox(
-          width: 480,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ISEP Portal',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: user,
-                  decoration: const InputDecoration(
-                    labelText: 'Portal username or ISEP email',
-                    helperText:
-                        'Use the same account as portal.isep.ipp.pt. ISEP email suffix is removed automatically.',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: password,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    helperText: portalConfigured
-                        ? 'Leave blank to keep the password already stored on this device.'
-                        : 'Required on the first connection. Stored only in OS secure storage.',
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Text(
-                  'Moodle ISEP',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: token,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Web Services token',
-                    helperText:
-                        'Token access is safer than storing another Moodle password.',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                if (user.text.trim().isNotEmpty) {
-                  await actions.connectPortal(
-                    username: user.text,
-                    password: password.text.isEmpty ? null : password.text,
-                  );
-                }
-                if (token.text.trim().isNotEmpty) {
-                  await actions.connectMoodle(token.text);
-                }
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                ref.invalidate(academicConnectionStateProvider);
-              } on AcademicActionFailure catch (error) {
-                if (!dialogContext.mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(error.message)));
-              }
-            },
-            child: const Text('Test and save'),
-          ),
-        ],
-      ),
-    );
-    user.dispose();
-    password.dispose();
-    token.dispose();
   }
 }
 
@@ -404,6 +310,7 @@ class _AcademicNavCard extends StatelessWidget {
                             avatar: Icon(destination.icon, size: 18),
                             label: Text(destination.label),
                             selected: selected == destination.value,
+                            showCheckmark: false,
                             onSelected: (_) => onSelected(destination.value),
                           ),
                       ],

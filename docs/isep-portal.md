@@ -9,8 +9,9 @@ enter SQLite, diagnostics, the Cloudflare relay, or source control.
 The public login flow verified on 2026-09-08 is:
 
 1. `GET /intranet/` to receive the session cookie plus WebForms hidden state.
-2. `POST /intranet/` as `application/x-www-form-urlencoded`, including all
-   hidden inputs and:
+2. `POST /intranet/` as `application/x-www-form-urlencoded`, percent-encoded
+   with the login page's ISO-8859-1 character set, including all hidden inputs
+   and:
    - `ctl00$ContentPlaceHolderMain$txtLoginISEP`
    - `ctl00$ContentPlaceHolderMain$txtPasswordISEP`
    - the image-button `.x` and `.y` fields
@@ -21,9 +22,10 @@ The public login flow verified on 2026-09-08 is:
 
 The submitted username is preserved exactly after trimming outer whitespace;
 ClassSync does not add or remove the `@isep.ipp.pt` suffix. Portal pages declare
-ISO-8859-1, so the adapter decodes that charset before matching Portuguese
-navigation labels. Browser-equivalent origin, referrer, language, and user-agent
-headers accompany the login form.
+ISO-8859-1, so the adapter uses that charset for both login form submission and
+response decoding before matching Portuguese navigation labels.
+Browser-equivalent origin, referrer, language, and user-agent headers accompany
+the login form.
 
 The username and password are stored only in platform secure storage so a
 background refresh can establish a new short-lived session. Login replays all

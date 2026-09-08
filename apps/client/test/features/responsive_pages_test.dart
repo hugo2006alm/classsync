@@ -80,6 +80,10 @@ void main() {
     expect(find.text('Course context'), findsOneWidget);
     expect(find.text('Search & ask'), findsOneWidget);
     expect(find.text('Finance'), findsOneWidget);
+    final timetableChip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'Timetable'),
+    );
+    expect(timetableChip.showCheckmark, isFalse);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -128,14 +132,17 @@ void main() {
 
     await tester.tap(find.text('Connections'));
     await tester.pumpAndSettle();
-    expect(find.text('Checking secure storage…'), findsNWidgets(4));
+    expect(find.text('Checking secure storage…'), findsNWidgets(6));
     credentials.complete(CredentialKey.firefliesApiKey, false);
     credentials.complete(CredentialKey.geminiApiKey, true);
     credentials.complete(CredentialKey.notionToken, true);
+    credentials.complete(CredentialKey.portalUsername, true);
+    credentials.complete(CredentialKey.portalPassword, true);
+    credentials.complete(CredentialKey.moodleToken, true);
     credentials.complete(CredentialKey.relayDeviceToken, false);
     await tester.pumpAndSettle();
 
-    expect(find.text('Connected'), findsNWidgets(2));
+    expect(find.text('Connected'), findsNWidgets(4));
     expect(find.text('Not configured'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);

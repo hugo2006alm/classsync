@@ -246,7 +246,8 @@ void main() {
             requests.add(options);
             if (options.method == 'POST') {
               expect(options.uri.path, '/intranet/');
-              final form = options.data as Map<String, String>;
+              final rawForm = options.data as String;
+              final form = Uri.splitQueryString(rawForm);
               expect(form['__VIEWSTATE'], 'sanitized-state');
               expect(
                 form['ctl00\$ContentPlaceHolderMain\$txtLoginISEP'],
@@ -260,6 +261,10 @@ void main() {
               expect(
                 options.headers['referer'],
                 'https://portal.isep.ipp.pt/intranet/',
+              );
+              expect(
+                options.headers[Headers.contentTypeHeader],
+                '${Headers.formUrlEncodedContentType}; charset=ISO-8859-1',
               );
               authenticated = true;
               handler.resolve(_htmlResponse(options, _dashboardHtml));
@@ -295,6 +300,42 @@ void main() {
       expect(await client.validateSession(), isTrue);
       expect(await client.getTimetable(), hasLength(1));
       expect(requests.where((item) => item.method == 'POST'), hasLength(1));
+    },
+  );
+
+  test(
+    'submits legacy Portal credentials using the page Latin-1 charset',
+    () async {
+      String? postedForm;
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.method == 'POST') {
+              postedForm = options.data as String;
+              handler.resolve(_htmlResponse(options, _dashboardHtml));
+              return;
+            }
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<input type="hidden" name="__VIEWSTATE" value="state">'
+                '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+                '<input type="password">',
+              ),
+            );
+          },
+        ),
+      );
+
+      await IsepPortalClient(dio: dio).authenticate(
+        const PortalCredentials(username: 'aluno', password: 'ação segura'),
+      );
+
+      expect(postedForm, contains('a%E7%E3o+segura'));
+      expect(postedForm, isNot(contains('a%C3%A7%C3%A3o')));
     },
   );
 

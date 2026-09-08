@@ -335,13 +335,13 @@ class IsepPortalClient implements PortalAdapter {
     for (var redirect = 0; redirect <= 5; redirect++) {
       final response = await _dio.request<dynamic>(
         url.toString(),
-        data: requestData,
+        data: requestData == null ? null : _encodeLegacyForm(requestData),
         options: Options(
           method: requestMethod,
           responseType: ResponseType.stream,
           contentType: requestData == null
               ? null
-              : Headers.formUrlEncodedContentType,
+              : '${Headers.formUrlEncodedContentType}; charset=ISO-8859-1',
           headers: _cookies.isEmpty
               ? {
                   if (requestData != null) ...{
@@ -437,6 +437,37 @@ class IsepPortalClient implements PortalAdapter {
         _cookies[name] = value;
       }
     }
+  }
+
+  static String _encodeLegacyForm(Map<String, String> fields) => fields.entries
+      .map(
+        (entry) =>
+            '${_encodeLegacyComponent(entry.key)}=${_encodeLegacyComponent(entry.value)}',
+      )
+      .join('&');
+
+  static String _encodeLegacyComponent(String value) {
+    final result = StringBuffer();
+    for (final byte in latin1.encode(value)) {
+      final unreserved =
+          (byte >= 0x41 && byte <= 0x5a) ||
+          (byte >= 0x61 && byte <= 0x7a) ||
+          (byte >= 0x30 && byte <= 0x39) ||
+          byte == 0x2a ||
+          byte == 0x2d ||
+          byte == 0x2e ||
+          byte == 0x5f;
+      if (unreserved) {
+        result.writeCharCode(byte);
+      } else if (byte == 0x20) {
+        result.write('+');
+      } else {
+        result.write(
+          '%${byte.toRadixString(16).padLeft(2, '0').toUpperCase()}',
+        );
+      }
+    }
+    return result.toString();
   }
 
   static Map<String, String> _hiddenFields(Document document) => {
