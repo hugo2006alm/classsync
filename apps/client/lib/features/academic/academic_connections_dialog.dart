@@ -300,4 +300,3 @@ class _ConnectionPanel extends StatelessWidget {
     );
   }
 }
-
