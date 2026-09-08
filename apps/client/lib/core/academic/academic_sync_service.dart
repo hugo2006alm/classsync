@@ -1207,4 +1207,3 @@ class AcademicSyncService implements AcademicHubActions {
     syncedAt: DateTime.now().toUtc(),
   );
 }
-

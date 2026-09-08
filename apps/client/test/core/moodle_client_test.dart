@@ -22,8 +22,9 @@ void main() {
       ),
     );
 
-    final token = await MoodleClient(dio: dio)
-        .authenticate(username: ' student ', password: 'secret');
+    final token = await MoodleClient(
+      dio: dio,
+    ).authenticate(username: ' student ', password: 'secret');
 
     expect(token, 'mobile-token');
     expect(request.method, 'POST');
@@ -55,8 +56,9 @@ void main() {
     );
 
     await expectLater(
-      MoodleClient(dio: dio)
-          .authenticate(username: 'student', password: 'wrong'),
+      MoodleClient(
+        dio: dio,
+      ).authenticate(username: 'student', password: 'wrong'),
       throwsA(
         isA<IntegrationException>()
             .having((error) => error.code, 'code', 'invalidlogin')
@@ -187,4 +189,3 @@ void main() {
     );
   });
 }
-
