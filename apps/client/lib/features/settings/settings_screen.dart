@@ -15,6 +15,7 @@ import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
 import '../shared/page_frame.dart';
+import '../academic/academic_connections_dialog.dart';
 import 'device_sync_settings.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -64,7 +65,7 @@ class _SettingsBody extends StatelessWidget {
             category: _SettingsCategory.connections,
             icon: Icons.link_rounded,
             title: 'Connections',
-            subtitle: 'Fireflies, Gemini, Notion, and relay',
+            subtitle: 'Fireflies, Gemini, Notion, Portal, Moodle, and relay',
           ),
           (
             category: _SettingsCategory.deviceSync,
@@ -239,6 +240,26 @@ class _SettingsDetailBody extends ConsumerWidget {
                           }
                         },
                       ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _AcademicIntegrationTile(
+                      name: 'ISEP Portal',
+                      icon: Icons.account_balance_outlined,
+                      source: _AcademicSource.portal,
+                      onConfigure: () =>
+                          showAcademicConnectionsDialog(context, ref),
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _AcademicIntegrationTile(
+                      name: 'Moodle ISEP',
+                      icon: Icons.school_outlined,
+                      source: _AcademicSource.moodle,
+                      onConfigure: () =>
+                          showAcademicConnectionsDialog(context, ref),
                     ),
                   ),
                   SizedBox(
@@ -772,6 +793,69 @@ class _IntegrationTile extends ConsumerWidget {
       error: (error, stack) =>
           ('Could not check secure storage', scheme.onSurfaceVariant),
     );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(child: Icon(icon)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: Theme.of(context).textTheme.titleMedium),
+                  Text(label, style: TextStyle(color: color)),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: onConfigure,
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Configure $name',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _AcademicSource { portal, moodle }
+
+class _AcademicIntegrationTile extends ConsumerWidget {
+  const _AcademicIntegrationTile({
+    required this.name,
+    required this.icon,
+    required this.source,
+    required this.onConfigure,
+  });
+
+  final String name;
+  final IconData icon;
+  final _AcademicSource source;
+  final VoidCallback onConfigure;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(academicConnectionStateProvider);
+    final configured = value.valueOrNull == null
+        ? null
+        : switch (source) {
+            _AcademicSource.portal => value.valueOrNull!.portalConfigured,
+            _AcademicSource.moodle => value.valueOrNull!.moodleConfigured,
+          };
+    final scheme = Theme.of(context).colorScheme;
+    final label = configured == null
+        ? 'Checking secure storage…'
+        : configured
+        ? 'Connected'
+        : 'Not configured';
+    final color = configured == true
+        ? scheme.primary
+        : configured == false
+        ? scheme.error
+        : scheme.onSurfaceVariant;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
