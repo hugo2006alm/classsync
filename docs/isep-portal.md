@@ -46,25 +46,30 @@ present. Both fields are required for the first connection. Later connection
 tests may leave the password blank to reuse the device's stored password.
 Academic-state-changing postbacks are not exposed in the UI.
 
+ISEP's official FAQ states that the same institutional password is used for the
+Portal, Moodle, email, and wireless network, and that changing it changes access
+to all of them. ClassSync therefore presents one ISEP connection. The optional
+separate Moodle account remains for external Moodle identities. See the
+[ISEP password FAQ](https://faqs.isep.ipp.pt/index.php?action=overview).
+
 ## Feature route discovery
 
 Authenticated route names differ by account role and Portal deployment. After
-login, ClassSync discovers feature links from the authenticated navigation by
-their Portuguese labels instead of spreading fragile paths through features.
-Every implemented feature performs one authenticated `GET` to the same-host
-HTTPS `href` selected from the dashboard by these labels; the resolved URL is
+login, ClassSync discovers exact human-readable feature labels and rejects
+matches based only on URL fragments or large menu text. The resolved URL is
 retained as provenance:
 
-- enrolment: `unidades curriculares`, `disciplinas inscritas`, `inscrições`;
-- timetable: `horário`, `horario`;
+- student record: `Ficha Aluno`, `Dados do Aluno`;
+- timetable: `Horário`, `Ver Horário`;
 - exam schedule: `calendário de exames`, `exames`;
 - registration context: `inscrição em exames`, `inscrições em exames`;
-- current grades: `classificações parciais`, `classificações`, `notas`;
-- history: `histórico académico`, `registo académico`, `histórico`;
+- enrolment, grades, history, and finance come from the student record's
+  read-only JSON methods `getDisciplinesEvent`, `getStudentFileEvent`, and
+  `getDividas`;
 - evaluation rules: `ficha de unidade curricular`, `FUC`, `método de avaliação`.
 - official lesson summaries: `sumários`, `sumarios`;
 - electronic notices: `notificações eletrónicas`, `notificações`;
-- tuition and fees: `situação financeira`, `propinas`, `pagamentos`,
+- legacy tuition fallback: `situação financeira`, `propinas`, `pagamentos`,
   `emolumentos`.
 
 FUC tables are parsed into alternative weighted formulas and minimum-component
@@ -74,8 +79,10 @@ reviews and confirms them. Official lesson summaries are matched to local
 lectures only when subject and time corroborate; a low lexical coverage score is
 shown for review and never overwrites generated notes. Publicly verified Portal routes include `/intranet/`,
 `/intranet/home/Guest.aspx`, and `/intranet/ver_horario/ver_horario.aspx`; the
-last route is a public room calendar and is never treated as evidence of a
-student's enrolment or exam registration.
+last route is also the authenticated student calendar when it includes the
+student query parameter. Calendar events are read from its bounded static
+`getEventData` literal without evaluating JavaScript. Exceptional-season events
+are cached as both timetable entries and evaluations, including all rooms.
 
 ## Parsing and failure behavior
 
@@ -92,6 +99,14 @@ a 2 MiB ceiling. Redirects and discovered links must remain on
 Portal refresh is independent from Fireflies → Gemini → Notion. A Portal
 failure cannot stop lecture discovery, classification, summarization, or
 publication.
+
+Portal stages refresh independently. Timetable, exams, and notices expire after
+30 minutes; grades and finance after 6 hours; enrolment, history, FUC context,
+and summaries after 24 hours. Opening Academic reads the cache and does not
+force network work. App startup/resume and periodic sync refresh only expired
+stages; the Refresh button forces every stage. The active Academic section is
+re-evaluated between requests so its next pending stage moves first without
+cancelling or restarting in-flight work.
 
 Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,
