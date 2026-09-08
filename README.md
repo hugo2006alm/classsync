@@ -104,13 +104,16 @@ Required Notion data-source properties:
 
 Optional academic integrations can be skipped during first-run setup and are
 also configured under **Academic → Connections**.
-Portal username/password and the Moodle app token stay in OS secure storage.
-Moodle obtains its token from the official login endpoint using the normal ISEP
-credentials and never stores the submitted Moodle password. Portal login
+One ISEP username/password connects Portal and Moodle; a separate Moodle login
+remains available for external accounts. Portal credentials and the Moodle app
+token stay in OS secure storage. Moodle obtains its token from the official
+login endpoint and never stores the submitted password. Portal login
 recognizes the actual sign-in form, including when the
 authenticated dashboard contains account password controls. A local Windows
-login diagnostic is documented in the Portal guide. Academic records remain in the local offline cache and never pass
-through the relay. See [ISEP Portal details](docs/isep-portal.md) and
+login diagnostic is documented in the Portal guide. Academic records remain in
+the local offline cache and never pass through the relay. Automatic refresh uses
+per-feature cache ages and reprioritizes pending Portal requests when the user
+changes Academic section. See [ISEP Portal details](docs/isep-portal.md) and
 [Moodle details](docs/moodle.md).
 
 ## Deploy the relay

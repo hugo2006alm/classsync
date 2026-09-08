@@ -9,7 +9,7 @@ import 'package:collection/collection.dart';
 import '../../core/providers.dart';
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_models.dart';
-import '../../domain/sync/sync_models.dart';
+import '../../core/academic/academic_sync_service.dart';
 import '../shared/page_frame.dart';
 import 'academic_connections_dialog.dart';
 
@@ -27,14 +27,23 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
   late DateTime _weekStart = _startOfWeek(DateTime.now());
 
   @override
+  void initState() {
+    super.initState();
+    ref.read(academicSyncServiceProvider).focusedSection = _section;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final recordsValue = ref.watch(academicRecordsProvider);
-    final sync = ref.watch(syncControllerProvider);
+    final refresh =
+        ref.watch(academicRefreshProvider).valueOrNull ??
+        const AcademicRefreshState();
+    final stage = academicStagePriority(_section).first;
+    final updated = ref.watch(academicFreshnessProvider(stage)).valueOrNull;
     final connections = ref.watch(academicConnectionStateProvider).valueOrNull;
     return PageFrame(
       title: 'Academic',
-      subtitle:
-          'Portal, timetable, evaluations, Moodle, and grades — cached locally',
+      subtitle: 'Your week, rooms and deadlines',
       actions: [
         OutlinedButton.icon(
           onPressed: () => showAcademicConnectionsDialog(context, ref),
@@ -42,12 +51,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
           label: const Text('Connections'),
         ),
         FilledButton.icon(
-          onPressed: sync.isLoading
+          onPressed: refresh.running
               ? null
-              : () => ref
-                    .read(syncControllerProvider.notifier)
-                    .run(SyncReason.manual),
-          icon: sync.isLoading
+              : () => ref.read(academicSyncServiceProvider).synchronize(),
+          icon: refresh.running
               ? const SizedBox.square(
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
@@ -74,15 +81,41 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            _SyncResultBanner(
-              loading: sync.isLoading,
-              error: sync.error,
-              completed: sync.valueOrNull != null,
-            ),
+            if (refresh.running)
+              Text(
+                'Updating ${refresh.stage ?? 'academic sources'}…',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (updated != null)
+              Text(
+                'Last updated ${DateFormat.MMMd().add_Hm().format(updated.toLocal())} · Available offline',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else
+              Text(
+                'Not updated yet · Refresh to load this section',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (refresh.errors.isNotEmpty)
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                leading: const Icon(Icons.info_outline),
+                title: Text('${refresh.errors.length} sources need attention'),
+                subtitle: const Text(
+                  'Loaded data stays available. Expand for details.',
+                ),
+                children: [
+                  for (final error in refresh.errors)
+                    ListTile(title: Text(error)),
+                ],
+              ),
             const SizedBox(height: 16),
             _AcademicSectionNavigation(
               selected: _section,
-              onSelected: (value) => setState(() => _section = value),
+              onSelected: (value) {
+                ref.read(academicSyncServiceProvider).focusedSection = value;
+                setState(() => _section = value);
+              },
             ),
             const SizedBox(height: 22),
             switch (_section) {
@@ -183,183 +216,58 @@ class _AcademicSectionNavigation extends StatelessWidget {
     required this.selected,
     required this.onSelected,
   });
-
   final int selected;
   final ValueChanged<int> onSelected;
-
-  static const _study = [
-    _AcademicDestination(0, Icons.view_week_rounded, 'Timetable'),
-    _AcademicDestination(1, Icons.task_alt_rounded, 'Tasks'),
-    _AcademicDestination(2, Icons.event_rounded, 'Evaluations'),
-    _AcademicDestination(3, Icons.calculate_rounded, 'Progress'),
+  static const primary = [
+    (0, Icons.view_week_rounded, 'Timetable'),
+    (1, Icons.task_alt_rounded, 'Tasks'),
+    (4, Icons.campaign_outlined, 'Updates'),
   ];
-
-  static const _reference = [
-    _AcademicDestination(4, Icons.campaign_rounded, 'Updates'),
-    _AcademicDestination(5, Icons.menu_book_rounded, 'Course context'),
-    _AcademicDestination(6, Icons.manage_search_rounded, 'Search & ask'),
-    _AcademicDestination(7, Icons.account_balance_wallet_outlined, 'Finance'),
+  static const more = [
+    (2, 'Evaluations'),
+    (3, 'Progress'),
+    (7, 'Finance'),
+    (5, 'Course context'),
+    (6, 'Search & ask'),
   ];
-
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final cards = [
-        _AcademicNavCard(
-          index: '01',
-          title: 'Study',
-          subtitle: 'Plan, tasks, assessment',
-          destinations: _study,
-          selected: selected,
-          onSelected: onSelected,
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      for (final item in primary)
+        ChoiceChip(
+          showCheckmark: false,
+          avatar: Icon(item.$2, size: 18),
+          label: Text(item.$3),
+          selected: selected == item.$1,
+          onSelected: (_) => onSelected(item.$1),
         ),
-        _AcademicNavCard(
-          index: '02',
-          title: 'Reference & admin',
-          subtitle: 'Official context and services',
-          destinations: _reference,
-          selected: selected,
-          onSelected: onSelected,
-        ),
-      ];
-      if (constraints.maxWidth >= 900) {
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: cards.first),
-            const SizedBox(width: 12),
-            Expanded(child: cards.last),
-          ],
-        );
-      }
-      return Column(
-        children: [cards.first, const SizedBox(height: 10), cards.last],
-      );
-    },
-  );
-}
-
-class _AcademicNavCard extends StatelessWidget {
-  const _AcademicNavCard({
-    required this.index,
-    required this.title,
-    required this.subtitle,
-    required this.destinations,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final String index;
-  final String title;
-  final String subtitle;
-  final List<_AcademicDestination> destinations;
-  final int selected;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 5, color: colors.tertiary),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          index,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: colors.tertiary,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(title, style: theme.textTheme.titleMedium),
-                              Text(
-                                subtitle,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final destination in destinations)
-                          ChoiceChip(
-                            avatar: Icon(destination.icon, size: 18),
-                            label: Text(destination.label),
-                            selected: selected == destination.value,
-                            showCheckmark: false,
-                            onSelected: (_) => onSelected(destination.value),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
+      PopupMenuButton<int>(
+        tooltip: 'More academic tools',
+        initialValue: selected,
+        onSelected: onSelected,
+        itemBuilder: (_) => [
+          for (final item in more)
+            PopupMenuItem(value: item.$1, child: Text(item.$2)),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                more.where((item) => item.$1 == selected).firstOrNull?.$2 ??
+                    'More',
               ),
-            ),
-          ],
+              const Icon(Icons.expand_more, size: 18),
+            ],
+          ),
         ),
       ),
-    );
-  }
-}
-
-class _AcademicDestination {
-  const _AcademicDestination(this.value, this.icon, this.label);
-
-  final int value;
-  final IconData icon;
-  final String label;
-}
-
-class _SyncResultBanner extends StatelessWidget {
-  const _SyncResultBanner({
-    required this.loading,
-    required this.error,
-    required this.completed,
-  });
-  final bool loading;
-  final Object? error;
-  final bool completed;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) return const LinearProgressIndicator();
-    if (error != null) {
-      return _Banner(
-        icon: Icons.error_outline_rounded,
-        text: error.toString(),
-        error: true,
-      );
-    }
-    if (!completed) return const SizedBox.shrink();
-    return const _Banner(
-      icon: Icons.cloud_done_rounded,
-      text: 'Sync completed. Academic cache refreshed from configured sources.',
-    );
-  }
+    ],
+  );
 }
 
 class _SourceSetupState extends StatelessWidget {
@@ -1384,16 +1292,13 @@ class _AcademicSearchSectionState
 }
 
 class _Banner extends StatelessWidget {
-  const _Banner({required this.icon, required this.text, this.error = false});
+  const _Banner({required this.icon, required this.text});
   final IconData icon;
   final String text;
-  final bool error;
 
   @override
   Widget build(BuildContext context) => Card(
-    color: error
-        ? Theme.of(context).colorScheme.errorContainer
-        : Theme.of(context).colorScheme.surfaceContainerHigh,
+    color: Theme.of(context).colorScheme.surfaceContainerHigh,
     child: ListTile(leading: Icon(icon), title: Text(text)),
   );
 }
@@ -1467,22 +1372,21 @@ class _TimetableSection extends StatelessWidget {
                       (item) => _sameDay(item.start, day),
                     ))
                       ListTile(
-                        leading: Text(DateFormat.Hm().format(slot.start)),
+                        leading: Text(
+                          DateFormat.Hm().format(slot.start),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
                         title: Text(slot.subjectName),
                         subtitle: Text(
                           [
                             if (slot.lessonType != null) slot.lessonType!,
                             if (slot.className != null) slot.className!,
-                            if (slot.room != null) slot.room!,
+                            if (slot.room != null) 'Room ${slot.room!}',
                             if (slot.lecturer != null) slot.lecturer!,
                           ].join(' · '),
                         ),
-                        trailing: slot.subjectId == null
-                            ? const Tooltip(
-                                message: 'Subject mapping needs review',
-                                child: Icon(Icons.link_off_rounded),
-                              )
-                            : Text(DateFormat.Hm().format(slot.end)),
+                        trailing: Text(DateFormat.Hm().format(slot.end)),
                       ),
                   ],
                 ),
@@ -2427,10 +2331,17 @@ class _MoodleSection extends ConsumerWidget {
       children: [
         SectionHeader('Courses (${courses.length})'),
         if (courses.isEmpty)
-          const EmptyState(
+          EmptyState(
             icon: Icons.school_outlined,
             title: 'No Moodle courses cached',
-            message: 'Add a Moodle Web Services token under Connections.',
+            message:
+                ref
+                        .watch(academicConnectionStateProvider)
+                        .valueOrNull
+                        ?.moodleConfigured ==
+                    true
+                ? 'Moodle is connected. Courses appear after their first successful refresh; check update details above if they stay empty.'
+                : 'Connect your ISEP account under Connections to load Moodle courses.',
           )
         else
           Wrap(

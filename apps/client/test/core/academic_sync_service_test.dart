@@ -198,6 +198,26 @@ void main() {
       expect(moodle.testedToken, 'new-token');
       expect(moodle.authenticatedUsername, 'new-student');
       expect(moodle.authenticatedPassword, 'moodle-secret');
+
+      await service.connectMoodle(username: 'new-student', password: '');
+      expect(moodle.authenticatedPassword, 'new-secret');
+    },
+  );
+
+  test(
+    'automatic refresh reuses fresh stages and follows section priority',
+    () async {
+      await service.synchronize(force: false);
+      expect(portal.authenticationCount, 1);
+      expect(moodle.synchronizationCount, 1);
+
+      await service.synchronize(force: false);
+      expect(portal.authenticationCount, 1);
+      expect(moodle.synchronizationCount, 1);
+      expect(academicStagePriority(7).first, 'finance');
+      expect(academicStagePriority(1).first, 'moodle');
+      expect(academicRefreshAge('timetable'), const Duration(minutes: 30));
+      expect(academicRefreshAge('grades'), const Duration(hours: 6));
     },
   );
 }
@@ -238,6 +258,7 @@ class _MemoryCredentials extends SecureCredentialStore {
 
 class _FakePortal implements PortalAdapter {
   bool authenticated = false;
+  int authenticationCount = 0;
   String? lastUsername;
   String? lastPassword;
   List<TuitionCharge> tuitionCharges = [
@@ -258,6 +279,7 @@ class _FakePortal implements PortalAdapter {
   @override
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
     authenticated = true;
+    authenticationCount++;
     lastUsername = credentials.username;
     lastPassword = credentials.password;
     return const PortalProfile(displayName: 'Student');
@@ -388,6 +410,7 @@ class _FakePortal implements PortalAdapter {
 
 class _FakeMoodle extends MoodleClient {
   bool incremental = false;
+  int synchronizationCount = 0;
   DateTime? lastSince;
   String? testedToken;
   String? authenticatedUsername;
@@ -410,17 +433,24 @@ class _FakeMoodle extends MoodleClient {
   }
 
   @override
-  Future<MoodleSyncBundle> synchronize(String token, {DateTime? since}) async {
+  Future<MoodleSyncBundle> synchronize(
+    String token, {
+    DateTime? since,
+    Future<void> Function(List<MoodleCourse>)? onCourses,
+  }) async {
+    synchronizationCount++;
     lastSince = since;
+    const courses = [
+      MoodleCourse(
+        externalId: 'course-1',
+        name: 'Bases de Dados',
+        shortName: 'BDAD',
+        url: 'https://moodle.isep.ipp.pt/course/view.php?id=1',
+      ),
+    ];
+    await onCourses?.call(courses);
     return MoodleSyncBundle(
-      courses: const [
-        MoodleCourse(
-          externalId: 'course-1',
-          name: 'Bases de Dados',
-          shortName: 'BDAD',
-          url: 'https://moodle.isep.ipp.pt/course/view.php?id=1',
-        ),
-      ],
+      courses: courses,
       assignments: [
         MoodleAssignment(
           externalId: incremental ? 'assignment-2' : 'assignment-1',

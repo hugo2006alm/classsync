@@ -108,12 +108,14 @@ class IsepPortalClient implements PortalAdapter {
   final Map<String, String> _cookies = {};
   Document? _dashboard;
   Uri? _dashboardUrl;
+  final Map<String, PortalDocument> _pageCache = {};
 
   @override
   Future<PortalProfile> authenticate(PortalCredentials credentials) async {
     // A connection test must authenticate the supplied account, never reuse a
     // previous account's dashboard or cookies after a failed attempt.
     _cookies.clear();
+    _pageCache.clear();
     _dashboard = null;
     _dashboardUrl = null;
     try {
@@ -179,6 +181,10 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<EnrollmentSubject>> getEnrollment() async {
+    if (_hasStudentPage) {
+      final page = await _studentData('getDisciplinesEvent');
+      return _parser.parseEnrollment(page.html, sourceUrl: page.url);
+    }
     final page = await _featurePage(const [
       'unidades curriculares',
       'disciplinas inscritas',
@@ -189,12 +195,38 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<TimetableSlot>> getTimetable() async {
-    final page = await _featurePage(const ['horário', 'horario']);
+    final page = await _featurePage(const ['horario', 'ver horario']);
     return _parser.parseTimetable(page.html, sourceUrl: page.url);
   }
 
   @override
   Future<List<EvaluationEvent>> getExams() async {
+    if (_hasStudentPage) {
+      final slots = await getTimetable();
+      return slots
+          .where((slot) => slot.exceptional)
+          .map(
+            (slot) => EvaluationEvent(
+              externalId: slot.externalId,
+              title: '${slot.lessonType} · ${slot.subjectName}',
+              type: slot.lessonType ?? 'Exam',
+              subjectCode: slot.subjectCode,
+              subjectName: slot.subjectName,
+              start: slot.start,
+              end: slot.end,
+              location: slot.room,
+              registrationState: ExamRegistrationState.unknown,
+              provenance: [
+                AcademicProvenance(
+                  source: AcademicSource.portal,
+                  externalId: slot.externalId,
+                  url: slot.sourceUrl,
+                ),
+              ],
+            ),
+          )
+          .toList();
+    }
     final page = await _featurePage(const ['calendário de exames', 'exames']);
     return _parser.parseExams(page.html, sourceUrl: page.url);
   }
@@ -210,6 +242,10 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<GradeComponent>> getGrades() async {
+    if (_hasStudentPage) {
+      final page = await _studentData('getStudentFileEvent');
+      return _parser.parseGrades(page.html, sourceUrl: page.url);
+    }
     final page = await _featurePage(const [
       'classificações parciais',
       'classificações',
@@ -220,6 +256,14 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<GradeComponent>> getAcademicHistory() async {
+    if (_hasStudentPage) {
+      final page = await _studentData('getStudentFileEvent');
+      return _parser.parseGrades(
+        page.html,
+        sourceUrl: page.url,
+        forceHistorical: true,
+      );
+    }
     final page = await _featurePage(const [
       'histórico académico',
       'registo académico',
@@ -270,6 +314,10 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<TuitionCharge>> getTuitionCharges() async {
+    if (_hasStudentPage) {
+      final page = await _studentData('getDividas');
+      return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
+    }
     final page = await _featurePage(const [
       'situação financeira',
       'situacao financeira',
@@ -278,6 +326,73 @@ class IsepPortalClient implements PortalAdapter {
       'emolumentos',
     ]);
     return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
+  }
+
+  bool get _hasStudentPage =>
+      _dashboard
+          ?.querySelectorAll('a[href]')
+          .any(
+            (a) => (a.attributes['href'] ?? '').contains(
+              '/areapessoal/estudante.aspx',
+            ),
+          ) ??
+      false;
+
+  Future<PortalDocument> _studentData(String method) async {
+    const allowed = {
+      'getDividas',
+      'getStudentFileEvent',
+      'getDisciplinesEvent',
+    };
+    if (!allowed.contains(method)) throw ArgumentError.value(method);
+    final cached = _pageCache[method];
+    if (cached != null) return cached;
+    final page = await _featurePage(const ['ficha aluno', 'dados do aluno']);
+    final match = RegExp(r'''cuser:\s*["'](\d+)["']''').firstMatch(page.html);
+    if (match == null) {
+      throw const IntegrationException(
+        integration: 'ISEP Portal',
+        code: 'portal_layout_changed',
+        userMessage:
+            'Portal student record did not expose its read-only data identity.',
+        retryable: false,
+      );
+    }
+    final pageUri = Uri.parse(page.url);
+    final url = _portalUri('${pageUri.origin}${pageUri.path}/$method');
+    try {
+      final response = await _dio.post<dynamic>(
+        url.toString(),
+        data: jsonEncode({'cuser': match.group(1)}),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          headers: {
+            'cookie': _cookies.entries
+                .map((e) => '${e.key}=${e.value}')
+                .join('; '),
+            'referer': page.url,
+          },
+        ),
+      );
+      final bytes = await readBoundedResponse(response.data, response.headers);
+      final data = jsonDecode(utf8.decode(bytes));
+      if (data is! Map || data['d'] is! String) throw const FormatException();
+      return _pageCache[method] = PortalDocument(
+        url: page.url,
+        html: data['d'] as String,
+      );
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ISEP Portal', error);
+    } on FormatException {
+      throw const IntegrationException(
+        integration: 'ISEP Portal',
+        code: 'portal_layout_changed',
+        userMessage: 'Portal returned an invalid student record response.',
+        retryable: false,
+      );
+    }
   }
 
   Future<PortalDocument> _featurePage(List<String> labels) async {
@@ -291,12 +406,33 @@ class IsepPortalClient implements PortalAdapter {
       );
     }
     final normalizedLabels = labels.map(_normalize).toList();
-    final link = dashboard.querySelectorAll('a[href]').firstWhere((element) {
-      final haystack = _normalize(
-        '${element.text} ${element.attributes['title'] ?? ''} ${element.attributes['href'] ?? ''}',
-      );
-      return normalizedLabels.any(haystack.contains);
-    }, orElse: () => Element.tag('a'));
+    final links = dashboard.querySelectorAll('a[href]');
+    Element? chosen;
+    for (final label in normalizedLabels) {
+      for (final element in links) {
+        final names = [
+          element.text,
+          element.attributes['title'] ?? '',
+          element.querySelector('img')?.attributes['alt'] ?? '',
+        ].map(_normalize);
+        if (names.contains(label)) {
+          chosen = element;
+          break;
+        }
+      }
+      if (chosen != null) break;
+    }
+    // Only human-readable labels may provide a fallback. Matching URL fragments
+    // selected declarations and unrelated payment menus before the real page.
+    final link =
+        chosen ??
+        links.firstWhere(
+          (element) => normalizedLabels.any(
+            (label) =>
+                label.length > 5 && _normalize(element.text).contains(label),
+          ),
+          orElse: () => Element.tag('a'),
+        );
     final href = link.attributes['href'];
     if (href == null || href.isEmpty) {
       throw IntegrationException(
@@ -308,7 +444,13 @@ class IsepPortalClient implements PortalAdapter {
       );
     }
     try {
-      final response = await _request(href);
+      final resolved = _portalUri(
+        (_dashboardUrl ?? Uri.parse(_dio.options.baseUrl))
+            .resolve(href)
+            .toString(),
+      );
+      if (_pageCache[resolved.toString()] case final cached?) return cached;
+      final response = await _request(resolved.toString());
       if (_isLoginPage(response.document)) {
         throw const IntegrationException(
           integration: 'ISEP Portal',
@@ -317,7 +459,7 @@ class IsepPortalClient implements PortalAdapter {
           retryable: false,
         );
       }
-      return PortalDocument(
+      return _pageCache[resolved.toString()] = PortalDocument(
         url: response.url.toString(),
         html: response.document.outerHtml,
       );
@@ -577,6 +719,98 @@ class IsepPortalParser {
   List<TimetableSlot> parseTimetable(String html, {required String sourceUrl}) {
     final document = html_parser.parse(html);
     final result = <TimetableSlot>[];
+    // Portal serializes calendar records as JS literals. Parse the bounded
+    // data grammar only; never evaluate code supplied by the remote page.
+    for (final script in document.querySelectorAll('script')) {
+      final source = script.text;
+      if (!source.contains('function getEventData()')) continue;
+      final events = RegExp(
+        r'events\s*:\s*\[([\s\S]*?)\]\s*[,}]',
+      ).firstMatch(source);
+      if (events == null) continue;
+      final entries = RegExp(
+        r'\{([\s\S]*?)\}\s*,?',
+      ).allMatches(events.group(1)!);
+      if (entries.length > 500) return _requireParsed([], 'timetable');
+      for (final entry in entries) {
+        final value = entry.group(1)!;
+        DateTime? date(String key) {
+          final match = RegExp(
+            "['\"]$key['\"]\\s*:\\s*new Date\\((\\d{4}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2})\\)",
+          ).firstMatch(value);
+          if (match == null) return null;
+          final parts = [
+            for (var i = 1; i <= 5; i++) int.parse(match.group(i)!),
+          ];
+          final parsed = DateTime(
+            parts[0],
+            parts[1] + 1,
+            parts[2],
+            parts[3],
+            parts[4],
+          );
+          return parsed.month == parts[1] + 1 &&
+                  parsed.day == parts[2] &&
+                  parsed.hour == parts[3] &&
+                  parsed.minute == parts[4]
+              ? parsed
+              : null;
+        }
+
+        String literal(String key) {
+          final match = RegExp(
+            "['\"]$key['\"]\\s*:\\s*'((?:\\\\.|[^'\\\\])*)'",
+          ).firstMatch(value);
+          return (match?.group(1) ?? '')
+              .replaceAll(r"\'", "'")
+              .replaceAll(r'\n', ' ')
+              .replaceAll(r'\\', r'\');
+        }
+
+        final start = date('start');
+        final end = date('end');
+        final title = html_parser.parseFragment(literal('title'));
+        final body = html_parser.parseFragment(literal('body'));
+        final cells = title.querySelectorAll('td');
+        final subject = cells.length >= 2
+            ? cells.last.text.trim()
+            : title.text!.trim();
+        if (start == null ||
+            end == null ||
+            !end.isAfter(start) ||
+            subject.isEmpty) {
+          return _requireParsed([], 'timetable');
+        }
+        final type = title.querySelector('label')?.text.trim();
+        final season = body.querySelector('label')?.text.trim();
+        final rooms = body
+            .querySelectorAll('a[href]')
+            .where(
+              (a) =>
+                  Uri.tryParse(
+                    a.attributes['href']!,
+                  )?.queryParameters.containsKey('room') ==
+                  true,
+            )
+            .map((a) => a.text.trim())
+            .where((text) => text.isNotEmpty)
+            .toSet();
+        result.add(
+          TimetableSlot(
+            externalId: '$subject:${start.toIso8601String()}:${type ?? ''}',
+            subjectCode: subject,
+            subjectName: subject,
+            start: start,
+            end: end,
+            lessonType: [?type, ?season].join(' · '),
+            room: rooms.isEmpty ? null : rooms.join(' · '),
+            sourceUrl: sourceUrl,
+            exceptional: type == 'Exame',
+          ),
+        );
+      }
+      if (entries.isEmpty) return const [];
+    }
     for (final element in document.querySelectorAll('[data-start][data-end]')) {
       final start = DateTime.tryParse(element.attributes['data-start'] ?? '');
       final end = DateTime.tryParse(element.attributes['data-end'] ?? '');
@@ -800,9 +1034,9 @@ class IsepPortalParser {
           isHistorical ||
           _normalize(component).contains('final') ||
           status.contains('definitiv');
-      final id = _value(row, const [
-        'id',
-      ]).ifEmpty('$code:${academicYear ?? ''}:${_normalize(component)}');
+      final id = _value(row, const ['id']).ifEmpty(
+        '${code.ifEmpty(_normalize(name))}:${academicYear ?? ''}:${_normalize(component)}',
+      );
       result.add(
         GradeComponent(
           externalId: id,
@@ -1049,6 +1283,7 @@ class IsepPortalParser {
     final result = <TuitionCharge>[];
     for (final row in _tableRows(html)) {
       final title = _value(row, const [
+        'artigo(s)',
         'tipo',
         'descricao',
         'designacao',
@@ -1081,10 +1316,17 @@ class IsepPortalParser {
         _value(row, const ['estado', 'situacao', 'status']),
       );
       final amount = _money(
-        _value(row, const ['valor a pagar', 'montante', 'valor', 'total']),
+        _value(row, const [
+          'valor doc.',
+          'valor a pagar',
+          'montante',
+          'valor',
+          'total',
+        ]),
       );
       final outstanding = _money(
         _value(row, const [
+          'valor pendente',
           'em divida',
           'valor em divida',
           'por pagar',
@@ -1110,6 +1352,7 @@ class IsepPortalParser {
         continue;
       }
       final explicitId = _value(row, const [
+        'nº documento',
         'id pagamento',
         'id cobranca',
         'id',
@@ -1165,17 +1408,31 @@ class IsepPortalParser {
 
   static List<Map<String, String>> _tableRows(String html) {
     final document = html_parser.parse(html);
+    for (final node in document.querySelectorAll(
+      'script,style,noscript,template',
+    )) {
+      node.remove();
+    }
     final result = <Map<String, String>>[];
     for (final table in document.querySelectorAll('table')) {
-      final rows = table.querySelectorAll('tr');
+      final rows = table.querySelectorAll('tr').where((row) {
+        Element? parent = row.parent;
+        while (parent != null && parent.localName != 'table') {
+          parent = parent.parent;
+        }
+        return parent == table;
+      }).toList();
       if (rows.length < 2) continue;
-      var headers = rows.first
-          .querySelectorAll('th,td')
+      var headers = rows.first.children
+          .where((cell) => cell.localName == 'th' || cell.localName == 'td')
           .map((cell) => _normalize(cell.text))
           .toList();
       if (headers.every((value) => value.isEmpty)) continue;
       for (final row in rows.skip(1)) {
-        final cells = row.querySelectorAll('td');
+        final cells = row.children
+            .where((cell) => cell.localName == 'td')
+            .toList();
+        if (cells.any((cell) => cell.querySelector('table') != null)) continue;
         if (cells.isEmpty) continue;
         if (cells.length > headers.length) {
           headers = [
@@ -1195,7 +1452,7 @@ class IsepPortalParser {
   static String _value(Map<String, String> row, List<String> aliases) {
     for (final alias in aliases.map(_normalize)) {
       for (final entry in row.entries) {
-        if (entry.key == alias || entry.key.contains(alias)) {
+        if (entry.key == alias) {
           return entry.value.trim();
         }
       }

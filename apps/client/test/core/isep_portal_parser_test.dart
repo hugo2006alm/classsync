@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/core/integrations/portal/isep_portal_client.dart';
+import 'package:classsync/core/integrations/portal/strict_isep_portal_parser.dart';
 import 'package:classsync/domain/academic/academic_hub_models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -618,6 +619,92 @@ void main() {
       const PortalCredentials(username: 'student', password: 'password'),
     );
     expect(attempts, 2);
+  });
+
+  test('loads student records through the live read-only endpoints', () async {
+    var authenticated = false;
+    final studentMethods = <String>[];
+    final dio = Dio(
+      BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+    );
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.method == 'POST' && options.uri.path == '/intranet/') {
+            authenticated = true;
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<span id="CurrentUser">Student</span>'
+                '<a href="/intranet/areapessoal/estudante.aspx?hist=true">Ficha Aluno</a>',
+              ),
+            );
+            return;
+          }
+          if (options.method == 'POST' &&
+              options.uri.path.contains('/estudante.aspx/')) {
+            final method = options.uri.pathSegments.last;
+            studentMethods.add(method);
+            expect(jsonDecode(options.data as String), {'cuser': '123456'});
+            final body = switch (method) {
+              'getStudentFileEvent' =>
+                '<table><tr><th>Unidade Curricular</th><th>ECTS</th><th>Nota</th><th>Data</th></tr>'
+                    '<tr><td>Bases de Dados</td><td>6</td><td>15</td><td>2026-07-01</td></tr></table>',
+              'getDisciplinesEvent' =>
+                '<a href="#tabDisc41">2026/2027</a><div id="tabDisc41">'
+                    '<a href="../educacao/ver_edicoes_disciplina.aspx?id=123">Bases de Dados</a></div>',
+              'getDividas' =>
+                '<table><tr><th>Data</th><th>Nº Documento</th><th>Artigo(s)</th><th>Valor Doc.</th><th>Valor Pendente</th><th>Estado</th></tr>'
+                    '<tr><td>2026-08-24</td><td>FT-1</td><td>Propina</td><td>69.70€</td><td>0.00€</td><td>Liquidada</td></tr></table>',
+              _ => throw StateError('Unexpected Portal method $method'),
+            };
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {'d': body},
+              ),
+            );
+            return;
+          }
+          if (authenticated &&
+              options.uri.path.endsWith('/areapessoal/estudante.aspx')) {
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<script>var dados = {cuser: "123456"};</script>',
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            _htmlResponse(
+              options,
+              '<input type="hidden" name="__VIEWSTATE" value="state">'
+              '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+              '<input type="password">',
+            ),
+          );
+        },
+      ),
+    );
+    final client = IsepPortalClient(
+      dio: dio,
+      parser: const StrictIsepPortalParser(),
+    );
+    await client.authenticate(
+      const PortalCredentials(username: 'student', password: 'password'),
+    );
+
+    expect((await client.getEnrollment()).single.name, 'Bases de Dados');
+    expect((await client.getGrades()).single.value, 15);
+    expect((await client.getAcademicHistory()).single.ects, 6);
+    expect((await client.getTuitionCharges()).single.outstandingAmount, 0);
+    expect(studentMethods, [
+      'getDisciplinesEvent',
+      'getStudentFileEvent',
+      'getDividas',
+    ]);
   });
 }
 

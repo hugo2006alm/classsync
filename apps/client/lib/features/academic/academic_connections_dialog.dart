@@ -41,136 +41,105 @@ class _AcademicConnectionsDialog extends ConsumerStatefulWidget {
 
 class _AcademicConnectionsDialogState
     extends ConsumerState<_AcademicConnectionsDialog> {
-  late final TextEditingController _username;
+  late final _username = TextEditingController(text: widget.initialUsername);
   final _password = TextEditingController();
-  late final TextEditingController _moodleUsername;
-  final _moodlePassword = TextEditingController();
+  final _otherUsername = TextEditingController();
+  final _otherPassword = TextEditingController();
   late bool _portalConfigured = widget.portalConfigured;
   late bool _moodleConfigured = widget.moodleConfigured;
-  bool _portalBusy = false;
-  bool _moodleBusy = false;
+  bool _busy = false;
   String? _portalError;
   String? _moodleError;
-
-  @override
-  void initState() {
-    super.initState();
-    _username = TextEditingController(text: widget.initialUsername);
-    _moodleUsername = TextEditingController(text: widget.initialUsername);
-  }
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
-    _moodleUsername.dispose();
-    _moodlePassword.dispose();
+    _otherUsername.dispose();
+    _otherPassword.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Academic connections'),
+    title: const Text('ISEP connection'),
     content: SizedBox(
       width: 520,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ConnectionPanel(
-              icon: Icons.account_balance_outlined,
-              title: 'ISEP Portal',
-              configured: _portalConfigured,
-              error: _portalError,
-              children: [
-                TextField(
-                  controller: _username,
-                  enabled: !_portalBusy,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Portal username or ISEP email',
-                    helperText:
-                        'Use exactly the username or email accepted by portal.isep.ipp.pt.',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  enabled: !_portalBusy,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    helperText: _portalConfigured
-                        ? 'Leave blank to keep the password stored on this device.'
-                        : 'Required on first connection. Stored in OS secure storage.',
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: _portalBusy ? null : _savePortal,
-                    icon: _portalBusy
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.link_rounded),
-                    label: Text(
-                      _portalBusy ? 'Testing…' : 'Test and save Portal',
-                    ),
-                  ),
-                ),
-              ],
+            const Text(
+              'One institutional login connects Portal and Moodle. Each service keeps its own connection status.',
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _username,
+              enabled: !_busy,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(
+                labelText: 'ISEP username or email',
+              ),
             ),
             const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              enabled: !_busy,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                helperText: _portalConfigured
+                    ? 'Leave blank to reuse the password securely saved on this device.'
+                    : 'Portal password and Moodle token stay in OS secure storage.',
+              ),
+            ),
+            const SizedBox(height: 20),
+            _ConnectionPanel(
+              icon: Icons.account_balance_outlined,
+              title: 'Portal',
+              configured: _portalConfigured,
+              error: _portalError,
+              children: const [],
+            ),
+            const SizedBox(height: 8),
             _ConnectionPanel(
               icon: Icons.school_outlined,
-              title: 'Moodle ISEP',
+              title: 'Moodle',
               configured: _moodleConfigured,
               error: _moodleError,
+              children: const [],
+            ),
+            const SizedBox(height: 12),
+            ExpansionTile(
+              title: const Text('Different Moodle account'),
+              subtitle: const Text(
+                'For external accounts or a separate Moodle identity',
+              ),
               children: [
                 TextField(
-                  controller: _moodleUsername,
-                  enabled: !_moodleBusy,
+                  controller: _otherUsername,
+                  enabled: !_busy,
                   autocorrect: false,
-                  enableSuggestions: false,
                   decoration: const InputDecoration(
-                    labelText: 'Moodle username or ISEP email',
-                    helperText: 'Usually the same username as the Portal.',
+                    labelText: 'Moodle username',
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _moodlePassword,
-                  enabled: !_moodleBusy,
+                  controller: _otherPassword,
+                  enabled: !_busy,
                   obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
                   decoration: const InputDecoration(
-                    labelText: 'Password',
-                    helperText:
-                        'Used once to obtain a Moodle token; the password is not saved.',
+                    labelText: 'Moodle password',
                   ),
                 ),
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: _moodleBusy ? null : _saveMoodle,
-                    icon: _moodleBusy
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.link_rounded),
-                    label: Text(
-                      _moodleBusy ? 'Testing…' : 'Test and save Moodle',
-                    ),
-                  ),
+                TextButton(
+                  onPressed: _busy ? null : () => _connect(separate: true),
+                  child: const Text('Connect this Moodle account'),
                 ),
               ],
             ),
@@ -180,66 +149,68 @@ class _AcademicConnectionsDialogState
     ),
     actions: [
       TextButton(
-        onPressed: _portalBusy || _moodleBusy
-            ? null
-            : () => Navigator.pop(context),
+        onPressed: _busy ? null : () => Navigator.pop(context),
         child: const Text('Close'),
+      ),
+      FilledButton.icon(
+        onPressed: _busy ? null : () => _connect(),
+        icon: _busy
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.link),
+        label: Text(_busy ? 'Connecting…' : 'Connect Portal and Moodle'),
       ),
     ],
   );
 
-  Future<void> _savePortal() async {
+  Future<void> _connect({bool separate = false}) async {
     setState(() {
-      _portalBusy = true;
+      _busy = true;
       _portalError = null;
+      _moodleError = null;
     });
+    final actions = ref.read(academicHubActionsProvider);
+    var connected = false;
     try {
-      await ref
-          .read(academicHubActionsProvider)
-          .connectPortal(
+      if (!separate) {
+        try {
+          await actions.connectPortal(
             username: _username.text,
             password: _password.text.isEmpty ? null : _password.text,
           );
-      if (!mounted) return;
-      _password.clear();
-      setState(() => _portalConfigured = true);
-      ref.invalidate(academicConnectionStateProvider);
-      _showSuccess('ISEP Portal connected.');
-    } on AcademicActionFailure catch (error) {
-      if (mounted) setState(() => _portalError = error.message);
-    } finally {
-      if (mounted) setState(() => _portalBusy = false);
-    }
-  }
-
-  Future<void> _saveMoodle() async {
-    setState(() {
-      _moodleBusy = true;
-      _moodleError = null;
-    });
-    try {
-      await ref
-          .read(academicHubActionsProvider)
-          .connectMoodle(
-            username: _moodleUsername.text,
-            password: _moodlePassword.text,
+          connected = true;
+          if (mounted) setState(() => _portalConfigured = true);
+        } on AcademicActionFailure catch (error) {
+          if (mounted) setState(() => _portalError = error.message);
+        }
+      }
+      try {
+        if (separate && _otherPassword.text.isEmpty) {
+          throw const AcademicActionFailure(
+            'Enter the separate Moodle password.',
           );
-      if (!mounted) return;
-      setState(() => _moodleConfigured = true);
+        }
+        await actions.connectMoodle(
+          username: separate ? _otherUsername.text : _username.text,
+          password: separate ? _otherPassword.text : _password.text,
+        );
+        connected = true;
+        if (mounted) setState(() => _moodleConfigured = true);
+      } on AcademicActionFailure catch (error) {
+        if (mounted) setState(() => _moodleError = error.message);
+      }
       ref.invalidate(academicConnectionStateProvider);
-      _showSuccess('Moodle connected.');
-    } on AcademicActionFailure catch (error) {
-      if (mounted) setState(() => _moodleError = error.message);
+      // Newly connected sources load through the shared academic service.
+      if (connected) {
+        ref.read(academicSyncServiceProvider).synchronize();
+      }
     } finally {
-      _moodlePassword.clear();
-      if (mounted) setState(() => _moodleBusy = false);
+      _password.clear();
+      _otherPassword.clear();
+      if (mounted) setState(() => _busy = false);
     }
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

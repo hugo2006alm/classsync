@@ -134,7 +134,11 @@ class MoodleClient {
     return site['fullname']?.toString() ?? 'Moodle ISEP';
   }
 
-  Future<MoodleSyncBundle> synchronize(String token, {DateTime? since}) async {
+  Future<MoodleSyncBundle> synchronize(
+    String token, {
+    DateTime? since,
+    Future<void> Function(List<MoodleCourse>)? onCourses,
+  }) async {
     final site = await _call(token, 'core_webservice_get_site_info');
     final userId = site['userid'];
     if (userId is! num) {
@@ -154,6 +158,7 @@ class MoodleClient {
       coursesJson,
       baseUrl: _dio.options.baseUrl,
     ).take(100).toList();
+    await onCourses?.call(courses);
     if (courses.isEmpty) {
       return const MoodleSyncBundle(
         courses: [],

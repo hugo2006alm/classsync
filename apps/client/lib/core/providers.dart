@@ -15,6 +15,7 @@ import 'integrations/gemini/gemini_client.dart';
 import 'integrations/notion/notion_client.dart';
 import 'integrations/moodle/moodle_client.dart';
 import 'integrations/portal/isep_portal_client.dart';
+import 'integrations/portal/strict_isep_portal_parser.dart';
 import 'integrations/relay/relay_client.dart';
 import 'integrations/relay/account_sync_client.dart';
 import 'notifications/classsync_notification_service.dart';
@@ -40,7 +41,7 @@ final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());
 final portalClientProvider = Provider<PortalAdapter>(
-  (ref) => IsepPortalClient(),
+  (ref) => IsepPortalClient(parser: const StrictIsepPortalParser()),
 );
 final moodleClientProvider = Provider((ref) => MoodleClient());
 final relayClientProvider = Provider((ref) => RelayClient());
@@ -83,19 +84,37 @@ final academicChangesProvider = StreamProvider<List<AcademicChangeRow>>(
   (ref) => ref.watch(databaseProvider).watchAcademicChanges(),
 );
 
-final academicSyncServiceProvider = Provider(
-  (ref) => AcademicSyncService(
+final academicSyncServiceProvider = Provider((ref) {
+  final service = AcademicSyncService(
     database: ref.watch(databaseProvider),
     credentials: ref.watch(credentialStoreProvider),
     portal: ref.watch(portalClientProvider),
     moodle: ref.watch(moodleClientProvider),
     notifications: ref.watch(notificationServiceProvider),
-  ),
-);
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 final academicHubActionsProvider = Provider<AcademicHubActions>(
   (ref) => ref.watch(academicSyncServiceProvider),
 );
+
+final academicRefreshProvider = StreamProvider<AcademicRefreshState>((
+  ref,
+) async* {
+  final service = ref.watch(academicSyncServiceProvider);
+  yield service.refreshState;
+  yield* service.refreshUpdates;
+});
+
+final academicFreshnessProvider = FutureProvider.family<DateTime?, String>((
+  ref,
+  stage,
+) {
+  ref.watch(academicRefreshProvider);
+  return ref.watch(databaseProvider).readCursor('academic_success_$stage');
+});
 
 class AcademicConnectionState {
   const AcademicConnectionState({
@@ -236,17 +255,16 @@ class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
     if (state.isLoading) return;
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      final academic = _academicSync
+          .synchronize(force: reason == SyncReason.manual)
+          .then<void>((_) {}, onError: (Object _, StackTrace _) {});
       try {
         await _deviceSync.synchronize();
       } catch (_) {
         // Cloud state is an optional accelerator; lecture processing remains local-first.
       }
       final result = await _coordinator.run(reason);
-      try {
-        await _academicSync.synchronize();
-      } catch (_) {
-        // Academic sources are optional; they cannot break lecture processing.
-      }
+      await academic;
       try {
         await _deviceSync.synchronize();
       } catch (_) {

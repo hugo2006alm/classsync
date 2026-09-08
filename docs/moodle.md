@@ -7,8 +7,10 @@ https://moodle.isep.ipp.pt/webservice/rest/server.php
 ```
 
 The REST endpoint and its `invalidtoken` response were verified on 2026-09-06.
-Users connect with their normal Moodle username and password. ClassSync sends
-them once, over HTTPS, to Moodle's official `/login/token.php` endpoint with the
+ISEP documents one institutional password for Portal, Moodle, email, and Wi-Fi.
+ClassSync therefore reuses the Portal login by default and offers a separate
+Moodle account for external identities. It sends the password once, over HTTPS,
+to Moodle's official `/login/token.php` endpoint with the
 `moodle_mobile_app` service shortname. If ISEP enables that service, Moodle
 returns a user-scoped Web Services token. ClassSync stores only that token in OS
 secure storage and does not retain the password. Neither credential enters
@@ -32,6 +34,11 @@ Responses are streamed with a 2 MiB ceiling and transport calls retry twice.
 After the initial full import, assignment `timemodified` and discussion
 timestamps drive incremental merges; the cursor is advanced only after the
 local cache succeeds.
+
+The enrolled-course list is committed as soon as Moodle returns it, before the
+slower assignment-status and forum requests complete. Automatic Moodle refresh
+runs when its 30-minute cache age expires; opening Academic alone causes no
+request. Manual Refresh bypasses the age check.
 
 Course mapping uses exact normalized course names, short names, and Notion
 aliases. One exact match is linked automatically. Zero or multiple matches stay
