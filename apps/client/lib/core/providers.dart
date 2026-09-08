@@ -15,6 +15,7 @@ import 'integrations/gemini/gemini_client.dart';
 import 'integrations/notion/notion_client.dart';
 import 'integrations/moodle/moodle_client.dart';
 import 'integrations/portal/isep_portal_client.dart';
+import 'integrations/portal/strict_isep_portal_parser.dart';
 import 'integrations/relay/relay_client.dart';
 import 'integrations/relay/account_sync_client.dart';
 import 'notifications/classsync_notification_service.dart';
@@ -40,7 +41,7 @@ final firefliesClientProvider = Provider((ref) => FirefliesClient());
 final geminiClientProvider = Provider((ref) => GeminiClient());
 final notionClientProvider = Provider((ref) => NotionClient());
 final portalClientProvider = Provider<PortalAdapter>(
-  (ref) => IsepPortalClient(),
+  (ref) => IsepPortalClient(parser: const StrictIsepPortalParser()),
 );
 final moodleClientProvider = Provider((ref) => MoodleClient());
 final relayClientProvider = Provider((ref) => RelayClient());
