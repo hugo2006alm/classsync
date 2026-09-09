@@ -26,6 +26,7 @@ if (-not $versionLine) {
 $version = $versionLine.Matches[0].Groups[1].Value.Split('+')[0]
 $tag = "v$version"
 $releaseDir = Join-Path $repoRoot "dist\release-$version"
+$expectedAndroidCertSha256 = '8dcc7a9d11d53480e27d7e06e8b6a2e7537135f873656c5e3ab4a6632d3d9fe8'
 
 Push-Location $repoRoot
 try {
@@ -65,6 +66,42 @@ try {
         Pop-Location
     }
 
+    $androidApk = Join-Path $clientRoot 'build\app\outputs\flutter-apk\app-release.apk'
+    $apksigner = Get-Command apksigner.bat -ErrorAction SilentlyContinue
+    if (-not $apksigner) {
+        $adb = Get-Command adb.exe -ErrorAction SilentlyContinue
+        if ($adb) {
+            $androidSdk = Split-Path (Split-Path $adb.Source -Parent) -Parent
+            $buildToolsRoot = Join-Path $androidSdk 'build-tools'
+            if (Test-Path $buildToolsRoot) {
+                $latestBuildTools = Get-ChildItem $buildToolsRoot -Directory |
+                    Sort-Object { try { [version]$_.Name } catch { [version]'0.0' } } -Descending |
+                    Select-Object -First 1
+                if ($latestBuildTools) {
+                    $candidate = Join-Path $latestBuildTools.FullName 'apksigner.bat'
+                    if (Test-Path $candidate) {
+                        $apksigner = Get-Item $candidate
+                    }
+                }
+            }
+        }
+    }
+    if (-not $apksigner) {
+        throw 'Could not find apksigner.bat. Install Android SDK Build Tools or add apksigner to PATH.'
+    }
+
+    $certOutput = & $apksigner.Source verify --print-certs $androidApk 2>&1
+    Assert-LastExitCode 'Android APK signature verification'
+    $certLine = $certOutput | Select-String -Pattern 'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
+    if (-not $certLine) {
+        throw 'Could not read the Android signing certificate SHA-256 fingerprint from the release APK.'
+    }
+    $actualAndroidCertSha256 = $certLine.Matches[0].Groups[1].Value.ToLowerInvariant()
+    if ($actualAndroidCertSha256 -ne $expectedAndroidCertSha256) {
+        throw "Android release signing certificate mismatch. Expected $expectedAndroidCertSha256 but got $actualAndroidCertSha256. Refusing to create release artifacts."
+    }
+    Write-Host "Android signing certificate verified: $actualAndroidCertSha256"
+
     $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if (-not $iscc) {
         $isccPath = @(
@@ -83,7 +120,7 @@ try {
     Assert-LastExitCode 'Windows installer build'
 
     New-Item -ItemType Directory -Path $releaseDir | Out-Null
-    Copy-Item (Join-Path $clientRoot 'build\app\outputs\flutter-apk\app-release.apk') (Join-Path $releaseDir 'ClassSync-Android.apk')
+    Copy-Item $androidApk (Join-Path $releaseDir 'ClassSync-Android.apk')
     Copy-Item (Join-Path $repoRoot "dist\ClassSync-Setup-$version.exe") $releaseDir
 
     $artifacts = Get-ChildItem $releaseDir -File | Sort-Object Name
