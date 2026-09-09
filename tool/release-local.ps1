@@ -90,7 +90,13 @@ try {
         throw 'Could not find apksigner.bat. Install Android SDK Build Tools or add apksigner to PATH.'
     }
 
-    $certOutput = & $apksigner.Source verify --print-certs $androidApk 2>&1
+    $apksignerPath = if ($apksigner -is [System.IO.FileInfo]) {
+        $apksigner.FullName
+    }
+    else {
+        $apksigner.Source
+    }
+    $certOutput = & $apksignerPath verify --print-certs $androidApk 2>&1
     Assert-LastExitCode 'Android APK signature verification'
     $certLine = $certOutput | Select-String -Pattern 'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
     if (-not $certLine) {

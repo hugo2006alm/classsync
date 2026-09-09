@@ -160,11 +160,17 @@ class RelayClient {
     required String baseUrl,
     required String token,
     required String firefliesId,
+    String? reprocessPageId,
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '${_base(baseUrl)}${_path(token, '/claims', '/account/claims')}/${Uri.encodeComponent(firefliesId)}',
-        options: Options(headers: _sessionHeaders(token)),
+        options: Options(
+          headers: {
+            ..._sessionHeaders(token),
+            'x-classsync-reprocess-page-id': ?reprocessPageId,
+          },
+        ),
       );
       return RelayClaim(
         acquired: response.data?['acquired'] == true,

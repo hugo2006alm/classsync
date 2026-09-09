@@ -35,7 +35,9 @@ class SecureCredentialStore {
   Future<String?> read(CredentialKey key) => _storage.read(key: key.storageKey);
 
   Future<void> write(CredentialKey key, String value) async {
-    final normalized = value.trim();
+    final normalized = key == CredentialKey.portalPassword
+        ? value
+        : value.trim();
     if (normalized.isEmpty) {
       await delete(key);
       return;

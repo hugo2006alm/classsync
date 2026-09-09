@@ -533,8 +533,9 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     return true;
   }
 
-  Future<void> mergeSyncedJob(SyncJob remote) async {
+  Future<void> mergeSyncedJob(SyncJob remote) => transaction(() async {
     var local = await readJobByFirefliesId(remote.firefliesId);
+    final isNew = local == null;
     if (local == null) {
       await discoverJob(
         id: remote.id,
@@ -546,7 +547,12 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
       );
       local = await readJobByFirefliesId(remote.firefliesId);
     }
-    if (local == null || !remote.updatedAt.isAfter(local.updatedAt)) return;
+    if (local == null) return;
+    if (local.leaseOwner != null &&
+        local.leaseExpiresAt?.isAfter(DateTime.now().toUtc()) == true) {
+      return;
+    }
+    if (!isNew && !remote.updatedAt.isAfter(local.updatedAt)) return;
     await (update(syncJobs)..where((row) => row.id.equals(local!.id))).write(
       SyncJobsCompanion(
         meetingTitle: Value(remote.title),
@@ -571,7 +577,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         leaseExpiresAt: const Value(null),
       ),
     );
-  }
+  });
 
   Future<List<SyncJob>> claimRunnableJobs({
     required String owner,

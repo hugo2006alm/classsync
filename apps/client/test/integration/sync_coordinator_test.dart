@@ -53,6 +53,69 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('late remote failure preserves a replacement worker lease', () async {
+    notion.beforeContent = () async {
+      final job = (await database.readJobs()).single;
+      await database.customStatement(
+        'UPDATE sync_jobs SET lease_owner = ? WHERE id = ?',
+        ['replacement-worker', job.id],
+      );
+    };
+    notion.failNextContentAppend = true;
+    await coordinator.run(SyncReason.manual);
+    final job = (await database.readJobs()).single;
+    expect(job.leaseOwner, 'replacement-worker');
+    expect(job.attemptCount, 0);
+    expect(job.lastErrorType, isNull);
+  });
+
+  test('concurrent lectures retain both sets of extracted tasks', () async {
+    await database.replaceSubjects([notion.subject]);
+    await Future.wait([
+      coordinator.importTranscript(
+        title: 'First lecture',
+        transcriptText: 'A star search',
+      ),
+      coordinator.importTranscript(
+        title: 'Second lecture',
+        transcriptText: 'Breadth first search',
+      ),
+    ]);
+    expect(
+      await database.readAcademicRecords(kind: AcademicRecordKind.lectureTask),
+      hasLength(2),
+    );
+  });
+
+  test(
+    'joined accounts acquire remote claims without a bootstrap token',
+    () async {
+      coordinator = SyncCoordinator(
+        database: database,
+        credentials: _FakeCredentials(withBootstrap: false),
+        fireflies: fireflies,
+        gemini: gemini,
+        notion: notion,
+        relay: relay,
+      );
+      await coordinator.run(SyncReason.manual);
+      expect(relay.claimCalls, greaterThan(0));
+    },
+  );
+
+  test('reprocessing cannot clear a live worker lease', () async {
+    await database.discoverJob(
+      id: 'busy',
+      firefliesId: 'busy',
+      title: 'Busy',
+      meetingDate: DateTime.utc(2026),
+    );
+    await database.claimJob(id: 'busy', owner: 'other-worker');
+    await coordinator.regenerateSummary('busy');
+    expect((await database.readJob('busy'))!.leaseOwner, 'other-worker');
+    expect(gemini.summaryCalls, 0);
+  });
+
   test(
     'Fireflies to Gemini to Notion reaches success and clears transcript',
     () async {
@@ -309,6 +372,7 @@ LectureTranscript _lecture(String id, String title) => LectureTranscript(
 
 class _FakeCredentials extends SecureCredentialStore {
   _FakeCredentials({
+    this.withBootstrap = true,
     this.connections = const [
       FirefliesConnection(
         id: FirefliesConnection.legacyId,
@@ -319,6 +383,7 @@ class _FakeCredentials extends SecureCredentialStore {
   });
 
   final List<FirefliesConnection> connections;
+  final bool withBootstrap;
 
   @override
   Future<List<FirefliesConnection>> readFirefliesConnections() async =>
@@ -326,7 +391,8 @@ class _FakeCredentials extends SecureCredentialStore {
 
   @override
   Future<String?> read(CredentialKey key) async => switch (key) {
-    CredentialKey.relayDeviceToken => '0123456789abcdef0123456789abcdef',
+    CredentialKey.relayDeviceToken =>
+      withBootstrap ? '0123456789abcdef0123456789abcdef' : null,
     CredentialKey.relayDeviceCredential =>
       'device-test.0123456789abcdef0123456789abcdef',
     _ => 'test-key',
@@ -504,6 +570,7 @@ class _FakeNotion extends NotionClient {
   var contentCalls = 0;
   var failNextContentAppend = false;
   var failQuery = false;
+  Future<void> Function()? beforeContent;
 
   @override
   Future<List<AcademicSubject>> querySubjects({
@@ -554,6 +621,7 @@ class _FakeNotion extends NotionClient {
     required String? firefliesUrl,
   }) async {
     contentCalls += 1;
+    await beforeContent?.call();
     if (failNextContentAppend) {
       failNextContentAppend = false;
       throw const IntegrationException(
@@ -581,6 +649,8 @@ class _FakeNotion extends NotionClient {
 }
 
 class _FakeRelay extends RelayClient {
+  var claimCalls = 0;
+  final completedPages = <String, String>{};
   List<RelayEvent> events = const [];
   final acknowledged = <String>[];
 
@@ -589,7 +659,16 @@ class _FakeRelay extends RelayClient {
     required String baseUrl,
     required String token,
     required String firefliesId,
-  }) async => const RelayClaim(acquired: true, completed: false);
+    String? reprocessPageId,
+  }) async {
+    claimCalls++;
+    final page = completedPages[firefliesId];
+    if (page != null && reprocessPageId != page) {
+      return RelayClaim(acquired: false, completed: true, notionPageId: page);
+    }
+    if (reprocessPageId == page) completedPages.remove(firefliesId);
+    return const RelayClaim(acquired: true, completed: false);
+  }
 
   @override
   Future<void> completeClaim({
@@ -597,7 +676,9 @@ class _FakeRelay extends RelayClient {
     required String token,
     required String firefliesId,
     required String notionPageId,
-  }) async {}
+  }) async {
+    completedPages[firefliesId] = notionPageId;
+  }
 
   @override
   Future<List<RelayEvent>> pendingEvents({

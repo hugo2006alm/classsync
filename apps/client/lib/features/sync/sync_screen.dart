@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
+import '../../core/integrations/integration_exception.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
@@ -143,53 +144,90 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   Future<void> _showManualImport(BuildContext context) async {
     final titleController = TextEditingController();
     final transcriptController = TextEditingController();
+    var importing = false;
+    String? importError;
     final jobId = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Import transcript'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(labelText: 'Lecture title'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: transcriptController,
-                  minLines: 8,
-                  maxLines: 16,
-                  decoration: const InputDecoration(
-                    labelText: 'Transcript',
-                    alignLabelWithHint: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Import transcript'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Lecture title',
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: transcriptController,
+                    minLines: 8,
+                    maxLines: 16,
+                    decoration: const InputDecoration(
+                      labelText: 'Transcript',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  if (importError != null)
+                    Text(
+                      importError!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: importing ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: importing
+                  ? null
+                  : () async {
+                      if (transcriptController.text.trim().isEmpty) {
+                        setDialogState(
+                          () => importError = 'Transcript cannot be empty.',
+                        );
+                        return;
+                      }
+                      setDialogState(() {
+                        importing = true;
+                        importError = null;
+                      });
+                      try {
+                        final id = await ref
+                            .read(syncCoordinatorProvider)
+                            .importTranscript(
+                              title: titleController.text,
+                              transcriptText: transcriptController.text,
+                            );
+                        if (context.mounted) Navigator.pop(context, id);
+                      } catch (error) {
+                        if (context.mounted) {
+                          setDialogState(() {
+                            importing = false;
+                            importError = switch (error) {
+                              FormatException() => error.message,
+                              IntegrationException() => error.userMessage,
+                              _ => 'Import failed. Try again.',
+                            };
+                          });
+                        }
+                      }
+                    },
+              child: const Text('Queue import'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (transcriptController.text.trim().isEmpty) return;
-              final id = await ref
-                  .read(syncCoordinatorProvider)
-                  .importTranscript(
-                    title: titleController.text,
-                    transcriptText: transcriptController.text,
-                  );
-              if (context.mounted) Navigator.pop(context, id);
-            },
-            child: const Text('Queue import'),
-          ),
-        ],
       ),
     );
     titleController.dispose();

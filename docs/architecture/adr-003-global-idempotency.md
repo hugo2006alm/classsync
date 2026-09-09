@@ -23,3 +23,12 @@ primitive.
 - Negative: global guarantee depends on relay availability/configuration.
 - Mitigation: local SQLite lease still prevents same-device/process overlap;
   Notion metadata reconciles response loss. Manual imports stay device-local.
+
+## v0.3.9 clarification: explicit reprocessing
+
+A completed claim can reopen only when an authenticated device supplies the
+existing canonical page ID in `x-classsync-reprocess-page-id`. Atomic ownership
+excludes competing reprocessors; the page ID survives reopening. Ordinary
+retries still reconcile completed claims. Remote completion precedes clearing
+the local processing lease, so a failed completion remains recoverable. Local
+workers claim only the jobs they can immediately process.

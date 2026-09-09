@@ -1,2 +1,5 @@
 packages:
   - apps/relay
+
+overrides:
+  sharp: 0.35.4
