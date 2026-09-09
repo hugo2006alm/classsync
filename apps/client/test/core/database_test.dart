@@ -15,6 +15,56 @@ void main() {
 
   tearDown(() => database.close());
 
+  test(
+    'remote snapshot imports a new terminal job instead of queueing it',
+    () async {
+      final date = DateTime.utc(2026);
+      await database.mergeSyncedJob(
+        SyncJob(
+          id: 'remote',
+          firefliesId: 'remote-fireflies',
+          title: 'Published',
+          meetingDate: date,
+          status: SyncJobStatus.success,
+          sourceType: 'fireflies',
+          attemptCount: 1,
+          discoveredAt: date,
+          updatedAt: date,
+          notionPageId: 'published-page',
+        ),
+      );
+      final job = (await database.readJob('remote'))!;
+      expect(job.status, SyncJobStatus.success);
+      expect(job.notionPageId, 'published-page');
+      expect(await database.claimRunnableJobs(owner: 'local'), isEmpty);
+    },
+  );
+
+  test('remote snapshot cannot erase an active local lease', () async {
+    await database.discoverJob(
+      id: 'local',
+      firefliesId: 'meeting',
+      title: 'Local',
+      meetingDate: DateTime.utc(2026),
+    );
+    await database.claimJob(id: 'local', owner: 'worker');
+    final date = DateTime.now().toUtc().add(const Duration(minutes: 1));
+    await database.mergeSyncedJob(
+      SyncJob(
+        id: 'remote-id',
+        firefliesId: 'meeting',
+        title: 'Remote',
+        meetingDate: date,
+        status: SyncJobStatus.queued,
+        sourceType: 'fireflies',
+        attemptCount: 0,
+        discoveredAt: date,
+        updatedAt: date,
+      ),
+    );
+    expect((await database.readJob('local'))!.leaseOwner, 'worker');
+  });
+
   test('active cache filters Done subjects', () async {
     await database.replaceSubjects([
       _subject('active', 'In progress'),

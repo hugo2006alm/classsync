@@ -81,6 +81,12 @@ flutter run -d windows
 flutter run -d android
 ```
 
+Already have a ClassSync account? Choose **Use recovery code** on the welcome
+screen before entering any API keys. Recovery restores the encrypted saved
+configuration, then asks for this device's automation preferences. It requires
+no bootstrap token and preserves the existing Fireflies webhook. The first
+device must have finished setup and synced its configuration.
+
 The first-run wizard links to the public
 [ClassSync Notion template](https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332),
 tests a named Fireflies connection, Gemini, and Notion; discovers the shared

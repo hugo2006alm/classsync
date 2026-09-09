@@ -72,6 +72,7 @@ class NotionClient {
   }) async {
     final results = <NotionDataSource>[];
     String? cursor;
+    final seenCursors = <String>{};
     do {
       final body = <String, dynamic>{
         'page_size': 100,
@@ -96,9 +97,7 @@ class NotionClient {
                 ),
               ),
         );
-        cursor = data['has_more'] == true
-            ? data['next_cursor'] as String?
-            : null;
+        cursor = _nextCursor(data, seenCursors);
       } on DioException catch (error) {
         throw IntegrationException.fromDio('Notion', error);
       }
@@ -112,6 +111,7 @@ class NotionClient {
   }) async {
     final results = <AcademicSubject>[];
     String? cursor;
+    final seenCursors = <String>{};
     do {
       try {
         final response = await _dio.post<Map<String, dynamic>>(
@@ -132,9 +132,7 @@ class NotionClient {
               .whereType<Map<String, dynamic>>()
               .map(subjectFromPage),
         );
-        cursor = data['has_more'] == true
-            ? data['next_cursor'] as String?
-            : null;
+        cursor = _nextCursor(data, seenCursors);
       } on DioException catch (error) {
         throw IntegrationException.fromDio('Notion', error);
       }
@@ -148,6 +146,7 @@ class NotionClient {
   }) async {
     final results = <AcademicSubject>[];
     String? cursor;
+    final seenCursors = <String>{};
     do {
       try {
         final response = await _dio.post<Map<String, dynamic>>(
@@ -161,9 +160,7 @@ class NotionClient {
               .whereType<Map<String, dynamic>>()
               .map(subjectFromPage),
         );
-        cursor = data['has_more'] == true
-            ? data['next_cursor'] as String?
-            : null;
+        cursor = _nextCursor(data, seenCursors);
       } on DioException catch (error) {
         throw IntegrationException.fromDio('Notion', error);
       }
@@ -177,6 +174,7 @@ class NotionClient {
   }) async {
     final results = <NotionSummaryRecord>[];
     String? cursor;
+    final seenCursors = <String>{};
     do {
       try {
         final response = await _dio.post<Map<String, dynamic>>(
@@ -196,9 +194,7 @@ class NotionClient {
                 .whereType<Map<String, dynamic>>()) {
           results.add(summaryFromPage(page));
         }
-        cursor = data['has_more'] == true
-            ? data['next_cursor'] as String?
-            : null;
+        cursor = _nextCursor(data, seenCursors);
       } on DioException catch (error) {
         throw IntegrationException.fromDio('Notion', error);
       }
@@ -537,6 +533,7 @@ class NotionClient {
   }) async {
     final blocks = <Map<String, dynamic>>[];
     String? cursor;
+    final seenCursors = <String>{};
     do {
       final response = await _dio.get<Map<String, dynamic>>(
         '/blocks/${Uri.encodeComponent(pageId)}/children',
@@ -548,7 +545,7 @@ class NotionClient {
         (data['results'] as List<dynamic>? ?? const [])
             .whereType<Map<String, dynamic>>(),
       );
-      cursor = data['has_more'] == true ? data['next_cursor'] as String? : null;
+      cursor = _nextCursor(data, seenCursors);
     } while (cursor != null);
     return blocks;
   }
@@ -925,4 +922,22 @@ String? _richText(dynamic richText) {
       .map((item) => item['plain_text']?.toString() ?? '')
       .join();
   return value.isEmpty ? null : value;
+}
+
+String? _nextCursor(Map<String, dynamic> data, Set<String> seen) {
+  if (data['has_more'] != true) return null;
+  final cursor = data['next_cursor'];
+  if (cursor is! String ||
+      cursor.isEmpty ||
+      !seen.add(cursor) ||
+      seen.length >= 100) {
+    throw const IntegrationException(
+      integration: 'Notion',
+      code: 'pagination_invalid',
+      userMessage:
+          'Notion pagination did not finish safely. Cached data was retained.',
+      retryable: true,
+    );
+  }
+  return cursor;
 }

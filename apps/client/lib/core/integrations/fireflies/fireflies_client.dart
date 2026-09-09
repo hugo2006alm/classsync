@@ -48,6 +48,7 @@ class FirefliesClient {
     ''';
     final items = <FirefliesTranscriptRef>[];
     var skip = 0;
+    final seenIds = <String>{};
     while (true) {
       final data = await _request(apiKey, query, {
         'fromDate': from.toUtc().toIso8601String(),
@@ -57,7 +58,20 @@ class FirefliesClient {
       final page = (data['transcripts'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList();
-      items.addAll(page.map(_refFromJson));
+      final fresh = page
+          .map(_refFromJson)
+          .where((item) => seenIds.add(item.id))
+          .toList();
+      if ((page.isNotEmpty && fresh.isEmpty) || skip >= 5000) {
+        throw const IntegrationException(
+          integration: 'Fireflies',
+          code: 'pagination_invalid',
+          userMessage:
+              'Fireflies pagination did not finish safely. The discovery cursor was retained.',
+          retryable: true,
+        );
+      }
+      items.addAll(fresh);
       if (page.length < 50) break;
       skip += page.length;
     }

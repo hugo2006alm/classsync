@@ -161,12 +161,15 @@ class SyncCoordinator {
       if ((await _database.readActiveSubjects()).isEmpty) rethrow;
     }
 
-    final runnable = await _database.claimRunnableJobs(owner: _owner);
     var processed = 0;
     var failed = 0;
     final workerCount = settings.workerCount.clamp(1, 2);
-    for (var offset = 0; offset < runnable.length; offset += workerCount) {
-      final batch = runnable.skip(offset).take(workerCount);
+    for (var offset = 0; offset < 50; offset += workerCount) {
+      final batch = await _database.claimRunnableJobs(
+        owner: _owner,
+        limit: workerCount,
+      );
+      if (batch.isEmpty) break;
       final results = await Future.wait(
         batch.map((job) => _processJob(job.id, settings)),
       );
@@ -257,17 +260,26 @@ class SyncCoordinator {
   }
 
   Future<void> confirmSubject(String jobId, AcademicSubject subject) async {
-    await _database.learnClassificationCorrection(jobId, subject);
-    await _database.saveManualSubject(jobId, subject);
+    if (!await _prepareIfIdle(jobId, () async {
+      await _database.learnClassificationCorrection(jobId, subject);
+      await _database.saveManualSubject(jobId, subject);
+    })) {
+      return;
+    }
     await _claimAndProcess(jobId, forcePublish: true);
   }
 
   Future<void> retryJob(String jobId) async {
-    await _database.setJobStatus(
+    if (!await _prepareIfIdle(
       jobId,
-      SyncJobStatus.queued,
-      'Manual retry requested',
-    );
+      () => _database.setJobStatus(
+        jobId,
+        SyncJobStatus.queued,
+        'Manual retry requested',
+      ),
+    )) {
+      return;
+    }
     await _claimAndProcess(jobId);
   }
 
@@ -290,9 +302,26 @@ class SyncCoordinator {
         retryable: false,
       );
     }
-    await _database.prepareReprocess(jobId, mode);
+    if (!await _prepareIfIdle(
+      jobId,
+      () => _database.prepareReprocess(jobId, mode),
+    )) {
+      return;
+    }
     await _claimAndProcess(jobId, forcePublish: mode != 'reclassify');
   }
+
+  Future<bool> _prepareIfIdle(String jobId, Future<void> Function() prepare) =>
+      _database.transaction(() async {
+        final job = await _database.readJob(jobId);
+        if (job == null ||
+            (job.leaseOwner != null &&
+                job.leaseExpiresAt?.isAfter(DateTime.now().toUtc()) == true)) {
+          return false;
+        }
+        await prepare();
+        return true;
+      });
 
   Future<bool> _claimAndProcess(
     String jobId, {
@@ -343,6 +372,9 @@ class SyncCoordinator {
           baseUrl: settings.relayBaseUrl!,
           token: relaySession,
           firefliesId: job.firefliesId,
+          reprocessPageId: job.reprocessMode == 'replace'
+              ? job.notionPageId
+              : null,
         );
         if (claim.completed && claim.notionPageId != null) {
           await _database.saveNotionPage(jobId, claim.notionPageId!, null);
@@ -569,13 +601,13 @@ class SyncCoordinator {
             lectureDate: transcript.date,
             firefliesUrl: transcript.firefliesUrl,
           );
+          await _completeRemoteClaim(job, settings, relaySession, existing.id);
           await _database.setJobStatus(
             jobId,
             SyncJobStatus.duplicate,
             'Existing Notion summary linked; duplicate prevented',
             terminal: true,
           );
-          await _completeRemoteClaim(job, settings, relaySession, existing.id);
           if (settings.cleanCompletedPayloads && !settings.keepTranscripts) {
             await _database.clearTranscriptPayload(jobId);
           }
@@ -617,17 +649,17 @@ class SyncCoordinator {
           firefliesUrl: transcript.firefliesUrl,
         );
       }
-      await _database.setJobStatus(
-        jobId,
-        SyncJobStatus.success,
-        'Published to Notion',
-        terminal: true,
-      );
       await _completeRemoteClaim(
         job,
         settings,
         relaySession,
         job.notionPageId!,
+      );
+      await _database.setJobStatus(
+        jobId,
+        SyncJobStatus.success,
+        'Published to Notion',
+        terminal: true,
       );
       if (settings.notificationsEnabled) {
         await _notifier.success(jobId, subject.name);
@@ -657,7 +689,7 @@ class SyncCoordinator {
     SyncJob job,
     AcademicSubject subject,
     LectureSummary summary,
-  ) async {
+  ) => _database.transaction(() async {
     final current = await _database.readAcademicRecords(
       source: AcademicSource.manual,
       kind: AcademicRecordKind.lectureTask,
@@ -712,7 +744,7 @@ class SyncCoordinator {
       kind: AcademicRecordKind.lectureTask,
       records: [...retained, ...generated],
     );
-  }
+  });
 
   Future<void> _renewLease(String jobId) async {
     if (!await _database.renewLease(jobId, _owner)) {
@@ -773,12 +805,20 @@ class SyncCoordinator {
   Future<String?> _relaySession(AppSettings settings) async {
     final baseUrl = settings.relayBaseUrl;
     final bootstrap = await _credentials.read(CredentialKey.relayDeviceToken);
-    if (baseUrl == null || baseUrl.isEmpty || bootstrap?.isNotEmpty != true) {
+    final account = await _credentials.read(
+      CredentialKey.syncAccountAuthSecret,
+    );
+    final device = await _credentials.read(CredentialKey.relayDeviceCredential);
+    if (baseUrl == null ||
+        baseUrl.isEmpty ||
+        (bootstrap?.isNotEmpty != true &&
+            account?.isNotEmpty != true &&
+            device?.isNotEmpty != true)) {
       return null;
     }
     return _relay.ensureDeviceSession(
       baseUrl: baseUrl,
-      bootstrapToken: bootstrap!,
+      bootstrapToken: bootstrap ?? '',
       credentials: _credentials,
     );
   }
@@ -793,6 +833,7 @@ class SyncCoordinator {
       baseUrl: settings.relayBaseUrl!,
       token: session,
       firefliesId: job.firefliesId,
+      reprocessPageId: job.reprocessMode == 'replace' ? job.notionPageId : null,
     );
     if (!claim.acquired) {
       throw const IntegrationException(
@@ -820,21 +861,26 @@ class SyncCoordinator {
   }
 
   Future<void> _recordFailure(String jobId, IntegrationException error) async {
-    final current = await _database.readJob(jobId);
-    final nextAttempt = (current?.attemptCount ?? 0) + 1;
-    final retryable = error.retryable && _retryPolicy.shouldRetry(nextAttempt);
-    final delay =
-        error.retryAfter ??
-        _retryPolicy.delayFor(nextAttempt, jitterSeed: jobId.hashCode);
-    await _database.markFailure(
-      id: jobId,
-      errorType: '${error.integration}.${error.code}',
-      message: SecretRedactor.redact(error.userMessage),
-      retryable: retryable,
-      nextRetryAt: retryable ? DateTime.now().toUtc().add(delay) : null,
-    );
-    if ((await _database.readSettings()).notificationsEnabled) {
-      await _notifier.failure(jobId, error.userMessage);
+    final recorded = await _database.transaction(() async {
+      final current = await _database.readJob(jobId);
+      if (current == null || current.leaseOwner != _owner) return false;
+      final nextAttempt = current.attemptCount + 1;
+      final retryable =
+          error.retryable && _retryPolicy.shouldRetry(nextAttempt);
+      final delay =
+          error.retryAfter ??
+          _retryPolicy.delayFor(nextAttempt, jitterSeed: jobId.hashCode);
+      await _database.markFailure(
+        id: jobId,
+        errorType: '${error.integration}.${error.code}',
+        message: SecretRedactor.redact(error.userMessage),
+        retryable: retryable,
+        nextRetryAt: retryable ? DateTime.now().toUtc().add(delay) : null,
+      );
+      return true;
+    });
+    if (recorded && (await _database.readSettings()).notificationsEnabled) {
+      await _notifier.failure(jobId, SecretRedactor.redact(error.userMessage));
     }
   }
 

@@ -54,6 +54,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _backgroundMobile = true;
   var _joinAccount = false;
   var _joinedExistingAccount = false;
+  var _recoveryEntry = false;
+  List<int> get _flow =>
+      _recoveryEntry ? const [0, 6, 7, 8] : List.generate(_stepCount, (i) => i);
   SyncAccount? _syncAccount;
   AccountWebhookConfig? _webhookConfig;
 
@@ -112,8 +115,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                                 SizedBox(
                                   width: 300,
                                   child: _SetupRail(
-                                    current: _page,
-                                    steps: _steps,
+                                    current: _flow.indexOf(_page),
+                                    steps: _flow.map((i) => _steps[i]).toList(),
                                   ),
                                 ),
                                 Expanded(child: _setupPanel(compact: false)),
@@ -140,7 +143,11 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     ),
     child: Column(
       children: [
-        _SetupHeader(current: _page, total: _stepCount, compact: compact),
+        _SetupHeader(
+          current: _flow.indexOf(_page),
+          total: _flow.length,
+          compact: compact,
+        ),
         const SizedBox(height: 18),
         Expanded(
           child: PageView(
@@ -176,8 +183,28 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     description:
         'Nine short steps connect the tools you already use. ClassSync then sorts completed Fireflies lectures into the correct Notion class and writes detailed notes.',
     child: Column(
-      children: const [
-        _GuideCard(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.devices_rounded),
+            label: const Text('Use recovery code'),
+            onPressed: _busy
+                ? null
+                : () {
+                    setState(() {
+                      _recoveryEntry = true;
+                      _joinAccount = true;
+                      _page = 6;
+                      _error = null;
+                    });
+                    _pageController.jumpToPage(6);
+                  },
+          ),
+        ),
+        const Text('Already have an account? Restore your saved setup.'),
+        const SizedBox(height: 14),
+        const _GuideCard(
           title: 'Have these four things ready',
           items: [
             'A Fireflies API key',
@@ -186,14 +213,14 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             'The ClassSync device API token',
           ],
         ),
-        SizedBox(height: 14),
-        _InfoStrip(
+        const SizedBox(height: 14),
+        const _InfoStrip(
           icon: Icons.check_circle_outline_rounded,
           message:
               'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
         ),
-        SizedBox(height: 10),
-        _InfoStrip(
+        const SizedBox(height: 10),
+        const _InfoStrip(
           icon: Icons.lock_outline_rounded,
           message:
               'Your API keys stay in OS secure storage. The relay receives identifiers and timestamps, never transcript text or summaries.',
@@ -557,7 +584,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   Widget _account() => _StepBody(
     eyebrow: 'YOUR DEVICES',
     icon: Icons.devices_rounded,
-    title: 'Keep each person separate.',
+    title: _recoveryEntry
+        ? 'Restore your study desk.'
+        : 'Keep each person separate.',
     description:
         'One private account connects your own PCs and phone. Other people create their own account, keys, Notion workspace, and queue.',
     child: Column(
@@ -574,25 +603,29 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           ),
           const SizedBox(height: 14),
         ],
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(
-              value: false,
-              icon: Icon(Icons.add_rounded),
-              label: Text('New account'),
-            ),
-            ButtonSegment(
-              value: true,
-              icon: Icon(Icons.devices_rounded),
-              label: Text('Join mine'),
-            ),
-          ],
-          selected: {_joinAccount},
-          onSelectionChanged: _syncAccount == null
-              ? (values) => setState(() => _joinAccount = values.first)
-              : null,
-        ),
+        if (!_recoveryEntry)
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.add_rounded),
+                label: Text('New account'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.devices_rounded),
+                label: Text('Join mine'),
+              ),
+            ],
+            selected: {_joinAccount},
+            onSelectionChanged: _syncAccount == null
+                ? (values) => setState(() => _joinAccount = values.first)
+                : null,
+          ),
         if (_joinAccount && _syncAccount == null) ...[
+          const Text(
+            'Use your recovery code to restore saved API keys and Notion mappings. No setup token needed.',
+          ),
           const SizedBox(height: 14),
           TextField(
             controller: _accountCodeController,
@@ -601,6 +634,15 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               labelText: 'Recovery code from your first device',
               hintText: 'CS1.…',
             ),
+          ),
+          ExpansionTile(
+            title: const Text('Custom relay (optional)'),
+            children: [
+              TextField(
+                controller: _relayUrlController,
+                decoration: const InputDecoration(labelText: 'Relay URL'),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 14),
@@ -705,18 +747,21 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             );
       ref.invalidate(syncAccountProvider);
       if (_joinAccount) {
-        await ref.read(deviceSyncServiceProvider).synchronize();
+        await ref
+            .read(deviceSyncServiceProvider)
+            .restoreConfiguration(baseUrl: baseUrl);
       }
-      final webhook = await client.webhookConfig(
-        baseUrl: baseUrl,
-        account: account,
-      );
+      final webhook = _joinAccount
+          ? null
+          : await client.webhookConfig(baseUrl: baseUrl, account: account);
       if (!mounted) return;
       setState(() {
         _syncAccount = account;
         _joinedExistingAccount = _joinAccount;
         _webhookConfig = webhook;
+        if (_joinAccount) _page = 7;
       });
+      if (_joinAccount) _pageController.jumpToPage(7);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
@@ -777,14 +822,18 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const _ReadyRow(
+            _ReadyRow(
               Icons.mic_none_rounded,
-              'Fireflies connection verified',
+              _joinedExistingAccount
+                  ? 'Fireflies connections restored'
+                  : 'Fireflies connection verified',
             ),
             const SizedBox(height: 12),
-            const _ReadyRow(
+            _ReadyRow(
               Icons.auto_awesome_rounded,
-              'Gemini model verified',
+              _joinedExistingAccount
+                  ? 'Gemini configuration restored'
+                  : 'Gemini model verified',
             ),
             const SizedBox(height: 12),
             const _ReadyRow(
@@ -907,7 +956,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 token: _relayTokenController.text.trim(),
               );
         case 6:
-          if (_syncAccount == null || _webhookConfig == null) {
+          if (_syncAccount == null ||
+              (!_joinedExistingAccount && _webhookConfig == null)) {
             throw const FormatException(
               'Create or join your private ClassSync account first.',
             );
@@ -984,26 +1034,20 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             summariesDataSourceId: _summariesId!,
           );
     }
-    await credentialStore.writeAll({
-      CredentialKey.relayDeviceToken: _relayTokenController.text.trim(),
-      CredentialKey.geminiApiKey: _geminiController.text.trim(),
-      CredentialKey.notionToken: notionToken,
-    });
-    final firefliesConnections = _joinedExistingAccount
-        ? await credentialStore.readFirefliesConnections()
-        : <FirefliesConnection>[];
-    if (!firefliesConnections.any(
-      (item) => item.apiKey == _firefliesController.text.trim(),
-    )) {
-      firefliesConnections.add(
+    if (!_joinedExistingAccount) {
+      await credentialStore.writeAll({
+        CredentialKey.relayDeviceToken: _relayTokenController.text.trim(),
+        CredentialKey.geminiApiKey: _geminiController.text.trim(),
+        CredentialKey.notionToken: notionToken,
+      });
+      await credentialStore.writeFirefliesConnections([
         FirefliesConnection(
           id: _primaryFirefliesId,
           name: _firefliesNameController.text.trim(),
           apiKey: _firefliesController.text.trim(),
         ),
-      );
+      ]);
     }
-    await credentialStore.writeFirefliesConnections(firefliesConnections);
     final restored = _joinedExistingAccount
         ? await ref.read(databaseProvider).readSettings()
         : AppSettings.defaults;
@@ -1050,7 +1094,13 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     if (_page == 0) return;
     setState(() {
       _error = null;
-      _page -= 1;
+      if (_recoveryEntry && _page == 6) {
+        _page = 0;
+        _recoveryEntry = false;
+        _joinAccount = false;
+      } else {
+        _page = _flow[_flow.indexOf(_page) - 1];
+      }
     });
     _pageController.animateToPage(
       _page,
@@ -1327,6 +1377,7 @@ class _SetupFooter extends StatelessWidget {
       4 => 'Save or skip',
       5 => 'Test & continue',
       6 => 'Review setup',
+      7 => 'Continue',
       _ => 'Finish setup',
     };
     return Row(
@@ -1337,18 +1388,25 @@ class _SetupFooter extends StatelessWidget {
             icon: const Icon(Icons.arrow_back_rounded),
             label: const Text('Back'),
           ),
-        const Spacer(),
-        FilledButton.icon(
-          onPressed: busy ? null : onNext,
-          icon: busy
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(
-                  page == 8 ? Icons.check_rounded : Icons.arrow_forward_rounded,
-                ),
-          label: Text(label),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: busy ? null : onNext,
+              icon: busy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      page == 8
+                          ? Icons.check_rounded
+                          : Icons.arrow_forward_rounded,
+                    ),
+              label: Text(label),
+            ),
+          ),
         ),
       ],
     );

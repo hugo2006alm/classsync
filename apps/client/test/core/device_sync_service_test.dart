@@ -20,6 +20,98 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'recovery never uploads empty configuration when no snapshot exists',
+    () async {
+      final client = _SnapshotAccountClient();
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+      await expectLater(
+        service.restoreConfiguration(baseUrl: 'https://relay.test'),
+        throwsFormatException,
+      );
+      expect(client.writes, isEmpty);
+      expect((await database.readSettings()).setupComplete, isFalse);
+    },
+  );
+
+  test(
+    'recovery restores keys and mapping without requiring bootstrap token',
+    () async {
+      final client = _SnapshotAccountClient(
+        remoteConfiguration: {
+          'schemaVersion': 2,
+          'settings': {
+            'displayName': 'Restored user',
+            'notionSubjectsDataSourceId': 'subjects',
+            'notionSummariesDataSourceId': 'summaries',
+          },
+          'credentials': {
+            'fireflies': 'restored-fireflies',
+            'gemini': 'restored-gemini',
+            'notion': 'restored-notion',
+          },
+        },
+      );
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+      await service.restoreConfiguration(baseUrl: 'https://relay.test');
+      expect(
+        await credentials.read(CredentialKey.geminiApiKey),
+        'restored-gemini',
+      );
+      expect(
+        await credentials.read(CredentialKey.notionToken),
+        'restored-notion',
+      );
+      expect(await credentials.read(CredentialKey.relayDeviceToken), isNull);
+      expect(
+        (await database.readSettings()).notionSubjectsDataSourceId,
+        'subjects',
+      );
+      expect((await database.readSettings()).setupComplete, isFalse);
+      expect(client.writes, isEmpty);
+    },
+  );
+
+  test(
+    'recovery rejects malformed Fireflies list before changing settings',
+    () async {
+      final client = _SnapshotAccountClient(
+        remoteConfiguration: {
+          'settings': {
+            'displayName': 'Should not apply',
+            'notionSubjectsDataSourceId': 'subjects',
+            'notionSummariesDataSourceId': 'summaries',
+          },
+          'credentials': {
+            'gemini': 'key',
+            'notion': 'key',
+            'firefliesConnections': ['invalid'],
+          },
+        },
+      );
+      final before = await database.readSettings();
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+      await expectLater(
+        service.restoreConfiguration(baseUrl: 'https://relay.test'),
+        throwsFormatException,
+      );
+      expect((await database.readSettings()).displayName, before.displayName);
+      expect(client.writes, isEmpty);
+    },
+  );
+
+  test(
     'restores account name and named Fireflies keys from snapshot',
     () async {
       final client = _SnapshotAccountClient(

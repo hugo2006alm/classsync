@@ -38,3 +38,11 @@ background execution, notifications, and local retention is not synchronized.
   shared workspaces would require a later authorization model.
 - Snapshot writes use optimistic revisions; concurrent clients merge job
   metadata and retry on the next sync after a conflict.
+
+## v0.3.9 recovery and delivery clarification
+
+Welcome offers account recovery before API-key setup. Recovery reads and
+validates a saved configuration without uploading defaults; finishing setup
+preserves restored secrets. Joined account credentials authorize processing
+without the account-creation bootstrap token. Account push retries use their
+own durable delivery table and cannot fan out through legacy recipients.

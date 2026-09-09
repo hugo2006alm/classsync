@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../../core/database/classsync_database.dart';
+import '../../core/integrations/integration_exception.dart';
 import '../../core/integrations/relay/relay_client.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
@@ -74,17 +75,24 @@ class FirebasePushService {
     final bootstrapToken = await _credentials.read(
       CredentialKey.relayDeviceToken,
     );
+    final accountSecret = await _credentials.read(
+      CredentialKey.syncAccountAuthSecret,
+    );
+    final existingDevice = await _credentials.read(
+      CredentialKey.relayDeviceCredential,
+    );
     if (settings == null ||
         !settings.setupComplete ||
         baseUrl == null ||
         baseUrl.isEmpty ||
-        bootstrapToken == null ||
-        bootstrapToken.isEmpty) {
+        (bootstrapToken?.isNotEmpty != true &&
+            accountSecret?.isNotEmpty != true &&
+            existingDevice?.isNotEmpty != true)) {
       return;
     }
     final deviceToken = await _relay.ensureDeviceSession(
       baseUrl: baseUrl,
-      bootstrapToken: bootstrapToken,
+      bootstrapToken: bootstrapToken ?? '',
       credentials: _credentials,
     );
 
@@ -111,12 +119,29 @@ class FirebasePushService {
     final token =
         _registeredToken ?? await FirebaseMessaging.instance.getToken();
     if (token == null) return;
-    await _relay.registerPushToken(
-      baseUrl: baseUrl,
-      deviceToken: deviceToken,
-      pushToken: token,
-    );
-    _registeredToken = token;
+    try {
+      await _relay.registerPushToken(
+        baseUrl: baseUrl,
+        deviceToken: deviceToken,
+        pushToken: token,
+      );
+      _registeredToken = token;
+    } on IntegrationException catch (error) {
+      if (error.statusCode != 409) rethrow;
+      // Rejoining can create a new relay device identity while FCM retains
+      // the old installation token. Rotate locally instead of taking ownership
+      // of a token registered to another identity.
+      await FirebaseMessaging.instance.deleteToken();
+      _registeredToken = null;
+      final replacement = await FirebaseMessaging.instance.getToken();
+      if (replacement == null) return;
+      await _relay.registerPushToken(
+        baseUrl: baseUrl,
+        deviceToken: deviceToken,
+        pushToken: replacement,
+      );
+      _registeredToken = replacement;
+    }
   }
 
   Future<void> dispose() async {

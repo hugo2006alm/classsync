@@ -9,13 +9,28 @@ the same. Do not uninstall the app or clear its storage before updating. Android
 also requires the update to use the same signing certificate as the installed
 build.
 
-ClassSync opens a nine-step setup guide on its first launch. You need four
+For a new account, ClassSync opens a nine-step setup guide. You need four
 credentials: a Fireflies API key, a Gemini API key, a Notion integration token,
 and the ClassSync device API token.
 
 You do **not** need to enter Firebase credentials, a Firebase project ID,
 Cloudflare account details, or the production relay URL in the app. ClassSync
 generates your account-specific Fireflies signing secret during setup.
+
+## Restore an existing account
+
+Choose **Use recovery code** on Welcome. Enter your own account recovery code;
+for a self-hosted account, expand **Custom relay** and use its existing HTTPS
+URL. ClassSync authenticates, decrypts the saved configuration, and restores
+Fireflies connections, Gemini/Notion keys, and Notion mappings into local secure
+storage/settings. Continue through Automation and Ready. No API-key setup,
+bootstrap token, Notion schema change, or Fireflies webhook reconfiguration is
+required. Portal/Moodle credentials remain device-local and can be connected
+later.
+
+If no complete configuration has been synced, finish setup and sync on the
+first device, then retry. Recovery never replaces a missing remote snapshot
+with the new device's blank defaults. Keep the recovery code private.
 
 ## Before opening ClassSync
 

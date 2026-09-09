@@ -10,11 +10,13 @@
     "db:migrate:local": "wrangler d1 migrations apply classsync-relay --local",
     "db:migrate:remote": "wrangler d1 migrations apply classsync-relay --remote",
     "types": "wrangler types src/worker-configuration.d.ts",
-    "test": "vitest run",
-    "check": "tsc --noEmit && vitest run && wrangler deploy --dry-run --outdir dist"
+    "test": "wrangler deploy --dry-run --outdir dist && vitest run",
+    "check": "tsc --noEmit && pnpm test"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
+    "@types/node": "^22.20.1",
+    "miniflare": "5.20260903.0-alpha",
     "typescript": "latest",
     "vitest": "^4.1.0",
     "wrangler": "latest"

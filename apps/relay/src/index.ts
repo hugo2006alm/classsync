@@ -1,4 +1,4 @@
-import { json, methodNotAllowed, notFound } from "./http";
+import { boundedBody, json, methodNotAllowed, notFound } from "./http";
 import { notifyAccountDevices, notifyDevices, retryPendingDeliveries } from "./firebase";
 import {
   accountWebhookSecret,
@@ -252,20 +252,23 @@ async function registerAccountDevice(
   ) return json({ error: "invalid_payload" }, 400);
   if (request.method === "DELETE") {
     await env.DB.prepare(
-      "DELETE FROM relay_devices WHERE push_token = ? AND account_id = ?",
-    ).bind(value.pushToken, accountId).run();
+      "DELETE FROM relay_devices WHERE push_token = ? AND account_id = ? AND device_id = ?",
+    ).bind(value.pushToken, accountId, deviceId).run();
     return json({ registered: false });
   }
   const id = await sha256(value.pushToken);
   const now = new Date().toISOString();
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `INSERT INTO relay_devices
        (id, push_token, platform, created_at, updated_at, device_id, account_id)
      VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(push_token) DO UPDATE SET platform = excluded.platform,
        updated_at = excluded.updated_at, device_id = excluded.device_id,
-       account_id = excluded.account_id`,
+       account_id = excluded.account_id
+     WHERE relay_devices.account_id = excluded.account_id
+       AND relay_devices.device_id = excluded.device_id`,
   ).bind(id, value.pushToken, value.platform, now, now, deviceId, accountId).run();
+  if ((result.meta.changes ?? 0) !== 1) return json({ error: "registration_not_owned" }, 409);
   return json({ registered: true, id });
 }
 
@@ -313,9 +316,10 @@ async function claimAccountTranscript(
     `UPDATE account_processing_claims
      SET device_id = ?, lease_expires_at = ?, status = 'processing', updated_at = ?
      WHERE account_id = ? AND fireflies_transcript_id = ?
-       AND status != 'completed'
-       AND (device_id = ? OR lease_expires_at <= ?)`,
-  ).bind(deviceId, expires, nowIso, accountId, transcriptId, deviceId, nowIso).run();
+       AND ((status != 'completed' AND (device_id = ? OR lease_expires_at <= ?))
+         OR (status = 'completed' AND notion_page_id = ?))`,
+  ).bind(deviceId, expires, nowIso, accountId, transcriptId, deviceId, nowIso,
+    request.headers.get("x-classsync-reprocess-page-id")).run();
   const claim = await env.DB.prepare(
     `SELECT fireflies_transcript_id, device_id, lease_expires_at, status,
             notion_page_id, updated_at
@@ -345,7 +349,7 @@ async function completeAccountTranscript(
     return json({ error: "invalid_json" }, 400);
   }
   const notionPageId = (body as Record<string, unknown>)?.notionPageId;
-  if (typeof notionPageId !== "string" || notionPageId.length > 128) {
+  if (typeof notionPageId !== "string" || notionPageId.trim().length === 0 || notionPageId.length > 128) {
     return json({ error: "invalid_payload" }, 400);
   }
   const result = await env.DB.prepare(
@@ -426,10 +430,11 @@ async function accountSnapshot(
       return json({ error: "revision_conflict" }, 409);
     }
   } else {
-    await env.DB.prepare(
+    const inserted = await env.DB.prepare(
       `INSERT INTO account_sync_snapshots
        (account_id, scope, revision, ciphertext, nonce, schema_version,
-        updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(account_id, scope) DO NOTHING`,
     ).bind(
       accountId,
       scope,
@@ -440,6 +445,9 @@ async function accountSnapshot(
       now,
       deviceId,
     ).run();
+    if ((inserted.meta.changes ?? 0) !== 1) {
+      return json({ error: "revision_conflict" }, 409);
+    }
   }
   return json({ revision: nextRevision, updatedAt: now });
 }
@@ -468,8 +476,8 @@ async function registerDevice(request: Request, env: Env): Promise<Response> {
     return json({ error: "invalid_payload" }, 400);
   }
   if (request.method === "DELETE") {
-    await env.DB.prepare("DELETE FROM relay_devices WHERE push_token = ?")
-      .bind(value.pushToken)
+    await env.DB.prepare("DELETE FROM relay_devices WHERE push_token = ? AND device_id = ? AND account_id IS NULL")
+      .bind(value.pushToken, deviceId)
       .run();
     return json({ registered: false });
   }
@@ -481,16 +489,19 @@ async function registerDevice(request: Request, env: Env): Promise<Response> {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   const now = new Date().toISOString();
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `INSERT INTO relay_devices (id, push_token, platform, created_at, updated_at, device_id)
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(push_token) DO UPDATE SET
        platform = excluded.platform,
        updated_at = excluded.updated_at,
-       device_id = excluded.device_id`,
+       device_id = excluded.device_id
+     WHERE relay_devices.device_id = excluded.device_id
+       AND relay_devices.account_id IS NULL`,
   )
     .bind(id, value.pushToken, value.platform, now, now, deviceId)
     .run();
+  if ((result.meta.changes ?? 0) !== 1) return json({ error: "registration_not_owned" }, 409);
   return json({ registered: true, id });
 }
 
@@ -595,7 +606,7 @@ async function revokeDevice(request: Request, env: Env): Promise<Response> {
   await env.DB.prepare(
     "UPDATE relay_device_auth SET revoked_at = ?, updated_at = ? WHERE id = ?",
   ).bind(now, now, deviceId).run();
-  await env.DB.prepare("DELETE FROM relay_devices WHERE device_id = ?")
+  await env.DB.prepare("DELETE FROM relay_devices WHERE device_id = ? AND account_id IS NULL")
     .bind(deviceId)
     .run();
   return json({ revoked: true, deviceId });
@@ -626,10 +637,11 @@ async function claimTranscript(
     `UPDATE processing_claims
      SET device_id = ?, lease_expires_at = ?, status = 'processing', updated_at = ?
      WHERE fireflies_transcript_id = ?
-       AND status != 'completed'
-       AND (device_id = ? OR lease_expires_at <= ?)`,
+       AND ((status != 'completed' AND (device_id = ? OR lease_expires_at <= ?))
+         OR (status = 'completed' AND notion_page_id = ?))`,
   )
-    .bind(deviceId, expires, nowIso, transcriptId, deviceId, nowIso)
+    .bind(deviceId, expires, nowIso, transcriptId, deviceId, nowIso,
+      request.headers.get("x-classsync-reprocess-page-id"))
     .run();
   const claim = await env.DB.prepare(
     `SELECT fireflies_transcript_id, device_id, lease_expires_at, status,
@@ -660,7 +672,7 @@ async function completeTranscript(
     return json({ error: "invalid_json" }, 400);
   }
   const notionPageId = (body as Record<string, unknown>)?.notionPageId;
-  if (typeof notionPageId !== "string" || notionPageId.length > 128) {
+  if (typeof notionPageId !== "string" || notionPageId.trim().length === 0 || notionPageId.length > 128) {
     return json({ error: "invalid_payload" }, 400);
   }
   const result = await env.DB.prepare(
@@ -682,6 +694,19 @@ export default {
     context?: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+
+    try {
+      decodeURIComponent(url.pathname);
+    } catch {
+      return json({ error: "invalid_path" }, 400);
+    }
+    if (request.body) {
+      const limit = url.pathname.startsWith("/account/sync/")
+        ? maxSnapshotBytes + 4096 : maxWebhookBytes;
+      const body = await boundedBody(request, limit);
+      if (body === null) return json({ error: "payload_too_large" }, 413);
+      request = new Request(request, { body });
+    }
 
     if (url.pathname === "/health") {
       return request.method === "GET"
@@ -829,7 +854,8 @@ export default {
       .bind(deviceCutoff)
       .run();
     await env.DB.prepare(
-      "DELETE FROM relay_device_auth WHERE revoked_at IS NOT NULL AND updated_at < ?",
+      `DELETE FROM relay_device_auth WHERE revoked_at IS NOT NULL AND updated_at < ?
+       AND NOT EXISTS (SELECT 1 FROM processing_claims WHERE device_id = relay_device_auth.id)`,
     ).bind(deviceCutoff).run();
     const claimCutoff = new Date(now - 180 * 24 * 60 * 60 * 1000).toISOString();
     await env.DB.prepare(

@@ -59,6 +59,65 @@ class DeviceSyncService {
     await synchronize(pushConfiguration: true);
   }
 
+  Future<void> restoreConfiguration({required String baseUrl}) async {
+    final account = await _client.readAccount(_credentials);
+    if (account == null) {
+      throw const FormatException('Join your ClassSync account first.');
+    }
+    final snapshot = await _client.readSnapshot(
+      baseUrl: baseUrl,
+      account: account,
+      scope: 'config',
+    );
+    if (!snapshot.exists) {
+      throw const FormatException(
+        'No saved configuration yet. Sync your first device, then retry recovery.',
+      );
+    }
+    final payload = await _client.decrypt(account, snapshot);
+    final settings = payload['settings'];
+    final credentials = payload['credentials'];
+    var hasFireflies = false;
+    if (credentials is Map) {
+      final connections = credentials['firefliesConnections'];
+      if (connections is List) {
+        hasFireflies =
+            connections.isNotEmpty &&
+            connections.length <= FirefliesConnection.maxConnections &&
+            connections.every((value) => value is Map<String, dynamic>);
+        if (hasFireflies) {
+          for (final value in connections) {
+            FirefliesConnection.fromJson(value as Map<String, dynamic>);
+          }
+        }
+      } else {
+        hasFireflies =
+            credentials['fireflies'] is String &&
+            (credentials['fireflies'] as String).trim().isNotEmpty;
+      }
+    }
+    if (settings is! Map ||
+        credentials is! Map ||
+        settings['notionSubjectsDataSourceId'] is! String ||
+        settings['notionSummariesDataSourceId'] is! String ||
+        (settings['notionSubjectsDataSourceId'] as String).isEmpty ||
+        (settings['notionSummariesDataSourceId'] as String).isEmpty ||
+        credentials['gemini'] is! String ||
+        (credentials['gemini'] as String).isEmpty ||
+        credentials['notion'] is! String ||
+        (credentials['notion'] as String).isEmpty ||
+        !hasFireflies) {
+      throw const FormatException(
+        'Saved setup is incomplete. Finish setup and sync your first device, then retry recovery.',
+      );
+    }
+    await _applyConfiguration(payload);
+    await _credentials.write(
+      CredentialKey.syncConfigRevision,
+      snapshot.revision.toString(),
+    );
+  }
+
   Future<bool> _syncConfiguration({
     required SyncAccount account,
     required String baseUrl,
