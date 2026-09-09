@@ -562,7 +562,9 @@ class _ProgressSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${earned.toStringAsFixed(1)} ECTS confirmed',
+                        history.isEmpty
+                            ? 'No progress data cached'
+                            : '${earned.toStringAsFixed(1)} ECTS confirmed',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Text(
@@ -658,7 +660,9 @@ class _FinanceSection extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${_euro(outstanding)} currently open',
+                        charges.isEmpty
+                            ? 'No finance data cached'
+                            : '${_euro(outstanding)} currently open',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Text(
@@ -1119,6 +1123,7 @@ class _AcademicSearchSectionState
                 width: width,
                 child: DropdownButtonFormField<String?>(
                   initialValue: _subjectId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Subject'),
                   items: [
                     const DropdownMenuItem<String?>(
@@ -1128,7 +1133,11 @@ class _AcademicSearchSectionState
                     ...widget.subjects.map(
                       (subject) => DropdownMenuItem<String?>(
                         value: subject.notionId,
-                        child: Text(subject.name),
+                        child: Text(
+                          subject.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],
@@ -1139,6 +1148,7 @@ class _AcademicSearchSectionState
                 width: width,
                 child: DropdownButtonFormField<String?>(
                   initialValue: _semester,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Semester'),
                   items: [
                     const DropdownMenuItem<String?>(
@@ -1148,7 +1158,11 @@ class _AcademicSearchSectionState
                     ...semesters.map(
                       (semester) => DropdownMenuItem<String?>(
                         value: semester,
-                        child: Text(semester),
+                        child: Text(
+                          semester,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                   ],
@@ -1159,6 +1173,7 @@ class _AcademicSearchSectionState
                 width: width,
                 child: DropdownButtonFormField<AcademicRecordKind?>(
                   initialValue: _kind,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Content type'),
                   items: const [
                     DropdownMenuItem<AcademicRecordKind?>(
@@ -1193,6 +1208,7 @@ class _AcademicSearchSectionState
                 width: width,
                 child: DropdownButtonFormField<int?>(
                   initialValue: _recentDays,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Date'),
                   items: const [
                     DropdownMenuItem<int?>(
@@ -1278,7 +1294,11 @@ class _AcademicSearchSectionState
                   ? Icons.verified_outlined
                   : Icons.notes_rounded,
             ),
-            title: Text(hit.title),
+            title: Text(
+              hit.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
             subtitle: Text(
               hit.excerpt,
               maxLines: 4,

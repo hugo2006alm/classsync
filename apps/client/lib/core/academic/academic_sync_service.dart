@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_hub_actions.dart';
 import '../../domain/academic/academic_models.dart';
+import '../../domain/academic/portal_record_validation.dart';
 import '../database/classsync_database.dart';
 import '../integrations/integration_exception.dart';
 import '../integrations/moodle/moodle_client.dart';
@@ -154,7 +155,7 @@ class AcademicSyncService implements AcademicHubActions {
 
   Future<AcademicSyncResult> _synchronize({required bool force}) async {
     _report();
-    await _discardLegacyMarkup();
+    await repairPortalCache();
     final errors = <String>[];
     final sources = <AcademicSource>{};
     var saved = 0;
@@ -220,38 +221,40 @@ class AcademicSyncService implements AcademicHubActions {
     return AcademicSyncResult(saved: saved, sources: sources, errors: errors);
   }
 
-  Future<void> _discardLegacyMarkup() async {
-    if (await _database.readCursor('academic_markup_cleanup_v1') != null) {
-      return;
-    }
+  Future<void> repairPortalCache() async {
     final records = await _database.readAcademicRecords();
     for (final record in records) {
-      if (record.source != AcademicSource.portal &&
-          record.source != AcademicSource.fuc) {
-        continue;
-      }
-      final text = [
-        record.title,
-        record.payload['subjectName'],
-        record.payload['subjectCode'],
-      ].join(' ').toLowerCase();
-      if (text.contains(r'$(') ||
-          text.contains('menulink') ||
-          text.contains('contentplaceholdermain') ||
-          text.contains('ui-icon-') ||
-          text.contains('cursos departamentos') ||
-          (record.kind == AcademicRecordKind.examRegistration &&
-              RegExp(
-                r'ano letivo:|calendário:|curso:|^unknown · \d{4}-\d{4}',
-              ).hasMatch(text))) {
-        await _notifications.cancelAcademicReminder(record.key);
-        await _database.deleteAcademicRecord(record.key);
+      if (isInvalidPortalRecord(record)) {
+        try {
+          await _notifications.cancelAcademicReminder(record.key);
+        } catch (_) {
+          // Keep the row for cancellation retry; UI/search exclude it meanwhile.
+          continue;
+        }
+        await _database.transaction(() async {
+          await _database.deleteAcademicRecord(record.key);
+          await (_database.delete(
+            _database.academicChangeRecords,
+          )..where((row) => row.recordKey.equals(record.key))).go();
+          final stage = switch (record.kind) {
+            AcademicRecordKind.tuitionCharge => 'finance',
+            AcademicRecordKind.examRegistration => 'exams',
+            AcademicRecordKind.enrollment => 'enrollment',
+            AcademicRecordKind.academicHistory => 'history',
+            _ => null,
+          };
+          if (stage != null) {
+            await (_database.delete(_database.syncCursors)..where(
+                  (row) => row.source.isIn([
+                    'academic_success_$stage',
+                    'academic_attempt_$stage',
+                  ]),
+                ))
+                .go();
+          }
+        });
       }
     }
-    await _database.saveCursor(
-      'academic_markup_cleanup_v1',
-      DateTime.now().toUtc(),
-    );
   }
 
   Future<int> _syncPortal(

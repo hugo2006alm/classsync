@@ -73,6 +73,7 @@ Future<void> main(List<String> arguments) async {
     },
   );
   final settings = await database.readSettings();
+  await container.read(academicSyncServiceProvider).repairPortalCache();
   await configureMobileBackgroundSync(settings);
   if (Platform.isAndroid) {
     await FirebasePushService(

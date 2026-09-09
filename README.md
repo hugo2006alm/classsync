@@ -122,6 +122,12 @@ per-feature cache ages and reprioritizes pending Portal requests when the user
 changes Academic section. See [ISEP Portal details](docs/isep-portal.md) and
 [Moodle details](docs/moodle.md).
 
+Upgrades automatically remove identifiable Portal form/menu records from the
+academic cache on startup, including offline. Valid records and manual tasks
+are preserved. Use Academic **Refresh** to fetch current Portal data; unavailable
+data is shown as uncached. Local search indexes readable academic content and
+excludes those invalid records and internal JSON metadata.
+
 ## Deploy the relay
 
 ```powershell

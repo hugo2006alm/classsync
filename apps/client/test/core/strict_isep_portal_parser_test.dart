@@ -6,6 +6,41 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const parser = StrictIsepPortalParser();
 
+  test('rejects finance form labels even under plausible column headers', () {
+    expect(
+      () => parser.parseTuitionCharges('''<table>
+      <tr><th>Descrição</th><th>Valor</th><th>Prestação</th></tr>
+      <tr><td>Ano Letivo : 2026/2027</td><td>2026/2027</td><td></td></tr>
+      <tr><td>Anual</td><td></td><td></td></tr>
+      </table>''', sourceUrl: 'https://portal.isep.ipp.pt/intranet/finance'),
+      throwsA(isA<IntegrationException>()),
+    );
+  });
+
+  test('academic year is not a monetary amount; unpaid is not paid', () {
+    const html =
+        '''<table><tr><th>Descrição</th><th>Valor</th><th>Vencimento</th><th>Estado</th></tr>
+      <tr><td>Propina</td><td>2026/2027</td><td>15/10/2026</td><td>Por pagar</td></tr></table>''';
+    final charge = parser
+        .parseTuitionCharges(
+          html,
+          sourceUrl: 'https://portal.isep.ipp.pt/payments',
+        )
+        .single;
+    expect(charge.amount, isNull);
+    expect(charge.state, TuitionPaymentState.pending);
+  });
+
+  test('rejects payment form labels as exam registration subjects', () {
+    expect(
+      () => parser.parseExamRegistrations('''<table>
+      <tr><th>UC</th><th>Tipo</th><th>Estado</th></tr>
+      <tr><td>Data da Liquidação (aaaa-mm-dd)</td><td></td><td></td></tr>
+      </table>''', sourceUrl: 'https://portal.isep.ipp.pt/intranet/exams'),
+      throwsA(isA<IntegrationException>()),
+    );
+  });
+
   test(
     'imports student finance grid without conflating document and pending amounts',
     () {
