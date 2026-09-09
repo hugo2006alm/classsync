@@ -92,6 +92,21 @@ sanitized representative fixtures. If required columns disappear or no valid
 rows can be produced, the adapter raises `portal_layout_changed`; ClassSync
 keeps the last complete cache and never saves a partial replacement.
 
+Finance records require a transaction amount or date; exam registrations require
+a reported state, date/window, or recognized exam season. Form labels and menu
+text are rejected even when a table has plausible column headers. Money parsing
+accepts numeric amounts, not academic years such as `2026/2027`; `Por pagar` is
+pending rather than paid.
+
+On startup and before academic sync, cached records with these identifiable
+parsing errors are removed together with their change history and reminders.
+This repair runs offline and is not suppressed by the old one-time cleanup
+marker. Failed reminder cancellation retains the row for retry; UI and search
+exclude it immediately. Affected stage freshness markers are cleared to permit
+a new fetch. Valid records and user-created tasks are preserved. Local search
+uses readable content fields rather than raw JSON, excluding internal IDs, URLs,
+provenance and payment-reference hints from search evidence.
+
 GET requests retry twice after transport failures. Responses are streamed with
 a 2 MiB ceiling. Redirects and discovered links must remain on
 `https://portal.isep.ipp.pt`; cookies are never attached to another host.

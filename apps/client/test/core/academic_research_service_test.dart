@@ -22,6 +22,21 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('search excludes cached Portal form noise and JSON metadata', () async {
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: 'bad',
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.examRegistration,
+        externalId: 'bad',
+        title: 'Morada EXAMPLE DTO',
+        payload: {'subjectName': 'Morada EXAMPLE DTO', 'state': 'unknown'},
+        syncedAt: DateTime.utc(2026),
+      ),
+    );
+    expect(await service.search('DTO'), isEmpty);
+  });
+
   test('keyword search indexes local records and respects filters', () async {
     await database.upsertAcademicRecord(
       AcademicRecord(
@@ -40,6 +55,10 @@ void main() {
       ),
     );
     expect(await service.search('admissible heuristics'), hasLength(1));
+    final hit = (await service.search('admissible')).single;
+    expect(hit.excerpt, isNot(contains('sourceUrl')));
+    expect(hit.excerpt, isNot(contains('{')));
+    expect(await service.search('sourceUrl'), isEmpty);
     expect(
       await service.search('admissible', subjectId: 'another-subject'),
       isEmpty,

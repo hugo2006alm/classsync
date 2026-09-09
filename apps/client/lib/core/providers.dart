@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/academic/academic_models.dart';
 import '../domain/academic/academic_hub_models.dart';
+import '../domain/academic/portal_record_validation.dart';
 import '../domain/academic/academic_hub_actions.dart';
 import '../domain/settings/app_settings.dart';
 import '../domain/settings/fireflies_connection.dart';
@@ -77,7 +78,13 @@ final subjectsProvider = StreamProvider<List<AcademicSubject>>(
 );
 
 final academicRecordsProvider = StreamProvider<List<AcademicRecord>>(
-  (ref) => ref.watch(databaseProvider).watchAcademicRecords(),
+  (ref) => ref
+      .watch(databaseProvider)
+      .watchAcademicRecords()
+      .map(
+        (records) =>
+            records.where((record) => !isInvalidPortalRecord(record)).toList(),
+      ),
 );
 
 final academicChangesProvider = StreamProvider<List<AcademicChangeRow>>(

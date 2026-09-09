@@ -4,6 +4,7 @@ import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
 import '../../../domain/academic/academic_hub_models.dart';
+import '../../../domain/academic/portal_record_validation.dart';
 import '../integration_exception.dart';
 import 'isep_portal_client.dart';
 
@@ -81,6 +82,9 @@ class StrictIsepPortalParser extends IsepPortalParser {
       _filterTables(html, [_subjectHeaders, _examRegistrationHeaders]),
       sourceUrl: sourceUrl,
     );
+    if (values.any((item) => !isValidPortalRegistration(item.toJson()))) {
+      throw _invalidRows('exam registration');
+    }
     return _rejectMarkupNoise(
       values,
       (item) => '${item.subjectCode} ${item.subjectName} ${item.examType}',
@@ -110,6 +114,9 @@ class StrictIsepPortalParser extends IsepPortalParser {
       _filterTables(html, [_tuitionIdentityHeaders, _tuitionEvidenceHeaders]),
       sourceUrl: sourceUrl,
     );
+    if (values.any((item) => !isValidPortalTuition(item.toJson()))) {
+      throw _invalidRows('tuition and payments');
+    }
     return _rejectMarkupNoise(
       values,
       (item) => item.title,
@@ -332,4 +339,14 @@ class StrictIsepPortalParser extends IsepPortalParser {
         lower.contains('border-style') ||
         lower.contains('contentplaceholdermain');
   }
+
+  static IntegrationException _invalidRows(
+    String feature,
+  ) => IntegrationException(
+    integration: 'ISEP Portal',
+    code: 'portal_layout_changed',
+    userMessage:
+        'ISEP Portal $feature contained unrecognized records. No partial data was saved.',
+    retryable: false,
+  );
 }

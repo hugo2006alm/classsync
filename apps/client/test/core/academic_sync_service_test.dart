@@ -41,6 +41,131 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'cache repair preserves valid and user data and retries reminder cancellation',
+    () async {
+      final now = DateTime.now().toUtc();
+      await database.saveCursor('academic_success_finance', now);
+      await database.saveCursor('academic_attempt_finance', now);
+      final bad = AcademicRecord(
+        key: 'bad',
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.tuitionCharge,
+        externalId: 'bad',
+        title: 'Ano Letivo : 2026/2027',
+        payload: {'title': 'Ano Letivo : 2026/2027', 'amount': 20262027.0},
+        syncedAt: now,
+      );
+      await database.upsertAcademicRecord(bad);
+      await database.upsertAcademicRecord(
+        bad.copyWith(payload: {...bad.payload, 'reminderMinutesBefore': 60}),
+      );
+      for (final record in [
+        AcademicRecord(
+          key: 'valid',
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.tuitionCharge,
+          externalId: 'valid',
+          title: 'Propina',
+          payload: const TuitionCharge(
+            id: 'valid',
+            title: 'Propina',
+            state: TuitionPaymentState.paid,
+            amount: 69.7,
+            sourceUrl: 'https://portal.isep.ipp.pt/finance',
+          ).toJson(),
+          syncedAt: now,
+        ),
+        AcademicRecord(
+          key: 'manual',
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: 'manual',
+          title: 'Morada EXAMPLE DTO',
+          payload: {'status': 'completed'},
+          syncedAt: now,
+        ),
+        AcademicRecord(
+          key: 'notice',
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.portalNotification,
+          externalId: 'notice',
+          title: 'Important notice ' * 30,
+          payload: {'read': true},
+          syncedAt: now,
+        ),
+      ]) {
+        await database.upsertAcademicRecord(record);
+      }
+      notifications.failCancel = true;
+      await service.repairPortalCache();
+      expect(await database.readAcademicRecord('bad'), isNotNull);
+      notifications.failCancel = false;
+      await service.repairPortalCache();
+      await service.repairPortalCache();
+      expect(
+        (await database.readAcademicRecords())
+            .map((record) => record.key)
+            .toSet(),
+        {'valid', 'manual', 'notice'},
+      );
+      expect(
+        (await database.readAcademicRecord('manual'))!.payload['status'],
+        'completed',
+      );
+      expect((await database.watchAcademicChanges().first), isEmpty);
+      expect(await database.readCursor('academic_success_finance'), isNull);
+      expect(await database.readCursor('academic_attempt_finance'), isNull);
+      expect(notifications.cancelled, ['bad']);
+    },
+  );
+
+  test(
+    'cleans screenshot-shaped cached noise even after v1 cleanup and offline',
+    () async {
+      credentials = _MemoryCredentials({});
+      service = AcademicSyncService(
+        database: database,
+        credentials: credentials,
+        portal: portal,
+        moodle: moodle,
+        notifications: notifications,
+      );
+      await database.saveCursor(
+        'academic_markup_cleanup_v1',
+        DateTime.now().toUtc(),
+      );
+      for (final entry in {
+        'year': (AcademicRecordKind.tuitionCharge, 'Ano Letivo : 2026/2027'),
+        'address': (AcademicRecordKind.examRegistration, 'Morada EXAMPLE DTO'),
+        'form': (
+          AcademicRecordKind.examRegistration,
+          'Data da Liquidação (aaaa-mm-dd)',
+        ),
+      }.entries) {
+        await database.upsertAcademicRecord(
+          AcademicRecord(
+            key: entry.key,
+            source: AcademicSource.portal,
+            kind: entry.value.$1,
+            externalId: entry.key,
+            title: entry.value.$2,
+            payload: {
+              'title': entry.value.$2,
+              'state': 'unknown',
+              'subjectName': entry.value.$2,
+              if (entry.key == 'year') 'amount': 20262027.0,
+            },
+            syncedAt: DateTime.utc(2026),
+          ),
+        );
+      }
+      await service.synchronize();
+      expect(await database.readAcademicRecords(), isEmpty);
+      expect(notifications.cancelled, containsAll(['year', 'address', 'form']));
+    },
+  );
+
+  test(
     'syncs, joins, maps, and incrementally merges academic sources',
     () async {
       final first = await service.synchronize();
@@ -474,6 +599,7 @@ class _FakeMoodle extends MoodleClient {
 }
 
 class _FakeNotifications extends ClassSyncNotificationService {
+  bool failCancel = false;
   final scheduled = <String>[];
   final cancelled = <String>[];
   final shown = <String>[];
@@ -493,6 +619,7 @@ class _FakeNotifications extends ClassSyncNotificationService {
 
   @override
   Future<void> cancelAcademicReminder(String id) async {
+    if (failCancel) throw StateError('Notification service unavailable');
     cancelled.add(id);
   }
 

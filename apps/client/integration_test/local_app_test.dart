@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import '../test/support/academic_qa.dart';
 
 class _EmptyCredentials extends SecureCredentialStore {
   @override
@@ -22,6 +23,7 @@ void main() {
     (tester) async {
       final database = ClassSyncDatabase(NativeDatabase.memory());
       await database.initialize();
+      await seedAcademicQa(database);
       await database.saveSettings(
         AppSettings.defaults.copyWith(
           setupComplete: true,
@@ -35,6 +37,12 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(database),
           credentialStoreProvider.overrideWithValue(_EmptyCredentials()),
+          academicConnectionStateProvider.overrideWith(
+            (ref) async => const AcademicConnectionState(
+              portalConfigured: true,
+              moodleConfigured: false,
+            ),
+          ),
         ],
       );
       await tester.pumpWidget(
@@ -56,6 +64,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: label);
       }
+      await tester.tap(find.text('Academic').first);
+      await tester.pumpAndSettle();
+      await verifyAcademicTabs(tester);
       await tester.tap(find.text('Sync').first);
       await tester.pumpAndSettle();
       expect(find.text('No transcripts discovered yet'), findsOneWidget);

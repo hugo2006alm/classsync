@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_models.dart';
+import '../../domain/academic/portal_record_validation.dart';
 import '../database/classsync_database.dart';
 import '../integrations/gemini/gemini_client.dart';
 import '../security/secure_credential_store.dart';
@@ -34,6 +35,7 @@ class AcademicResearchService {
     final hits = <AcademicSearchHit>[];
     final records = await _database.readAcademicRecords();
     for (final record in records) {
+      if (isInvalidPortalRecord(record)) continue;
       if (subjectId != null && record.subjectId != subjectId) continue;
       if (subjectIds != null && !subjectIds.contains(record.subjectId)) {
         continue;
@@ -41,7 +43,7 @@ class AcademicResearchService {
       if (kinds != null && !kinds.contains(record.kind)) continue;
       if (from != null && record.startsAt?.isBefore(from) == true) continue;
       if (to != null && record.startsAt?.isAfter(to) == true) continue;
-      final body = '${record.title}\n${jsonEncode(record.payload)}';
+      final body = '${record.title}\n${_readableContent(record.payload)}';
       final score = _score(terms, body, title: record.title);
       if (score == 0) continue;
       hits.add(
@@ -69,7 +71,7 @@ class AcademicResearchService {
         if (summary == null && transcript == null) continue;
         final body = [
           job.title,
-          ?summary,
+          if (summary != null) _readableContent(jsonDecode(summary)),
           // A transcript participates only while local retention has kept it.
           if (transcript != null)
             LectureTranscript.fromStoredJson(transcript).plainText,
@@ -151,6 +153,83 @@ class AcademicResearchService {
       ).allMatches(normalizedBody).length;
     }
     return score;
+  }
+
+  // Only human-facing content becomes local/remote evidence. Never index JSON
+  // field names, IDs, URLs, internal state, provenance or payment references.
+  static const _contentFields = {
+    'title',
+    'name',
+    'subjectName',
+    'subjectCode',
+    'description',
+    'content',
+    'text',
+    'context',
+    'objectives',
+    'syllabus',
+    'bibliography',
+    'lecturers',
+    'teachingMethods',
+    'assessmentMethods',
+    'learningOutcomes',
+    'workload',
+    'sections',
+    'keyPoints',
+    'conclusions',
+    'actionItems',
+    'supportingSegment',
+    'examples',
+    'definitions',
+    'concepts',
+    'questions',
+    'answer',
+    'summary',
+    'topics',
+    'details',
+    'reasoning',
+    'formula',
+    'components',
+    'academicYear',
+    'semester',
+    'academicStatus',
+    'courseContext',
+    'location',
+    'room',
+    'value',
+    'ects',
+    'amount',
+    'outstandingAmount',
+    'installment',
+    'examType',
+    'body',
+    'message',
+    'notes',
+    'sourceLectureTitle',
+    'code',
+    'formulas',
+    'examHints',
+    'teacherEmphasis',
+    'importantDetails',
+    'questionsAndAnswers',
+    'assignmentsAndDeadlines',
+    'uncertainties',
+    'tags',
+  };
+
+  static String _readableContent(dynamic value) {
+    if (value is String || value is num) return value.toString();
+    if (value is List) {
+      return value.map(_readableContent).where((v) => v.isNotEmpty).join('\n');
+    }
+    if (value is Map) {
+      return value.entries
+          .where((entry) => _contentFields.contains(entry.key))
+          .map((entry) => _readableContent(entry.value))
+          .where((v) => v.isNotEmpty)
+          .join('\n');
+    }
+    return '';
   }
 
   static String _excerpt(String body, Set<String> terms) {

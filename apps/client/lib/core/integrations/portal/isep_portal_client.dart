@@ -1486,24 +1486,20 @@ class IsepPortalParser {
 
   static double? _money(String value) {
     var compact = value
-        .replaceAll(RegExp(r'[^0-9,.-]'), '')
-        .replaceAll(RegExp(r'(?<=-)\.'), '');
-    if (compact.isEmpty) return null;
-    if (compact.contains(',') && compact.contains('.')) {
+        .replaceAll(RegExp(r'€|\bEUR\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), '');
+    if (RegExp(r'^-?\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$').hasMatch(compact)) {
       compact = compact.replaceAll('.', '').replaceAll(',', '.');
-    } else if (compact.contains(',')) {
+    } else if (RegExp(r'^-?\d+(?:,\d{1,2})?$').hasMatch(compact)) {
       compact = compact.replaceAll(',', '.');
+    } else if (!RegExp(r'^-?\d+\.\d{1,2}$').hasMatch(compact)) {
+      return null;
     }
     return double.tryParse(compact);
   }
 
   static TuitionPaymentState _paymentState(String value) {
     final normalized = _normalize(value);
-    if (normalized.contains('liquid') ||
-        normalized.contains('pag') ||
-        normalized.contains('regulariz')) {
-      return TuitionPaymentState.paid;
-    }
     if (normalized.contains('anulad') || normalized.contains('cancel')) {
       return TuitionPaymentState.cancelled;
     }
@@ -1513,8 +1509,17 @@ class IsepPortalParser {
     if (normalized.contains('parcial')) return TuitionPaymentState.partial;
     if (normalized.contains('pend') ||
         normalized.contains('abert') ||
+        normalized.contains('por pagar') ||
+        normalized.contains('nao pag') ||
+        normalized.contains('nao liquid') ||
         normalized.contains('pagamento')) {
       return TuitionPaymentState.pending;
+    }
+    if (normalized.contains('liquid') ||
+        normalized.contains('pago') ||
+        normalized.contains('paga') ||
+        normalized.contains('regulariz')) {
+      return TuitionPaymentState.paid;
     }
     return TuitionPaymentState.unknown;
   }
