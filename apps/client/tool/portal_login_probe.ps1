@@ -10,23 +10,29 @@ $form.Text = 'ClassSync — local Portal login test'
 $form.Size = New-Object System.Drawing.Size(620,570)
 $form.StartPosition = 'CenterScreen'
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "Test Portal login directly from ClassSync code.`r`nPassword goes only to ISEP. No password saved or logged."
-$label.SetBounds(20,15,430,45)
+$label.Text = "Test Portal login and timetable directly from ClassSync code.`r`nPassword goes only to ISEP. No password, schedule content, or cookies are saved or logged."
+$label.SetBounds(20,15,550,55)
+$userLabel = New-Object System.Windows.Forms.Label
+$userLabel.Text = 'Portal username or ISEP email'
+$userLabel.SetBounds(20,72,220,20)
 $userBox = New-Object System.Windows.Forms.TextBox
-$userBox.SetBounds(20,70,420,25)
+$userBox.SetBounds(20,92,420,25)
+$passLabel = New-Object System.Windows.Forms.Label
+$passLabel.Text = 'Password'
+$passLabel.SetBounds(20,122,100,20)
 $passBox = New-Object System.Windows.Forms.TextBox
 $passBox.UseSystemPasswordChar = $true
-$passBox.SetBounds(20,105,420,25)
+$passBox.SetBounds(20,142,420,25)
 $button = New-Object System.Windows.Forms.Button
 $button.Text = 'Test login'
-$button.SetBounds(20,145,160,32)
+$button.SetBounds(20,180,160,32)
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.SetBounds(190,145,250,45)
+$statusLabel.SetBounds(190,180,350,32)
 $outputBox = New-Object System.Windows.Forms.TextBox
 $outputBox.Multiline = $true
 $outputBox.ReadOnly = $true
 $outputBox.ScrollBars = 'Vertical'
-$outputBox.SetBounds(20,200,560,300)
+$outputBox.SetBounds(20,225,560,275)
 $button.Add_Click({
   $button.Enabled = $false
   $statusLabel.Text = 'Testing…'
@@ -51,10 +57,11 @@ $button.Add_Click({
       $report = $result | ConvertFrom-Json
       $outputBox.Text = $report | ConvertTo-Json -Depth 8
       $statusLabel.Text = "Result: $($report.result)"
+      $report | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 (Join-Path $env:TEMP 'classsync-portal-probe-result.json')
     } else { $statusLabel.Text = 'Test failed to run. Return to Codex.' }
   } catch { $statusLabel.Text = 'Test failed to run. Return to Codex.' }
   $button.Enabled = $true
 })
-$form.Controls.AddRange(@($label,$userBox,$passBox,$button,$statusLabel,$outputBox))
+$form.Controls.AddRange(@($label,$userLabel,$userBox,$passLabel,$passBox,$button,$statusLabel,$outputBox))
 $form.AcceptButton = $button
 [void]$form.ShowDialog()
