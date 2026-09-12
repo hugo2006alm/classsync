@@ -77,25 +77,24 @@ Future<void> seedAcademicQa(ClassSyncDatabase database) async {
 }
 
 Future<void> verifyAcademicTabs(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('More academic tools'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Finance').last);
+  Future<void> select(String label) async {
+    final chip = find.widgetWithText(ChoiceChip, label);
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+  }
+
+  await select('Finance');
   await tester.pumpAndSettle();
   expect(find.text('Propina'), findsOneWidget);
   expect(find.textContaining('120,50'), findsWidgets);
   expect(find.textContaining('Ano Letivo :'), findsNothing);
   expect(tester.takeException(), isNull);
-  await tester.tap(find.byTooltip('More academic tools'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Progress').last);
-  await tester.pumpAndSettle();
+  await select('Grades & progress');
   expect(find.text('No progress data cached'), findsOneWidget);
   expect(find.textContaining('Data da Liquidação'), findsNothing);
   expect(find.textContaining('Morada EXAMPLE'), findsNothing);
-  await tester.tap(find.byTooltip('More academic tools'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Search & ask').last);
-  await tester.pumpAndSettle();
+  await select('Search & ask');
   await tester.enterText(
     find.byWidgetPredicate((widget) => widget is EditableText),
     'DTO',

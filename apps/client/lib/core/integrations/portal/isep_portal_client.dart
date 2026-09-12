@@ -195,7 +195,10 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<TimetableSlot>> getTimetable() async {
-    final page = await _featurePage(const ['horario', 'ver horario']);
+    final page = await _featurePage(const [
+      'horario',
+      'ver horario',
+    ], preferredHrefContains: 'ver_horario/ver_horario.aspx');
     return _parser.parseTimetable(page.html, sourceUrl: page.url);
   }
 
@@ -243,7 +246,7 @@ class IsepPortalClient implements PortalAdapter {
   @override
   Future<List<GradeComponent>> getGrades() async {
     if (_hasStudentPage) {
-      final page = await _studentData('getStudentFileEvent');
+      final page = await _studentData('getPartialGradesEvent');
       return _parser.parseGrades(page.html, sourceUrl: page.url);
     }
     final page = await _featurePage(const [
@@ -314,17 +317,13 @@ class IsepPortalClient implements PortalAdapter {
 
   @override
   Future<List<TuitionCharge>> getTuitionCharges() async {
-    if (_hasStudentPage) {
-      final page = await _studentData('getDividas');
-      return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
-    }
     final page = await _featurePage(const [
       'situação financeira',
       'situacao financeira',
       'propinas',
       'pagamentos',
       'emolumentos',
-    ]);
+    ], preferredPath: 'propinas/pedidorefmb.aspx');
     return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
   }
 
@@ -342,6 +341,7 @@ class IsepPortalClient implements PortalAdapter {
     const allowed = {
       'getDividas',
       'getStudentFileEvent',
+      'getPartialGradesEvent',
       'getDisciplinesEvent',
     };
     if (!allowed.contains(method)) throw ArgumentError.value(method);
@@ -377,7 +377,15 @@ class IsepPortalClient implements PortalAdapter {
         ),
       );
       final bytes = await readBoundedResponse(response.data, response.headers);
-      final data = jsonDecode(utf8.decode(bytes));
+      late final String body;
+      try {
+        body = utf8.decode(bytes);
+      } on FormatException {
+        // The legacy student methods return JSON framed as Latin-1 whenever
+        // academic names contain bytes that are invalid UTF-8.
+        body = latin1.decode(bytes);
+      }
+      final data = jsonDecode(body);
       if (data is! Map || data['d'] is! String) throw const FormatException();
       return _pageCache[method] = PortalDocument(
         url: page.url,
@@ -395,7 +403,11 @@ class IsepPortalClient implements PortalAdapter {
     }
   }
 
-  Future<PortalDocument> _featurePage(List<String> labels) async {
+  Future<PortalDocument> _featurePage(
+    List<String> labels, {
+    String? preferredPath,
+    String? preferredHrefContains,
+  }) async {
     final dashboard = _dashboard;
     if (dashboard == null) {
       throw const IntegrationException(
@@ -408,7 +420,17 @@ class IsepPortalClient implements PortalAdapter {
     final normalizedLabels = labels.map(_normalize).toList();
     final links = dashboard.querySelectorAll('a[href]');
     Element? chosen;
+    if (preferredHrefContains != null) {
+      chosen = links.firstWhere(
+        (element) => (element.attributes['href'] ?? '').toLowerCase().contains(
+          preferredHrefContains.toLowerCase(),
+        ),
+        orElse: () => Element.tag('a'),
+      );
+      if (chosen.attributes['href'] == null) chosen = null;
+    }
     for (final label in normalizedLabels) {
+      if (chosen != null) break;
       for (final element in links) {
         final names = [
           element.text,
@@ -433,7 +455,7 @@ class IsepPortalClient implements PortalAdapter {
           ),
           orElse: () => Element.tag('a'),
         );
-    final href = link.attributes['href'];
+    final href = preferredPath ?? link.attributes['href'];
     if (href == null || href.isEmpty) {
       throw IntegrationException(
         integration: 'ISEP Portal',
@@ -445,9 +467,11 @@ class IsepPortalClient implements PortalAdapter {
     }
     try {
       final resolved = _portalUri(
-        (_dashboardUrl ?? Uri.parse(_dio.options.baseUrl))
-            .resolve(href)
-            .toString(),
+        preferredPath != null
+            ? href
+            : (_dashboardUrl ?? Uri.parse(_dio.options.baseUrl))
+                  .resolve(href)
+                  .toString(),
       );
       if (_pageCache[resolved.toString()] case final cached?) return cached;
       final response = await _request(resolved.toString());
@@ -771,30 +795,68 @@ class IsepPortalParser {
         final end = date('end');
         final title = html_parser.parseFragment(literal('title'));
         final body = html_parser.parseFragment(literal('body'));
-        final cells = title.querySelectorAll('td');
-        final subject = cells.length >= 2
-            ? cells.last.text.trim()
-            : title.text!.trim();
+        final footer = html_parser.parseFragment(literal('footer'));
+        final fragments = [title, body, footer];
+        final subjectLink = _firstTitledLink(fragments, const [
+          'disciplina',
+          'unidade curricular',
+        ]);
+        final fallbackSubject = title
+            .querySelectorAll('td')
+            .where((cell) => cell.querySelector('label') == null)
+            .map((cell) => _compactText(cell.text))
+            .firstWhere((text) => text.isNotEmpty, orElse: () => '');
+        final subject = _compactText(
+          subjectLink?.text ?? fallbackSubject.ifEmpty(title.text ?? ''),
+        );
         if (start == null ||
             end == null ||
             !end.isAfter(start) ||
             subject.isEmpty) {
           return _requireParsed([], 'timetable');
         }
-        final type = title.querySelector('label')?.text.trim();
+        final titleText = _compactText(title.text ?? '');
+        final type = _nullable(
+          titleText.startsWith(subject)
+              ? titleText.substring(subject.length).trim()
+              : title.querySelector('label')?.text.trim() ?? '',
+        );
         final season = body.querySelector('label')?.text.trim();
-        final rooms = body
-            .querySelectorAll('a[href]')
+        final links = fragments
+            .expand((fragment) => fragment.querySelectorAll('a[href]'))
+            .toList();
+        final rooms = links
             .where(
               (a) =>
+                  _normalize(a.attributes['title'] ?? '').contains('sala') ||
                   Uri.tryParse(
-                    a.attributes['href']!,
-                  )?.queryParameters.containsKey('room') ==
-                  true,
+                        a.attributes['href']!,
+                      )?.queryParameters.containsKey('room') ==
+                      true,
             )
             .map((a) => a.text.trim())
             .where((text) => text.isNotEmpty)
             .toSet();
+        final classLinks = links
+            .where(
+              (link) =>
+                  Uri.tryParse(
+                    link.attributes['href']!,
+                  )?.queryParameters.containsKey('class') ==
+                  true,
+            )
+            .toList();
+        final classLink = classLinks.isEmpty ? null : classLinks.first;
+        final lecturerLink = _firstTitledLink(fragments, const [
+          'docente',
+          'professor',
+        ]);
+        final lecturer = _compactText(
+          lecturerLink?.text ??
+              _labeledText(body.text ?? '', const ['docente', 'professor']) ??
+              _firstUnclassifiedBold(body, classLink)?.text ??
+              '',
+        );
         result.add(
           TimetableSlot(
             externalId: '$subject:${start.toIso8601String()}:${type ?? ''}',
@@ -803,7 +865,9 @@ class IsepPortalParser {
             start: start,
             end: end,
             lessonType: [?type, ?season].join(' · '),
+            className: _nullable(_compactText(classLink?.text ?? '')),
             room: rooms.isEmpty ? null : rooms.join(' · '),
+            lecturer: _nullable(lecturer),
             sourceUrl: sourceUrl,
             exceptional: type == 'Exame',
           ),
@@ -877,11 +941,59 @@ class IsepPortalParser {
         ),
       );
     }
+    if (RegExp(r'events\s*:\s*\[\s*\]').hasMatch(html)) return const [];
     return _requireParsed(
       _dedupe(result, (item) => item.externalId),
       'timetable',
     );
   }
+
+  static Element? _firstTitledLink(
+    Iterable<DocumentFragment> fragments,
+    List<String> titles,
+  ) {
+    for (final fragment in fragments) {
+      for (final link in fragment.querySelectorAll('a')) {
+        final title = _normalize(link.attributes['title'] ?? '');
+        if (titles.any((candidate) => title.contains(candidate))) return link;
+      }
+    }
+    return null;
+  }
+
+  static String? _labeledText(String value, List<String> labels) {
+    for (final label in labels) {
+      final match = RegExp(
+        '$label\\s*:?\\s*([^|·,\\r\\n]+)',
+        caseSensitive: false,
+      ).firstMatch(value);
+      final candidate = match?.group(1)?.trim();
+      if (candidate != null && candidate.isNotEmpty) return candidate;
+    }
+    return null;
+  }
+
+  static Element? _firstUnclassifiedBold(
+    DocumentFragment fragment,
+    Element? classLink,
+  ) {
+    for (final element in fragment.querySelectorAll('b,strong')) {
+      if (classLink == null || !_isInside(element, classLink)) return element;
+    }
+    return null;
+  }
+
+  static bool _isInside(Element element, Element ancestor) {
+    Element? current = element;
+    while (current != null) {
+      if (identical(current, ancestor)) return true;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  static String _compactText(String value) =>
+      value.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   List<EvaluationEvent> parseExams(String html, {required String sourceUrl}) {
     final result = <EvaluationEvent>[];
@@ -995,6 +1107,13 @@ class IsepPortalParser {
     required String sourceUrl,
     bool forceHistorical = false,
   }) {
+    if (!forceHistorical) {
+      final partial = _partialGrades(html, sourceUrl: sourceUrl);
+      if (partial.isNotEmpty) return partial;
+    } else {
+      final historical = _historicalGrades(html, sourceUrl: sourceUrl);
+      if (historical.isNotEmpty) return historical;
+    }
     final result = <GradeComponent>[];
     for (final row in _tableRows(html)) {
       final name = _value(row, const [
@@ -1065,6 +1184,206 @@ class IsepPortalParser {
       result,
       forceHistorical ? 'academic history' : 'grades',
     );
+  }
+
+  static List<GradeComponent> _partialGrades(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final document = html_parser.parse(html);
+    final links = document.querySelectorAll('a[href]').where((link) {
+      final href = link.attributes['href'] ?? '';
+      return RegExp(
+        r'^\s*javascript:\s*detailsDialog\s*\(\s*\{',
+        caseSensitive: false,
+      ).hasMatch(href);
+    }).toList();
+    if (links.isEmpty || links.length > 500) return const [];
+
+    final result = <GradeComponent>[];
+    for (final link in links) {
+      final source = link.attributes['href'] ?? '';
+      if (source.length > 20000) return const [];
+      final subject = _jsString(source, 'uc');
+      final plan = _jsString(source, 'pl');
+      final evaluation = _jsString(source, 'te');
+      final components = RegExp(
+        r'\btrs\s*:\s*\[([\s\S]*?)\]\s*,',
+      ).firstMatch(source)?.group(1);
+      if (subject.isEmpty || components == null) continue;
+      final row = _ancestor(link, 'tr');
+      final rowCells = row?.children
+          .where((cell) => cell.localName == 'td')
+          .toList();
+      final code = rowCells == null || rowCells.isEmpty
+          ? ''
+          : rowCells.first.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final safeCode = code.length <= 32 && !code.contains(RegExp(r'\s{2,}'))
+          ? code
+          : '';
+      final academicYear = RegExp(
+        r'\b\d{4}\s*[/\-]\s*\d{4}\b',
+      ).firstMatch(plan)?.group(0)?.replaceAll(RegExp(r'\s+'), '');
+      for (final match in RegExp(r'\{([^{}]*)\}').allMatches(components)) {
+        final object = match.group(1)!;
+        final name = _jsString(object, 'nct').ifEmpty(evaluation);
+        final value = _number(_jsString(object, 'g'));
+        if (name.isEmpty || value == null) continue;
+        final identity = [
+          _normalize(safeCode.ifEmpty(subject)),
+          academicYear ?? _normalize(plan),
+          _normalize(evaluation),
+          _normalize(name),
+        ].join(':');
+        result.add(
+          GradeComponent(
+            externalId: identity,
+            subjectCode: safeCode,
+            subjectName: subject,
+            name: name,
+            value: value,
+            academicYear: academicYear,
+            isFinal: _normalize(name).contains('final'),
+            isHistorical: false,
+            source: GradeValueSource.officialPortal,
+            sourceUrl: sourceUrl,
+          ),
+        );
+      }
+    }
+    return _dedupe(result, (item) => item.externalId);
+  }
+
+  static List<GradeComponent> _historicalGrades(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final document = html_parser.parse(html);
+    final result = <GradeComponent>[];
+    var tableIndex = 0;
+    for (final table in document.querySelectorAll('table')) {
+      if (table.querySelector('table') != null) continue;
+      final rows = _directRows(table);
+      if (rows.length < 2) continue;
+      var headerIndex = -1;
+      var subjectIndex = -1;
+      var gradeIndex = -1;
+      var ectsIndex = -1;
+      var dateIndex = -1;
+      for (var index = 0; index < rows.length && index < 4; index++) {
+        final headers = _directCells(
+          rows[index],
+        ).map((cell) => _normalize(cell.text)).toList();
+        final subject = headers.indexWhere(
+          (header) => header == 'unidade curricular' || header == 'disciplina',
+        );
+        final grade = headers.indexWhere(
+          (header) => header == 'nota' || header == 'classificacao',
+        );
+        final ects = headers.indexWhere((header) => header.contains('ects'));
+        if (subject >= 0 && grade >= 0 && ects >= 0) {
+          headerIndex = index;
+          subjectIndex = subject;
+          gradeIndex = grade;
+          ectsIndex = ects;
+          dateIndex = headers.indexWhere((header) => header == 'data');
+          break;
+        }
+      }
+      if (headerIndex < 0) continue;
+      tableIndex++;
+      for (final row in rows.skip(headerIndex + 1)) {
+        final cells = _directCells(row).toList();
+        final requiredIndex = [
+          subjectIndex,
+          gradeIndex,
+          ectsIndex,
+        ].reduce((left, right) => left > right ? left : right);
+        if (cells.length <= requiredIndex) continue;
+        final subject = cells[subjectIndex].text
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (subject.isEmpty || _looksLikeHeader(subject)) continue;
+        final value = _number(cells[gradeIndex].text);
+        final ects = _number(cells[ectsIndex].text);
+        if (value == null && ects == null) continue;
+        final published = dateIndex >= 0 && cells.length > dateIndex
+            ? cells[dateIndex].text.replaceAll(RegExp(r'\s+'), '').trim()
+            : '';
+        final publishedAt = DateTime.tryParse(published);
+        final academicYear = publishedAt == null
+            ? null
+            : publishedAt.month >= DateTime.september
+            ? '${publishedAt.year}/${publishedAt.year + 1}'
+            : '${publishedAt.year - 1}/${publishedAt.year}';
+        result.add(
+          GradeComponent(
+            externalId: [
+              _normalize(subject),
+              published.ifEmpty('table$tableIndex'),
+            ].join(':'),
+            subjectCode: '',
+            subjectName: subject,
+            name: 'Final grade',
+            value: value,
+            academicYear: academicYear,
+            isFinal: true,
+            isHistorical: true,
+            ects: ects,
+            source: GradeValueSource.officialPortal,
+            sourceUrl: sourceUrl,
+          ),
+        );
+      }
+    }
+    return _dedupe(result, (item) => item.externalId);
+  }
+
+  static List<Element> _directRows(Element table) {
+    return table.querySelectorAll('tr').where((row) {
+      Element? parent = row.parent;
+      while (parent != null && parent.localName != 'table') {
+        parent = parent.parent;
+      }
+      return parent == table;
+    }).toList();
+  }
+
+  static Iterable<Element> _directCells(Element row) => row.children.where(
+    (item) => item.localName == 'th' || item.localName == 'td',
+  );
+
+  static Element? _ancestor(Element element, String tag) {
+    Element? candidate = element.parent;
+    while (candidate != null) {
+      if (candidate.localName == tag) return candidate;
+      candidate = candidate.parent;
+    }
+    return null;
+  }
+
+  static String _jsString(String source, String key) {
+    for (final quote in const ['"', "'"]) {
+      final escapedQuote = RegExp.escape(quote);
+      final match = RegExp(
+        '(?:^|[,\\{])\\s*${RegExp.escape(key)}\\s*:\\s*'
+        '$escapedQuote((?:\\\\.|[^$escapedQuote\\\\])*)$escapedQuote',
+      ).firstMatch(source);
+      if (match == null) continue;
+      final value = match.group(1)!;
+      if (quote == '"') {
+        try {
+          return jsonDecode('"$value"') as String;
+        } on FormatException {
+          return '';
+        }
+      }
+      return value
+          .replaceAll(r"\'", "'")
+          .replaceAll(r'\n', ' ')
+          .replaceAll(r'\\', r'\');
+    }
+    return '';
   }
 
   List<AssessmentFormula> parseFucFormulas(
@@ -1423,12 +1742,13 @@ class IsepPortalParser {
         return parent == table;
       }).toList();
       if (rows.length < 2) continue;
-      var headers = rows.first.children
+      final headerIndex = _headerRowIndex(rows);
+      var headers = rows[headerIndex].children
           .where((cell) => cell.localName == 'th' || cell.localName == 'td')
           .map((cell) => _normalize(cell.text))
           .toList();
       if (headers.every((value) => value.isEmpty)) continue;
-      for (final row in rows.skip(1)) {
+      for (final row in rows.skip(headerIndex + 1)) {
         final cells = row.children
             .where((cell) => cell.localName == 'td')
             .toList();
@@ -1447,6 +1767,54 @@ class IsepPortalParser {
       }
     }
     return result;
+  }
+
+  static int _headerRowIndex(List<Element> rows) {
+    const headerWords = [
+      'unidade curricular',
+      'disciplina',
+      'codigo',
+      'sigla',
+      'classificacao',
+      'nota',
+      'resultado',
+      'ects',
+      'creditos',
+      'ano letivo',
+      'estado',
+      'situacao',
+      'data',
+      'hora',
+      'inicio',
+      'fim',
+      'sala',
+      'docente',
+      'valor',
+      'montante',
+      'vencimento',
+      'pagamento',
+      'descricao',
+    ];
+    var bestIndex = 0;
+    var bestScore = -1;
+    for (var index = 0; index < rows.length && index < 8; index++) {
+      final cells = rows[index].children
+          .where((cell) => cell.localName == 'th' || cell.localName == 'td')
+          .toList();
+      if (cells.isEmpty) continue;
+      final score = cells.fold<int>(
+        0,
+        (sum, cell) =>
+            sum +
+            (headerWords.any(_normalize(cell.text).contains) ? 1 : 0) +
+            (cell.localName == 'th' ? 1 : 0),
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    }
+    return bestIndex;
   }
 
   static String _value(Map<String, String> row, List<String> aliases) {

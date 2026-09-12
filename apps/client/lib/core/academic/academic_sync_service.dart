@@ -127,18 +127,22 @@ class AcademicSyncService implements AcademicHubActions {
     if (!_updates.isClosed) _updates.add(refreshState);
   }
 
-  Future<AcademicSyncResult> synchronize({bool force = true}) {
-    return _running ??= _synchronize(force: force).whenComplete(() {
-      _running = null;
-      if (refreshState.running) {
-        _report(
-          running: false,
-          errors: const [
-            'Academic refresh could not complete. Try Refresh again.',
-          ],
-        );
-      }
-    });
+  Future<AcademicSyncResult> synchronize({
+    bool force = true,
+    Set<String>? onlyStages,
+  }) {
+    return _running ??= _synchronize(force: force, onlyStages: onlyStages)
+        .whenComplete(() {
+          _running = null;
+          if (refreshState.running) {
+            _report(
+              running: false,
+              errors: const [
+                'Academic refresh could not complete. Try Refresh again.',
+              ],
+            );
+          }
+        });
   }
 
   Future<bool> _due(String key, Duration age, bool force) async {
@@ -153,7 +157,10 @@ class AcademicSyncService implements AcademicHubActions {
     return last == null || now.difference(last) >= age;
   }
 
-  Future<AcademicSyncResult> _synchronize({required bool force}) async {
+  Future<AcademicSyncResult> _synchronize({
+    required bool force,
+    required Set<String>? onlyStages,
+  }) async {
     _report();
     await repairPortalCache();
     final errors = <String>[];
@@ -166,7 +173,8 @@ class AcademicSyncService implements AcademicHubActions {
     );
     final work = <Future<void>>[];
     final moodleToken = await _credentials.read(CredentialKey.moodleToken);
-    if (moodleToken != null) {
+    if (moodleToken != null &&
+        (onlyStages == null || onlyStages.contains('moodle'))) {
       sources.add(AcademicSource.moodle);
       work.add(() async {
         if (!await _due('moodle', const Duration(minutes: 30), force)) return;
@@ -191,7 +199,12 @@ class AcademicSyncService implements AcademicHubActions {
         _report(stage: 'Moodle', errors: errors);
       }());
     }
-    if (portalUser != null && portalPassword != null) {
+    final portalStages = onlyStages
+        ?.where((stage) => stage != 'moodle')
+        .toSet();
+    if (portalUser != null &&
+        portalPassword != null &&
+        (onlyStages == null || portalStages!.isNotEmpty)) {
       sources.add(AcademicSource.portal);
       work.add(() async {
         final portalErrors = <String>[];
@@ -200,6 +213,7 @@ class AcademicSyncService implements AcademicHubActions {
             subjects,
             portalErrors,
             force: force,
+            onlyStages: portalStages,
             credentials: PortalCredentials(
               username: portalUser,
               password: portalPassword,
@@ -261,6 +275,7 @@ class AcademicSyncService implements AcademicHubActions {
     List<AcademicSubject> subjects,
     List<String> errors, {
     required bool force,
+    required Set<String>? onlyStages,
     required PortalCredentials credentials,
   }) async {
     var saved = 0;
@@ -638,7 +653,7 @@ class AcademicSyncService implements AcademicHubActions {
                 title: 'Payment overdue · ${record.title}',
                 body:
                     'Review this read-only Portal charge. ClassSync cannot make payments.',
-                section: 7,
+                section: 5,
               );
             }
           }
@@ -733,6 +748,7 @@ class AcademicSyncService implements AcademicHubActions {
     };
     final pending = <String>[];
     for (final key in stages.keys) {
+      if (onlyStages != null && !onlyStages.contains(key)) continue;
       if (await _due(key, academicRefreshAge(key), force)) pending.add(key);
     }
     if (pending.isEmpty) return 0;
@@ -1182,7 +1198,7 @@ class AcademicSyncService implements AcademicHubActions {
         title: 'Payment overdue · ${updated.title}',
         body:
             'Review this read-only Portal charge. ClassSync cannot make payments.',
-        section: 7,
+        section: 5,
       );
     }
   }
@@ -1233,7 +1249,7 @@ class AcademicSyncService implements AcademicHubActions {
         id: key,
         title: 'Payment due · ${charge.title}',
         scheduledAt: notifyAt,
-        section: 7,
+        section: 5,
       );
     }
   }
@@ -1432,13 +1448,22 @@ List<String> academicStagePriority(int section) {
     'summaries',
   ];
   final focused = switch (section) {
-    1 => ['moodle', 'timetable', 'exams'],
+    1 => ['moodle'],
     2 => ['exams'],
-    3 => ['grades', 'history', 'enrollment', 'formulas'],
-    4 => ['notices'],
-    5 => ['context', 'summaries', 'formulas'],
-    7 => ['finance'],
+    3 => ['notices', 'context', 'summaries'],
+    4 => ['grades', 'history', 'enrollment', 'formulas'],
+    5 => ['finance'],
     _ => ['timetable', 'exams'],
   };
   return [...focused, ...baseline.where((key) => !focused.contains(key))];
 }
+
+Set<String> academicStagesForSection(int section) => switch (section) {
+  0 => {'timetable'},
+  1 => <String>{},
+  2 => {'exams', 'moodle'},
+  3 => {'notices', 'context', 'summaries', 'moodle'},
+  4 => {'grades', 'history', 'enrollment', 'formulas'},
+  5 => {'finance'},
+  _ => <String>{},
+};

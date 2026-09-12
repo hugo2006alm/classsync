@@ -28,9 +28,10 @@ them with Gemini, and publishes structured study notes to Notion.
   published grades, and academic history, with fail-closed WebForms parsing.
 - Moodle Web Services integration for enrolled courses, assignments, and
   announcements; ambiguous subject mappings stay reviewable.
-- Offline Academic hub with week timetable, unified Portal/Moodle/manual
-  evaluation calendar and agenda, per-event/type local reminders, grade
-  provenance/history, FUC formula review, and weighted target-grade calculations.
+- Focused offline Academic hub with a responsive week timetable: desktop table
+  or agenda, mobile agenda or horizontally scrollable table, and explicit class,
+  room, and teacher details. Tasks, evaluations, search, grades/progress, and
+  read-only finance remain directly accessible.
 - Lecture action extraction with evidence, editable lifecycle state, and
   deadline calendar integration; regeneration preserves user decisions.
 - Local academic search across retained summaries/transcripts, FUC, Portal, and
@@ -125,8 +126,10 @@ changes Academic section. See [ISEP Portal details](docs/isep-portal.md) and
 Upgrades automatically remove identifiable Portal form/menu records from the
 academic cache on startup, including offline. Valid records and manual tasks
 are preserved. Use Academic **Refresh** to fetch current Portal data; unavailable
-data is shown as uncached. Local search indexes readable academic content and
-excludes those invalid records and internal JSON metadata.
+data is shown as uncached. The small Academic reload control refreshes only the
+open page; local Tasks simply rereads the offline cache. Local search indexes
+readable academic content and excludes invalid records and internal JSON
+metadata.
 
 ## Deploy the relay
 
