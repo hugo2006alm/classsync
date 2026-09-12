@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:classsync/core/integrations/portal/isep_portal_client.dart';
+import 'package:classsync/core/integrations/portal/strict_isep_portal_parser.dart';
 import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/core/integrations/bounded_response.dart';
 
@@ -36,6 +37,17 @@ Future<void> main() async {
         }
         final body = latin1.decode(bytes);
         final path = response.requestOptions.uri.path;
+        var structureBody = body;
+        if (path.toLowerCase().contains('estudante.aspx/')) {
+          try {
+            final decoded = jsonDecode(body);
+            if (decoded is Map && decoded['d'] is String) {
+              structureBody = decoded['d'] as String;
+            }
+          } catch (_) {
+            // The structure reporter also accepts ordinary HTML responses.
+          }
+        }
         steps.add({
           'method': response.requestOptions.method,
           'path': path,
@@ -60,7 +72,11 @@ Future<void> main() async {
           if (RegExp(
             r'(?:horario|estudante|pagamentos|propinas|areadetrabalho)',
           ).hasMatch(path.toLowerCase()))
-            'safeStructure': _safeStructure(body),
+            'safeStructure': _safeStructure(structureBody),
+          if (path.endsWith('/getPartialGradesEvent'))
+            'safeGradeParse': _safeGradeParse(structureBody),
+          if (path.endsWith('/getStudentFileEvent'))
+            'safeGradeParse': _safeGradeParse(structureBody, historical: true),
         });
         response.data = ResponseBody.fromBytes(
           bytes,
@@ -72,7 +88,10 @@ Future<void> main() async {
     ),
   );
   try {
-    final client = IsepPortalClient(dio: dio);
+    final client = IsepPortalClient(
+      dio: dio,
+      parser: const StrictIsepPortalParser(),
+    );
     await client.authenticate(
       PortalCredentials(
         username: input['username'] as String,
@@ -117,6 +136,22 @@ Future<void> main() async {
   }
 }
 
+Map<String, Object> _safeGradeParse(String html, {bool historical = false}) {
+  try {
+    final values = const IsepPortalParser().parseGrades(
+      html,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+      forceHistorical: historical,
+    );
+    return {'status': 'ok', 'records': values.length};
+  } on IntegrationException catch (error) {
+    return {'status': error.code};
+  } catch (_) {
+    return {'status': 'parse_error'};
+  }
+}
+
 Map<String, Object> _safeStructure(String html) {
   final document = html_parser.parse(html);
   const allowedLabels = [
@@ -142,6 +177,18 @@ Map<String, Object> _safeStructure(String html) {
     'classificacao',
     'nota',
     'resultado',
+    'avaliação',
+    'avaliacao',
+    'elemento',
+    'tipo',
+    'plano letivo',
+    'plano de estudos',
+    'época',
+    'epoca',
+    'semestre',
+    'período',
+    'periodo',
+    'curso',
     'estado',
     'ano letivo',
     'ects',
@@ -171,6 +218,7 @@ Map<String, Object> _safeStructure(String html) {
       'getEventData': html.contains('getEventData'),
       'fullCalendar': html.toLowerCase().contains('calendar'),
     },
+    'gradeGrammar': _gradeGrammarShape(document),
     'routePaths': _routePaths(html),
     'ajaxUrls': RegExp(r'''url\s*:\s*["']([^"']+)["']''', caseSensitive: false)
         .allMatches(html)
@@ -235,7 +283,14 @@ Map<String, Object> _safeStructure(String html) {
         .map((item) {
           final raw = item.attributes['href'] ?? '';
           final uri = Uri.tryParse(raw);
-          final path = uri?.path ?? '';
+          final isPageLink =
+              uri != null &&
+              (uri.scheme.isEmpty || uri.scheme == 'https') &&
+              RegExp(
+                r'\.(?:aspx?|php)$',
+                caseSensitive: false,
+              ).hasMatch(uri.path);
+          final path = isPageLink ? uri.path : '';
           final normalized = _normalize(
             '${item.text} ${item.attributes['title'] ?? ''} $path',
           );
@@ -303,6 +358,92 @@ Map<String, Object> _safeStructure(String html) {
         })
         .take(100)
         .toList(),
+  };
+}
+
+Map<String, Object> _gradeGrammarShape(Document document) {
+  final detailLinks = document.querySelectorAll('a[href]').where((link) {
+    final href = link.attributes['href'] ?? '';
+    return RegExp(
+      r'^\s*javascript:\s*detailsDialog\s*\(\s*\{',
+      caseSensitive: false,
+    ).hasMatch(href);
+  }).toList();
+  var withSubject = 0;
+  var withComponents = 0;
+  var componentObjects = 0;
+  var numericGrades = 0;
+  for (final link in detailLinks) {
+    final href = link.attributes['href'] ?? '';
+    if (RegExp(r'''(?:^|[,\{])\s*uc\s*:\s*["']''').hasMatch(href)) {
+      withSubject++;
+    }
+    final components = RegExp(
+      r'\btrs\s*:\s*\[([\s\S]*?)\]\s*,',
+    ).firstMatch(href)?.group(1);
+    if (components == null) continue;
+    withComponents++;
+    final objects = RegExp(r'\{([^{}]*)\}').allMatches(components).toList();
+    componentObjects += objects.length;
+    numericGrades += objects.where((object) {
+      final body = object.group(1)!;
+      return RegExp(
+        r'''(?:^|[,\{])\s*g\s*:\s*["']\s*-?\d+(?:[.,]\d+)?\s*["']''',
+      ).hasMatch(body);
+    }).length;
+  }
+
+  var historyTables = 0;
+  var historyRows = 0;
+  var numericHistoryGrades = 0;
+  var numericHistoryEcts = 0;
+  for (final table in document.querySelectorAll('table')) {
+    if (table.querySelector('table') != null) continue;
+    final rows = table.querySelectorAll('tr');
+    if (rows.length < 2) continue;
+    final headers = rows.first.children
+        .where((cell) => cell.localName == 'th' || cell.localName == 'td')
+        .map((cell) => _normalize(cell.text).trim())
+        .toList();
+    final subjectIndex = headers.indexOf('unidade curricular');
+    final gradeIndex = headers.indexOf('nota');
+    final ectsIndex = headers.indexWhere((header) => header.contains('ects'));
+    if (subjectIndex < 0 || gradeIndex < 0 || ectsIndex < 0) continue;
+    historyTables++;
+    for (final row in rows.skip(1)) {
+      final cells = row.children
+          .where((cell) => cell.localName == 'th' || cell.localName == 'td')
+          .toList();
+      if (cells.length <=
+          [
+            subjectIndex,
+            gradeIndex,
+            ectsIndex,
+          ].reduce((left, right) => left > right ? left : right)) {
+        continue;
+      }
+      if (cells[subjectIndex].text.trim().isEmpty) continue;
+      historyRows++;
+      if (double.tryParse(cells[gradeIndex].text.trim().replaceAll(',', '.')) !=
+          null) {
+        numericHistoryGrades++;
+      }
+      if (double.tryParse(cells[ectsIndex].text.trim().replaceAll(',', '.')) !=
+          null) {
+        numericHistoryEcts++;
+      }
+    }
+  }
+  return {
+    'detailLinks': detailLinks.length,
+    'detailLinksWithSubject': withSubject,
+    'detailLinksWithComponents': withComponents,
+    'componentObjects': componentObjects,
+    'numericComponentGrades': numericGrades,
+    'historyTables': historyTables,
+    'historyRows': historyRows,
+    'numericHistoryGrades': numericHistoryGrades,
+    'numericHistoryEcts': numericHistoryEcts,
   };
 }
 

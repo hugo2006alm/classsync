@@ -23,13 +23,32 @@ class AcademicScreen extends ConsumerStatefulWidget {
 }
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen> {
-  late int _section = widget.initialSection.clamp(0, 7).toInt();
+  late int _section = widget.initialSection.clamp(0, 5).toInt();
   late DateTime _weekStart = _startOfWeek(DateTime.now());
+  _TimetableView? _timetableView;
+
+  static const _sectionLabels = [
+    'Timetable',
+    'Tasks',
+    'Evaluations',
+    'Search & ask',
+    'Grades & progress',
+    'Finance',
+  ];
 
   @override
   void initState() {
     super.initState();
     ref.read(academicSyncServiceProvider).focusedSection = _section;
+  }
+
+  Future<void> _reloadCurrentSection() async {
+    final stages = academicStagesForSection(_section);
+    if (stages.isEmpty) {
+      ref.invalidate(academicRecordsProvider);
+      return;
+    }
+    await ref.read(academicSyncServiceProvider).synchronize(onlyStages: stages);
   }
 
   @override
@@ -38,8 +57,17 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     final refresh =
         ref.watch(academicRefreshProvider).valueOrNull ??
         const AcademicRefreshState();
-    final stage = academicStagePriority(_section).first;
-    final updated = ref.watch(academicFreshnessProvider(stage)).valueOrNull;
+    final freshnessStage = switch (_section) {
+      0 => 'timetable',
+      2 => 'exams',
+      3 => 'notices',
+      4 => 'grades',
+      5 => 'finance',
+      _ => null,
+    };
+    final updated = freshnessStage == null
+        ? null
+        : ref.watch(academicFreshnessProvider(freshnessStage)).valueOrNull;
     final connections = ref.watch(academicConnectionStateProvider).valueOrNull;
     return PageFrame(
       title: 'Academic',
@@ -50,17 +78,17 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
           icon: const Icon(Icons.link_rounded),
           label: const Text('Connections'),
         ),
-        FilledButton.icon(
-          onPressed: refresh.running
-              ? null
-              : () => ref.read(academicSyncServiceProvider).synchronize(),
-          icon: refresh.running
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.sync_rounded),
-          label: const Text('Refresh'),
+        Tooltip(
+          message: 'Reload ${_sectionLabels[_section]} only',
+          child: IconButton.filledTonal(
+            onPressed: refresh.running ? null : _reloadCurrentSection,
+            icon: refresh.running
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
         ),
       ],
       child: recordsValue.when(
@@ -86,7 +114,12 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                 'Updating ${refresh.stage ?? 'academic sources'}…',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-            if (updated != null)
+            if (_section == 1)
+              Text(
+                'Stored locally · Available offline',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else if (updated != null)
               Text(
                 'Last updated ${DateFormat.MMMd().add_Hm().format(updated.toLocal())} · Available offline',
                 style: Theme.of(context).textTheme.bodySmall,
@@ -131,8 +164,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                     : _TimetableSection(
                         records: records,
                         weekStart: _weekStart,
+                        view: _timetableView,
                         onWeekChanged: (value) =>
                             setState(() => _weekStart = value),
+                        onViewChanged: (value) =>
+                            setState(() => _timetableView = value),
                       ),
               1 => _TasksSection(records: records),
               2 =>
@@ -150,7 +186,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             ref.watch(activeSubjectsProvider).valueOrNull ??
                             const [],
                       ),
-              3 =>
+              3 => _AcademicSearchSection(
+                subjects: ref.watch(subjectsProvider).valueOrNull ?? const [],
+              ),
+              4 =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
                         source: 'ISEP Portal',
@@ -165,34 +204,6 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             ref.watch(activeSubjectsProvider).valueOrNull ??
                             const [],
                       ),
-              4 =>
-                connections?.anyConfigured == false
-                    ? _SourceSetupState(
-                        source: 'Portal or Moodle',
-                        detail:
-                            'Connect a source to receive official notices and course announcements.',
-                        onConnect: () =>
-                            showAcademicConnectionsDialog(context, ref),
-                      )
-                    : _UpdatesSection(
-                        records: records,
-                        subjects:
-                            ref.watch(activeSubjectsProvider).valueOrNull ??
-                            const [],
-                      ),
-              5 =>
-                connections?.portalConfigured == false
-                    ? _SourceSetupState(
-                        source: 'ISEP Portal',
-                        detail:
-                            'Connect Portal to load FUC data and official lesson summaries.',
-                        onConnect: () =>
-                            showAcademicConnectionsDialog(context, ref),
-                      )
-                    : _CourseContextSection(records: records),
-              6 => _AcademicSearchSection(
-                subjects: ref.watch(subjectsProvider).valueOrNull ?? const [],
-              ),
               _ =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
@@ -218,55 +229,31 @@ class _AcademicSectionNavigation extends StatelessWidget {
   });
   final int selected;
   final ValueChanged<int> onSelected;
-  static const primary = [
+  static const destinations = [
     (0, Icons.view_week_rounded, 'Timetable'),
     (1, Icons.task_alt_rounded, 'Tasks'),
-    (4, Icons.campaign_outlined, 'Updates'),
-  ];
-  static const more = [
-    (2, 'Evaluations'),
-    (3, 'Progress'),
-    (7, 'Finance'),
-    (5, 'Course context'),
-    (6, 'Search & ask'),
+    (2, Icons.event_rounded, 'Evaluations'),
+    (3, Icons.manage_search_rounded, 'Search & ask'),
+    (4, Icons.calculate_rounded, 'Grades & progress'),
+    (5, Icons.account_balance_wallet_outlined, 'Finance'),
   ];
   @override
-  Widget build(BuildContext context) => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      for (final item in primary)
-        ChoiceChip(
-          showCheckmark: false,
-          avatar: Icon(item.$2, size: 18),
-          label: Text(item.$3),
-          selected: selected == item.$1,
-          onSelected: (_) => onSelected(item.$1),
-        ),
-      PopupMenuButton<int>(
-        tooltip: 'More academic tools',
-        initialValue: selected,
-        onSelected: onSelected,
-        itemBuilder: (_) => [
-          for (final item in more)
-            PopupMenuItem(value: item.$1, child: Text(item.$2)),
-        ],
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                more.where((item) => item.$1 == selected).firstOrNull?.$2 ??
-                    'More',
-              ),
-              const Icon(Icons.expand_more, size: 18),
-            ],
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: [
+        for (final item in destinations) ...[
+          ChoiceChip(
+            showCheckmark: false,
+            avatar: Icon(item.$2, size: 18),
+            label: Text(item.$3),
+            selected: selected == item.$1,
+            onSelected: (_) => onSelected(item.$1),
           ),
-        ),
-      ),
-    ],
+          const SizedBox(width: 8),
+        ],
+      ],
+    ),
   );
 }
 
@@ -811,6 +798,8 @@ String _euro(double amount) => NumberFormat.currency(
   decimalDigits: 2,
 ).format(amount);
 
+// Kept as a renderer for cached legacy records; no longer a navigation target.
+// ignore: unused_element
 class _UpdatesSection extends ConsumerWidget {
   const _UpdatesSection({required this.records, required this.subjects});
   final List<AcademicRecord> records;
@@ -915,6 +904,8 @@ class _UpdatesSection extends ConsumerWidget {
   }
 }
 
+// Kept as a renderer for cached legacy records; no longer a navigation target.
+// ignore: unused_element
 class _CourseContextSection extends StatelessWidget {
   const _CourseContextSection({required this.records});
   final List<AcademicRecord> records;
@@ -1036,6 +1027,7 @@ class _AcademicSearchSectionState
   AcademicRecordKind? _kind;
   int? _recentDays;
   bool _busy = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -1049,6 +1041,7 @@ class _AcademicSearchSectionState
     setState(() {
       _busy = true;
       _answer = null;
+      _error = null;
     });
     try {
       final service = ref.read(academicResearchServiceProvider);
@@ -1084,6 +1077,8 @@ class _AcademicSearchSectionState
           _answer = answer;
         });
       }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1247,6 +1242,10 @@ class _AcademicSearchSectionState
           padding: EdgeInsets.symmetric(vertical: 16),
           child: LinearProgressIndicator(),
         ),
+      if (_error case final error?) ...[
+        const SizedBox(height: 12),
+        _Banner(icon: Icons.error_outline_rounded, text: error),
+      ],
       if (_answer case final answer?) ...[
         const SizedBox(height: 14),
         Card(
@@ -1327,11 +1326,15 @@ class _TimetableSection extends StatelessWidget {
   const _TimetableSection({
     required this.records,
     required this.weekStart,
+    required this.view,
     required this.onWeekChanged,
+    required this.onViewChanged,
   });
   final List<AcademicRecord> records;
   final DateTime weekStart;
+  final _TimetableView? view;
   final ValueChanged<DateTime> onWeekChanged;
+  final ValueChanged<_TimetableView> onViewChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1346,76 +1349,173 @@ class _TimetableSection extends StatelessWidget {
             )
             .toList()
           ..sort((a, b) => a.start.compareTo(b.start));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final effectiveView =
+            view ??
+            (constraints.maxWidth < 700
+                ? _TimetableView.agenda
+                : _TimetableView.table);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              tooltip: 'Previous week',
-              onPressed: () =>
-                  onWeekChanged(weekStart.subtract(const Duration(days: 7))),
-              icon: const Icon(Icons.chevron_left_rounded),
-            ),
-            Expanded(
-              child: Text(
-                '${DateFormat.MMMd().format(weekStart)} – ${DateFormat.yMMMd().format(end.subtract(const Duration(days: 1)))}',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            IconButton(
-              tooltip: 'Next week',
-              onPressed: () => onWeekChanged(end),
-              icon: const Icon(Icons.chevron_right_rounded),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (slots.isEmpty)
-          const EmptyState(
-            icon: Icons.view_week_outlined,
-            title: 'No timetable slots cached for this week',
-            message: 'Refresh Portal data or move to another week.',
-          )
-        else
-          for (final day in List.generate(
-            7,
-            (index) => weekStart.add(Duration(days: index)),
-          ))
-            if (slots.any((slot) => _sameDay(slot.start, day))) ...[
-              SectionHeader(DateFormat.EEEE().format(day)),
-              Card(
-                child: Column(
-                  children: [
-                    for (final slot in slots.where(
-                      (item) => _sameDay(item.start, day),
-                    ))
-                      ListTile(
-                        leading: Text(
-                          DateFormat.Hm().format(slot.start),
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        title: Text(slot.subjectName),
-                        subtitle: Text(
-                          [
-                            if (slot.lessonType != null) slot.lessonType!,
-                            if (slot.className != null) slot.className!,
-                            if (slot.room != null) 'Room ${slot.room!}',
-                            if (slot.lecturer != null) slot.lecturer!,
-                          ].join(' · '),
-                        ),
-                        trailing: Text(DateFormat.Hm().format(slot.end)),
-                      ),
-                  ],
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Previous week',
+                  onPressed: () => onWeekChanged(
+                    weekStart.subtract(const Duration(days: 7)),
+                  ),
+                  icon: const Icon(Icons.chevron_left_rounded),
                 ),
+                Expanded(
+                  child: Text(
+                    '${DateFormat.MMMd().format(weekStart)} – ${DateFormat.yMMMd().format(end.subtract(const Duration(days: 1)))}',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Next week',
+                  onPressed: () => onWeekChanged(end),
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: SegmentedButton<_TimetableView>(
+                segments: const [
+                  ButtonSegment(
+                    value: _TimetableView.table,
+                    icon: Icon(Icons.table_rows_outlined),
+                    label: Text('Table'),
+                  ),
+                  ButtonSegment(
+                    value: _TimetableView.agenda,
+                    icon: Icon(Icons.view_agenda_outlined),
+                    label: Text('Agenda'),
+                  ),
+                ],
+                selected: {effectiveView},
+                onSelectionChanged: (selection) =>
+                    onViewChanged(selection.single),
               ),
-              const SizedBox(height: 16),
-            ],
-      ],
+            ),
+            const SizedBox(height: 12),
+            if (slots.isEmpty)
+              const EmptyState(
+                icon: Icons.view_week_outlined,
+                title: 'No timetable slots cached for this week',
+                message: 'Reload Portal data or move to another week.',
+              )
+            else if (effectiveView == _TimetableView.table)
+              _TimetableTable(slots: slots)
+            else
+              _TimetableAgenda(slots: slots, weekStart: weekStart),
+          ],
+        );
+      },
     );
   }
+}
+
+enum _TimetableView { table, agenda }
+
+class _TimetableTable extends StatelessWidget {
+  const _TimetableTable({required this.slots});
+
+  final List<TimetableSlot> slots;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columnSpacing: 28,
+        headingRowColor: WidgetStatePropertyAll(
+          Theme.of(context).colorScheme.surfaceContainerHigh,
+        ),
+        columns: const [
+          DataColumn(label: Text('DAY')),
+          DataColumn(label: Text('TIME')),
+          DataColumn(label: Text('SUBJECT')),
+          DataColumn(label: Text('TYPE')),
+          DataColumn(label: Text('CLASS')),
+          DataColumn(label: Text('ROOM')),
+          DataColumn(label: Text('TEACHER')),
+        ],
+        rows: [
+          for (final slot in slots)
+            DataRow(
+              cells: [
+                DataCell(Text(DateFormat.E().format(slot.start))),
+                DataCell(
+                  Text(
+                    '${DateFormat.Hm().format(slot.start)}–${DateFormat.Hm().format(slot.end)}',
+                  ),
+                ),
+                DataCell(Text(slot.subjectName)),
+                DataCell(Text(slot.lessonType ?? '—')),
+                DataCell(Text(slot.className ?? '—')),
+                DataCell(Text(slot.room ?? '—')),
+                DataCell(Text(slot.lecturer ?? '—')),
+              ],
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _TimetableAgenda extends StatelessWidget {
+  const _TimetableAgenda({required this.slots, required this.weekStart});
+
+  final List<TimetableSlot> slots;
+  final DateTime weekStart;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final day in List.generate(
+        7,
+        (index) => weekStart.add(Duration(days: index)),
+      ))
+        if (slots.any((slot) => _sameDay(slot.start, day))) ...[
+          SectionHeader(DateFormat.EEEE().format(day)),
+          Card(
+            child: Column(
+              children: [
+                for (final slot in slots.where(
+                  (item) => _sameDay(item.start, day),
+                ))
+                  ListTile(
+                    leading: Text(
+                      DateFormat.Hm().format(slot.start),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    title: Text(slot.subjectName),
+                    subtitle: Text(
+                      [
+                        if (slot.lessonType != null) slot.lessonType!,
+                        if (slot.className != null) slot.className!,
+                        if (slot.room != null) 'Room ${slot.room!}',
+                        if (slot.lecturer != null) 'Teacher ${slot.lecturer!}',
+                      ].join(' · '),
+                    ),
+                    trailing: Text(DateFormat.Hm().format(slot.end)),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+    ],
+  );
 }
 
 class _EvaluationSection extends ConsumerWidget {
@@ -1882,7 +1982,11 @@ class _GradesSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final grades = records
-        .where((item) => item.kind == AcademicRecordKind.grade)
+        .where(
+          (item) =>
+              item.kind == AcademicRecordKind.grade ||
+              item.kind == AcademicRecordKind.academicHistory,
+        )
         .map((item) => GradeComponent.fromJson(item.payload))
         .toList();
     final grouped = <String, List<GradeComponent>>{};

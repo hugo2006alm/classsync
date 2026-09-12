@@ -28,9 +28,14 @@ to the form action resolved against the final login-page URL.
 For a local interactive diagnostic, run `pwsh -STA -File
 apps/client/tool/portal_login_probe.ps1` from the repository root after
 `flutter pub get`. This Windows window invokes the actual Dart adapter and
-shows request paths, statuses, cookie names, and the result code. Credentials
-travel over the child process's standard input, never command-line arguments;
-passwords, cookie values, response bodies, and profile data are not logged.
+shows request paths, statuses, cookie names, safe layout shapes, and record
+counts. Credentials travel over the child process's standard input, never
+command-line arguments. After a successful test, the optional repeat-test login
+is encrypted with Windows DPAPI for the current Windows user at
+`%LOCALAPPDATA%\ClassSync\portal-probe.dpapi`; plaintext credentials, cookie
+values, response bodies, and profile data are not logged or stored in the
+repository. Use `-UseSaved` for another sanitized probe and `-ForgetSaved` to
+delete the encrypted diagnostic login.
 
 The submitted username is preserved exactly after trimming outer whitespace;
 ClassSync does not add or remove the `@isep.ipp.pt` suffix. Portal pages declare
@@ -63,9 +68,11 @@ retained as provenance:
 - timetable: `Horário`, `Ver Horário`;
 - exam schedule: `calendário de exames`, `exames`;
 - registration context: `inscrição em exames`, `inscrições em exames`;
-- enrolment, grades, history, and finance come from the student record's
-  read-only JSON methods `getDisciplinesEvent`, `getStudentFileEvent`, and
-  `getDividas`;
+- enrolment comes from `getDisciplinesEvent`, current grades from
+  `getPartialGradesEvent`, and academic history from `getStudentFileEvent` on
+  the student record page;
+- finance is loaded from the read-only
+  `/intranet/propinas/pedidorefmb.aspx` page;
 - evaluation rules: `ficha de unidade curricular`, `FUC`, `método de avaliação`.
 - official lesson summaries: `sumários`, `sumarios`;
 - electronic notices: `notificações eletrónicas`, `notificações`;
@@ -83,6 +90,9 @@ last route is also the authenticated student calendar when it includes the
 student query parameter. Calendar events are read from its bounded static
 `getEventData` literal without evaluating JavaScript. Exceptional-season events
 are cached as both timetable entries and evaluations, including all rooms.
+Current-grade components are read from the bounded `detailsDialog` data grammar
+without evaluating JavaScript. Student JSON methods tolerate the Portal's
+legacy Latin-1 response bytes before strict schema validation.
 
 ## Parsing and failure behavior
 
@@ -119,9 +129,10 @@ Portal stages refresh independently. Timetable, exams, and notices expire after
 30 minutes; grades and finance after 6 hours; enrolment, history, FUC context,
 and summaries after 24 hours. Opening Academic reads the cache and does not
 force network work. App startup/resume and periodic sync refresh only expired
-stages; the Refresh button forces every stage. The active Academic section is
-re-evaluated between requests so its next pending stage moves first without
-cancelling or restarting in-flight work.
+stages. The Academic reload control forces only the currently open page's
+owning stages. The active Academic section is re-evaluated between requests so
+its next pending stage moves first without cancelling or restarting in-flight
+work.
 
 Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,

@@ -5,6 +5,7 @@ import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/providers.dart';
 import 'package:classsync/core/integrations/notion/notion_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
+import 'package:classsync/domain/academic/academic_hub_models.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/settings/fireflies_connection.dart';
@@ -74,19 +75,126 @@ void main() {
 
     expect(find.text('Timetable'), findsWidgets);
     expect(find.text('Tasks'), findsOneWidget);
-    expect(find.text('Updates'), findsOneWidget);
-    expect(find.text('More'), findsOneWidget);
-    await tester.tap(find.text('More'));
-    await tester.pumpAndSettle();
     expect(find.text('Evaluations'), findsOneWidget);
-    expect(find.text('Progress'), findsOneWidget);
-    expect(find.text('Course context'), findsOneWidget);
+    expect(find.text('Grades & progress'), findsOneWidget);
     expect(find.text('Search & ask'), findsOneWidget);
     expect(find.text('Finance'), findsOneWidget);
+    expect(find.text('Updates'), findsNothing);
+    expect(find.text('Course context'), findsNothing);
     final timetableChip = tester.widget<ChoiceChip>(
       find.widgetWithText(ChoiceChip, 'Timetable'),
     );
     expect(timetableChip.showCheckmark, isFalse);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('phone timetable defaults to agenda and can switch to table', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    await _saveTimetable(database);
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(),
+        subjects: [_subject],
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Room B301'), findsOneWidget);
+    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
+    expect(find.text('DAY'), findsNothing);
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+    expect(find.text('ROOM'), findsOneWidget);
+    expect(find.text('TEACHER'), findsOneWidget);
+    expect(find.text('B301'), findsOneWidget);
+    expect(find.text('Jane Teacher'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('desktop timetable defaults to horizontally scrollable table', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    await _saveTimetable(database);
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(),
+        subjects: [_subject],
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.text('ROOM'), findsOneWidget);
+    expect(find.text('TEACHER'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(DataTable),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsWidgets,
+    );
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('grades and progress show current and previous Portal results', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    await _saveGrade(
+      database,
+      const GradeComponent(
+        externalId: 'current-grade',
+        subjectName: 'Operating Systems',
+        subjectId: 'subject-1',
+        name: 'Current project',
+        value: 16,
+        source: GradeValueSource.officialPortal,
+      ),
+      AcademicRecordKind.grade,
+    );
+    await _saveGrade(
+      database,
+      const GradeComponent(
+        externalId: 'previous-grade',
+        subjectName: 'Operating Systems',
+        subjectId: 'subject-1',
+        name: 'Final result',
+        value: 14,
+        academicYear: '2025/2026',
+        isFinal: true,
+        isHistorical: true,
+        ects: 6,
+        source: GradeValueSource.officialPortal,
+      ),
+      AcademicRecordKind.academicHistory,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(initialSection: 4),
+        subjects: [_subject],
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Current project'), findsOneWidget);
+    expect(find.text('Official history'), findsOneWidget);
+    expect(find.text('2025/2026 · Final result'), findsOneWidget);
+    expect(find.textContaining('6.0 ECTS confirmed'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -392,6 +500,66 @@ void _usePhoneViewport(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+void _useDesktopViewport(WidgetTester tester) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(1200, 900);
+  addTearDown(tester.view.reset);
+}
+
+Future<void> _saveTimetable(ClassSyncDatabase database) async {
+  final monday = DateTime.now().subtract(
+    Duration(days: DateTime.now().weekday - DateTime.monday),
+  );
+  final start = DateTime(monday.year, monday.month, monday.day, 9, 10);
+  final slot = TimetableSlot(
+    externalId: 'slot-live-format',
+    subjectCode: 'SO',
+    subjectName: 'Operating Systems',
+    subjectId: _subject.notionId,
+    start: start,
+    end: start.add(const Duration(hours: 1, minutes: 50)),
+    className: '3DA',
+    lessonType: 'TP',
+    room: 'B301',
+    lecturer: 'Jane Teacher',
+  );
+  await database.upsertAcademicRecord(
+    AcademicRecord(
+      key: AcademicRecord.keyFor(
+        AcademicSource.portal,
+        AcademicRecordKind.timetable,
+        slot.externalId,
+      ),
+      source: AcademicSource.portal,
+      kind: AcademicRecordKind.timetable,
+      externalId: slot.externalId,
+      title: slot.subjectName,
+      subjectId: slot.subjectId,
+      startsAt: slot.start,
+      endsAt: slot.end,
+      payload: slot.toJson(),
+      syncedAt: DateTime.now().toUtc(),
+    ),
+  );
+}
+
+Future<void> _saveGrade(
+  ClassSyncDatabase database,
+  GradeComponent grade,
+  AcademicRecordKind kind,
+) => database.upsertAcademicRecord(
+  AcademicRecord(
+    key: AcademicRecord.keyFor(AcademicSource.portal, kind, grade.externalId),
+    source: AcademicSource.portal,
+    kind: kind,
+    externalId: grade.externalId,
+    title: '${grade.subjectName} · ${grade.name}',
+    subjectId: grade.subjectId,
+    payload: grade.toJson(),
+    syncedAt: DateTime.now().toUtc(),
+  ),
+);
+
 Widget _app(
   ClassSyncDatabase database,
   Widget screen, {
@@ -468,6 +636,13 @@ class _ImmediateCredentialStore extends SecureCredentialStore {
 
   @override
   Future<bool> isConfigured(CredentialKey key) async => false;
+}
+
+class _PortalCredentialStore extends _ImmediateCredentialStore {
+  @override
+  Future<bool> isConfigured(CredentialKey key) async =>
+      key == CredentialKey.portalUsername ||
+      key == CredentialKey.portalPassword;
 }
 
 class _ControlledCredentialStore extends SecureCredentialStore {

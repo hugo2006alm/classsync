@@ -76,6 +76,23 @@ void main() {
     expect(values, hasLength(2));
     expect(values.map((e) => e.externalId).toSet(), hasLength(2));
     expect(values.fold<double>(0, (sum, item) => sum + item.ects!), 11);
+    expect(values.every((item) => item.academicYear == '2025/2026'), isTrue);
+  });
+
+  test('parses bounded current grades from Portal detail objects', () {
+    final values = parser.parseGrades(
+      '''<table><tr><th>Sigla</th><td>Unidade Curricular</td><td>Avaliação Contínua</td></tr>
+      <tr><td>SUBJ</td><td>Subject A</td><td><a href='javascript: detailsDialog({uc:"Subject A", pl:"2026/2027 (1º Semestre)", te:"Contínua", trs:[{nct:"Project", g:"16.5", d:"2026-10-01", d_ad:"2026-10-02"}], def:1});'>Details</a></td></tr></table>''',
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+    );
+
+    expect(values, hasLength(1));
+    expect(values.single.subjectCode, 'SUBJ');
+    expect(values.single.subjectName, 'Subject A');
+    expect(values.single.name, 'Project');
+    expect(values.single.value, 16.5);
+    expect(values.single.academicYear, '2026/2027');
   });
 
   test('imports only current enrollment from the returned year tabs', () {

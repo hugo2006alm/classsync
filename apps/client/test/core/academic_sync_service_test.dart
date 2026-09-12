@@ -339,12 +339,28 @@ void main() {
       await service.synchronize(force: false);
       expect(portal.authenticationCount, 1);
       expect(moodle.synchronizationCount, 1);
-      expect(academicStagePriority(7).first, 'finance');
+      expect(academicStagePriority(5).first, 'finance');
       expect(academicStagePriority(1).first, 'moodle');
       expect(academicRefreshAge('timetable'), const Duration(minutes: 30));
       expect(academicRefreshAge('grades'), const Duration(hours: 6));
     },
   );
+
+  test('section refresh requests only its owning stages', () async {
+    await service.synchronize(onlyStages: academicStagesForSection(0));
+
+    expect(portal.authenticationCount, 1);
+    expect(portal.requests, ['timetable']);
+    expect(moodle.synchronizationCount, 0);
+    expect(academicStagesForSection(1), isEmpty);
+    expect(academicStagesForSection(4), {
+      'grades',
+      'history',
+      'enrollment',
+      'formulas',
+    });
+    expect(academicStagesForSection(5), {'finance'});
+  });
 }
 
 final _subjectOne = AcademicSubject(
@@ -386,6 +402,7 @@ class _FakePortal implements PortalAdapter {
   int authenticationCount = 0;
   String? lastUsername;
   String? lastPassword;
+  final requests = <String>[];
   List<TuitionCharge> tuitionCharges = [
     TuitionCharge(
       id: 'fee-1',
@@ -425,15 +442,18 @@ class _FakePortal implements PortalAdapter {
   ];
 
   @override
-  Future<List<TimetableSlot>> getTimetable() async => [
-    TimetableSlot(
-      externalId: 'slot-1',
-      subjectCode: 'BDAD',
-      subjectName: 'Bases de Dados',
-      start: DateTime.now().add(const Duration(days: 1)),
-      end: DateTime.now().add(const Duration(days: 1, hours: 1)),
-    ),
-  ];
+  Future<List<TimetableSlot>> getTimetable() async {
+    requests.add('timetable');
+    return [
+      TimetableSlot(
+        externalId: 'slot-1',
+        subjectCode: 'BDAD',
+        subjectName: 'Bases de Dados',
+        start: DateTime.now().add(const Duration(days: 1)),
+        end: DateTime.now().add(const Duration(days: 1, hours: 1)),
+      ),
+    ];
+  }
 
   @override
   Future<List<EvaluationEvent>> getExams() async => [

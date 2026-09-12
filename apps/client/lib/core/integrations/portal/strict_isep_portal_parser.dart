@@ -23,14 +23,47 @@ class StrictIsepPortalParser extends IsepPortalParser {
     String html, {
     required String sourceUrl,
     bool forceHistorical = false,
-  }) => super.parseGrades(
-    _filterTables(html, [
-      _subjectHeaders,
-      ['ects', 'nota', 'classificacao', 'componente', 'elemento avaliacao'],
-    ]),
-    sourceUrl: sourceUrl,
-    forceHistorical: forceHistorical,
-  );
+  }) {
+    if (!forceHistorical && _hasBoundedPartialGradeData(html)) {
+      final values = super.parseGrades(
+        html,
+        sourceUrl: sourceUrl,
+        forceHistorical: false,
+      );
+      return _rejectMarkupNoise(
+        values,
+        (item) => '${item.subjectCode} ${item.subjectName} ${item.name}',
+        'grades',
+      );
+    }
+    final values = super.parseGrades(
+      _filterTables(html, [
+        _subjectHeaders,
+        ['ects', 'nota', 'classificacao', 'componente', 'elemento avaliacao'],
+      ]),
+      sourceUrl: sourceUrl,
+      forceHistorical: forceHistorical,
+    );
+    return _rejectMarkupNoise(
+      values,
+      (item) => '${item.subjectCode} ${item.subjectName} ${item.name}',
+      forceHistorical ? 'academic history' : 'grades',
+    );
+  }
+
+  static bool _hasBoundedPartialGradeData(String html) {
+    final document = html_parser.parse(html);
+    final links = document.querySelectorAll('a[href]').where((link) {
+      final href = link.attributes['href'] ?? '';
+      return RegExp(
+        r'^\s*javascript:\s*detailsDialog\s*\(\s*\{',
+        caseSensitive: false,
+      ).hasMatch(href);
+    }).toList();
+    return links.isNotEmpty &&
+        links.length <= 500 &&
+        links.every((link) => (link.attributes['href'] ?? '').length <= 20000);
+  }
 
   @override
   List<EnrollmentSubject> parseEnrollment(
