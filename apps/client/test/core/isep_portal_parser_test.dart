@@ -34,6 +34,29 @@ void main() {
     );
   });
 
+  test('parses live Portal week-calendar script with room and teacher', () {
+    final values = parser.parseTimetable(
+      _fixture('timetable_script'),
+      sourceUrl: 'https://portal.isep.ipp.pt/timetable',
+    );
+    expect(values, hasLength(1));
+    expect(values.single.subjectCode, 'PENGEL');
+    expect(values.single.lessonType, 'PL');
+    expect(values.single.className, '1DF');
+    expect(values.single.room, 'B301');
+    expect(values.single.lecturer, 'SSN');
+    expect(values.single.start, DateTime(2026, 9, 16, 9, 10));
+    expect(values.single.end, DateTime(2026, 9, 16, 11));
+  });
+
+  test('accepts recognized empty Portal week calendar', () {
+    final values = parser.parseTimetable(
+      '<script>return { events: [] };</script>',
+      sourceUrl: 'https://portal.isep.ipp.pt/timetable',
+    );
+    expect(values, isEmpty);
+  });
+
   test('keeps schedule separate from registration proof', () {
     final values = parser.parseExams(
       _fixture('exams'),
@@ -473,6 +496,156 @@ void main() {
         const PortalCredentials(username: '1234567', password: 'secret'),
       );
       expect(await client.getTimetable(), hasLength(1));
+    },
+  );
+
+  test(
+    'prefers and resolves the live timetable route from the dashboard',
+    () async {
+      final requestedPaths = <String>[];
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requestedPaths.add(options.uri.path);
+            if (options.method == 'POST') {
+              handler.resolve(
+                Response<String>(
+                  requestOptions: options,
+                  statusCode: 302,
+                  headers: Headers.fromMap({
+                    'location': ['/intranet/conta/AreaDeTrabalho.aspx'],
+                  }),
+                ),
+              );
+              return;
+            }
+            if (options.uri.path == '/intranet/conta/AreaDeTrabalho.aspx') {
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  '<span id="CurrentUser">Student</span>'
+                  '<a href="../certidoes/certidao_horario.aspx">Horário PDF</a>'
+                  '<a href="../ver_horario/ver_horario.aspx?user=42">Horário</a>',
+                ),
+              );
+              return;
+            }
+            if (options.uri.path == '/intranet/ver_horario/ver_horario.aspx') {
+              expect(options.uri.queryParameters['user'], '42');
+              handler.resolve(
+                _htmlResponse(options, _fixture('timetable_script')),
+              );
+              return;
+            }
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+                '<input type="password">',
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = IsepPortalClient(dio: dio);
+      await client.authenticate(
+        const PortalCredentials(username: 'student', password: 'secret'),
+      );
+      final timetable = await client.getTimetable();
+
+      expect(timetable, hasLength(1));
+      expect(timetable.single.room, 'B301');
+      expect(timetable.single.lecturer, 'SSN');
+      expect(
+        requestedPaths,
+        contains('/intranet/ver_horario/ver_horario.aspx'),
+      );
+      expect(
+        requestedPaths,
+        isNot(contains('/intranet/certidoes/certidao_horario.aspx')),
+      );
+    },
+  );
+
+  test(
+    'loads current grades and history through Portal page methods',
+    () async {
+      final requestedMethods = <String>[];
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.uri.path.endsWith('/getPartialGrades')) {
+              requestedMethods.add('getPartialGrades');
+              expect(options.method, 'POST');
+              expect(options.data, '{}');
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  jsonEncode({
+                    'd': '''
+                    <table>
+                      <tr><th>Unidade Curricular</th><th>Elemento Avaliação</th><th>Classificação</th></tr>
+                      <tr><td>Operating Systems</td><td>Project</td><td>16</td></tr>
+                    </table>
+                  ''',
+                  }),
+                  headers: Headers.fromMap({
+                    Headers.contentTypeHeader: ['application/json'],
+                  }),
+                ),
+              );
+              return;
+            }
+            if (options.uri.path.endsWith('/getDisciplines')) {
+              requestedMethods.add('getDisciplines');
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  jsonEncode({
+                    'd': '''
+                    <table>
+                      <tr><th>Unidade Curricular</th><th>Classificação</th><th>Ano Letivo</th><th>ECTS</th><th>Estado</th></tr>
+                      <tr><td>Databases</td><td>14</td><td>2025/2026</td><td>6</td><td>Aprovado</td></tr>
+                    </table>
+                  ''',
+                  }),
+                  headers: Headers.fromMap({
+                    Headers.contentTypeHeader: ['application/json'],
+                  }),
+                ),
+              );
+              return;
+            }
+            if (options.method == 'POST') {
+              handler.resolve(_htmlResponse(options, _dashboardHtml));
+              return;
+            }
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+                '<input type="password">',
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = IsepPortalClient(dio: dio);
+      await client.authenticate(
+        const PortalCredentials(username: 'student', password: 'secret'),
+      );
+
+      expect((await client.getGrades()).single.value, 16);
+      expect((await client.getAcademicHistory()).single.ects, 6);
+      expect(requestedMethods, ['getPartialGrades', 'getDisciplines']);
     },
   );
 
