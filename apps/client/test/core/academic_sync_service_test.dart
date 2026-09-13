@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:classsync/core/academic/academic_sync_service.dart';
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/integrations/moodle/moodle_client.dart';
@@ -361,6 +363,32 @@ void main() {
     });
     expect(academicStagesForSection(5), {'finance'});
   });
+
+  test('manual section reload runs after an in-flight refresh', () async {
+    portal.timetableGate = Completer<void>();
+    final timetable = service.synchronize(
+      onlyStages: academicStagesForSection(0),
+    );
+    await portal.timetableStarted.future;
+
+    final grades = service.synchronize(onlyStages: academicStagesForSection(4));
+    portal.timetableGate!.complete();
+    await timetable;
+    await grades;
+
+    expect(portal.authenticationCount, 2);
+    final records = await database.readAcademicRecords();
+    expect(
+      records.where((record) => record.kind == AcademicRecordKind.grade),
+      isNotEmpty,
+    );
+    expect(
+      records.where(
+        (record) => record.kind == AcademicRecordKind.academicHistory,
+      ),
+      isNotEmpty,
+    );
+  });
 }
 
 final _subjectOne = AcademicSubject(
@@ -403,6 +431,8 @@ class _FakePortal implements PortalAdapter {
   String? lastUsername;
   String? lastPassword;
   final requests = <String>[];
+  final timetableStarted = Completer<void>();
+  Completer<void>? timetableGate;
   List<TuitionCharge> tuitionCharges = [
     TuitionCharge(
       id: 'fee-1',
@@ -444,6 +474,8 @@ class _FakePortal implements PortalAdapter {
   @override
   Future<List<TimetableSlot>> getTimetable() async {
     requests.add('timetable');
+    if (!timetableStarted.isCompleted) timetableStarted.complete();
+    await timetableGate?.future;
     return [
       TimetableSlot(
         externalId: 'slot-1',

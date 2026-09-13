@@ -129,10 +129,14 @@ Portal stages refresh independently. Timetable, exams, and notices expire after
 30 minutes; grades and finance after 6 hours; enrolment, history, FUC context,
 and summaries after 24 hours. Opening Academic reads the cache and does not
 force network work. App startup/resume and periodic sync refresh only expired
-stages. The Academic reload control forces only the currently open page's
-owning stages. The active Academic section is re-evaluated between requests so
-its next pending stage moves first without cancelling or restarting in-flight
-work.
+stages. Academic's labeled header Reload forces every configured stage; the
+small wheel beside each page title forces only that page's owning stages. A
+manual page reload waits for any in-flight refresh and then runs, so its request
+cannot be discarded. The active Academic section is re-evaluated between
+requests so its next pending stage moves first without cancelling in-flight
+work. Portal's regular timetable payload is one dated weekly template;
+ClassSync projects those regular slots across selected weeks while keeping
+exceptional events bound to their official dates.
 
 Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,

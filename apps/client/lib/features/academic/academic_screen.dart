@@ -23,18 +23,19 @@ class AcademicScreen extends ConsumerStatefulWidget {
 }
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen> {
-  late int _section = widget.initialSection.clamp(0, 5).toInt();
+  late int _section = const {0, 1, 2, 4, 5}.contains(widget.initialSection)
+      ? widget.initialSection
+      : 0;
   late DateTime _weekStart = _startOfWeek(DateTime.now());
   _TimetableView? _timetableView;
 
-  static const _sectionLabels = [
-    'Timetable',
-    'Tasks',
-    'Evaluations',
-    'Search & ask',
-    'Grades & progress',
-    'Finance',
-  ];
+  static const _sectionLabels = {
+    0: 'Timetable',
+    1: 'Tasks',
+    2: 'Evaluations',
+    4: 'Grades & progress',
+    5: 'Finance',
+  };
 
   @override
   void initState() {
@@ -51,6 +52,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     await ref.read(academicSyncServiceProvider).synchronize(onlyStages: stages);
   }
 
+  Future<void> _reloadAll() async {
+    await ref.read(academicSyncServiceProvider).synchronize();
+  }
+
   @override
   Widget build(BuildContext context) {
     final recordsValue = ref.watch(academicRecordsProvider);
@@ -60,7 +65,6 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     final freshnessStage = switch (_section) {
       0 => 'timetable',
       2 => 'exams',
-      3 => 'notices',
       4 => 'grades',
       5 => 'finance',
       _ => null,
@@ -78,17 +82,15 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
           icon: const Icon(Icons.link_rounded),
           label: const Text('Connections'),
         ),
-        Tooltip(
-          message: 'Reload ${_sectionLabels[_section]} only',
-          child: IconButton.filledTonal(
-            onPressed: refresh.running ? null : _reloadCurrentSection,
-            icon: refresh.running
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
-          ),
+        FilledButton.tonalIcon(
+          onPressed: refresh.running ? null : _reloadAll,
+          icon: refresh.running
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
+          label: const Text('Reload'),
         ),
       ],
       child: recordsValue.when(
@@ -151,6 +153,21 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
               },
             ),
             const SizedBox(height: 22),
+            SectionHeader(
+              _sectionLabels[_section]!,
+              action: Tooltip(
+                message: 'Reload ${_sectionLabels[_section]} only',
+                child: IconButton(
+                  onPressed: refresh.running ? null : _reloadCurrentSection,
+                  icon: refresh.running
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
+              ),
+            ),
             switch (_section) {
               0 =>
                 connections?.portalConfigured == false
@@ -186,9 +203,6 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             ref.watch(activeSubjectsProvider).valueOrNull ??
                             const [],
                       ),
-              3 => _AcademicSearchSection(
-                subjects: ref.watch(subjectsProvider).valueOrNull ?? const [],
-              ),
               4 =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
@@ -204,7 +218,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             ref.watch(activeSubjectsProvider).valueOrNull ??
                             const [],
                       ),
-              _ =>
+              5 =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
                         source: 'ISEP Portal',
@@ -214,6 +228,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             showAcademicConnectionsDialog(context, ref),
                       )
                     : _FinanceSection(records: records),
+              _ => const SizedBox.shrink(),
             },
           ],
         ),
@@ -229,20 +244,27 @@ class _AcademicSectionNavigation extends StatelessWidget {
   });
   final int selected;
   final ValueChanged<int> onSelected;
-  static const destinations = [
+  static const primaryDestinations = [
     (0, Icons.view_week_rounded, 'Timetable'),
     (1, Icons.task_alt_rounded, 'Tasks'),
+  ];
+  static const moreDestinations = [
     (2, Icons.event_rounded, 'Evaluations'),
-    (3, Icons.manage_search_rounded, 'Search & ask'),
     (4, Icons.calculate_rounded, 'Grades & progress'),
     (5, Icons.account_balance_wallet_outlined, 'Finance'),
   ];
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selectedMore = moreDestinations
+        .where((item) => item.$1 == selected)
+        .firstOrNull;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        for (final item in destinations) ...[
+        for (final item in primaryDestinations)
           ChoiceChip(
             showCheckmark: false,
             avatar: Icon(item.$2, size: 18),
@@ -250,11 +272,45 @@ class _AcademicSectionNavigation extends StatelessWidget {
             selected: selected == item.$1,
             onSelected: (_) => onSelected(item.$1),
           ),
-          const SizedBox(width: 8),
-        ],
+        PopupMenuButton<int>(
+          tooltip: 'More academic sections',
+          onSelected: onSelected,
+          itemBuilder: (context) => [
+            for (final item in moreDestinations)
+              PopupMenuItem(
+                value: item.$1,
+                child: Row(
+                  children: [
+                    Icon(item.$2, size: 19),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(item.$3)),
+                    if (selected == item.$1)
+                      const Icon(Icons.check_rounded, size: 18),
+                  ],
+                ),
+              ),
+          ],
+          child: Chip(
+            avatar: Icon(
+              selectedMore?.$2 ?? Icons.more_horiz_rounded,
+              size: 18,
+            ),
+            label: Text(
+              selectedMore == null ? 'More' : 'More · ${selectedMore.$3}',
+            ),
+            backgroundColor: selectedMore == null
+                ? null
+                : scheme.secondaryContainer,
+            side: BorderSide(
+              color: selectedMore == null
+                  ? scheme.outlineVariant
+                  : scheme.secondary,
+            ),
+          ),
+        ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 class _SourceSetupState extends StatelessWidget {
@@ -1339,13 +1395,21 @@ class _TimetableSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final end = weekStart.add(const Duration(days: 7));
+    final sourceSlots = records
+        .where((item) => item.kind == AcademicRecordKind.timetable)
+        .map((item) => TimetableSlot.fromJson(item.payload))
+        .toList();
     final slots =
-        records
-            .where((item) => item.kind == AcademicRecordKind.timetable)
-            .map((item) => TimetableSlot.fromJson(item.payload))
+        sourceSlots
             .where(
               (item) =>
-                  !item.start.isBefore(weekStart) && item.start.isBefore(end),
+                  !item.exceptional ||
+                  (!item.start.isBefore(weekStart) && item.start.isBefore(end)),
+            )
+            .map(
+              (item) => item.exceptional
+                  ? item
+                  : _projectTimetableSlot(item, weekStart),
             )
             .toList()
           ..sort((a, b) => a.start.compareTo(b.start));
@@ -1381,6 +1445,13 @@ class _TimetableSection extends StatelessWidget {
                   icon: const Icon(Icons.chevron_right_rounded),
                 ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                'Regular Portal classes repeat across weeks. Exceptional events keep their official date.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -1428,45 +1499,152 @@ class _TimetableTable extends StatelessWidget {
   final List<TimetableSlot> slots;
 
   @override
-  Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columnSpacing: 28,
-        headingRowColor: WidgetStatePropertyAll(
-          Theme.of(context).colorScheme.surfaceContainerHigh,
-        ),
-        columns: const [
-          DataColumn(label: Text('DAY')),
-          DataColumn(label: Text('TIME')),
-          DataColumn(label: Text('SUBJECT')),
-          DataColumn(label: Text('TYPE')),
-          DataColumn(label: Text('CLASS')),
-          DataColumn(label: Text('ROOM')),
-          DataColumn(label: Text('TEACHER')),
-        ],
-        rows: [
-          for (final slot in slots)
-            DataRow(
-              cells: [
-                DataCell(Text(DateFormat.E().format(slot.start))),
-                DataCell(
-                  Text(
-                    '${DateFormat.Hm().format(slot.start)}–${DateFormat.Hm().format(slot.end)}',
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final lastWeekday = slots
+        .map((slot) => slot.start.weekday)
+        .fold<int>(
+          DateTime.friday,
+          (current, weekday) => weekday > current ? weekday : current,
+        );
+    final days = List.generate(lastWeekday, (index) => index + 1);
+    final timeRanges =
+        slots
+            .map(
+              (slot) => (
+                slot.start.hour * 60 + slot.start.minute,
+                slot.end.hour * 60 + slot.end.minute,
+              ),
+            )
+            .toSet()
+            .toList()
+          ..sort(
+            (a, b) =>
+                a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2),
+          );
+    const timeWidth = 104.0;
+    const dayWidth = 190.0;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          defaultColumnWidth: const FixedColumnWidth(dayWidth),
+          columnWidths: const {0: FixedColumnWidth(timeWidth)},
+          border: TableBorder(
+            horizontalInside: BorderSide(color: scheme.outlineVariant),
+            verticalInside: BorderSide(color: scheme.outlineVariant),
+          ),
+          children: [
+            TableRow(
+              decoration: BoxDecoration(color: scheme.surfaceContainerHigh),
+              children: [
+                const _TimetableGridHeader(label: 'TIME'),
+                for (final weekday in days)
+                  _TimetableGridHeader(
+                    label: DateFormat.E()
+                        .format(DateTime(2024, 1, weekday))
+                        .toUpperCase(),
                   ),
-                ),
-                DataCell(Text(slot.subjectName)),
-                DataCell(Text(slot.lessonType ?? '—')),
-                DataCell(Text(slot.className ?? '—')),
-                DataCell(Text(slot.room ?? '—')),
-                DataCell(Text(slot.lecturer ?? '—')),
               ],
             ),
-        ],
+            for (final range in timeRanges)
+              TableRow(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      '${_minutesLabel(range.$1)}–${_minutesLabel(range.$2)}',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                  ),
+                  for (final weekday in days)
+                    _TimetableGridCell(
+                      slots: slots
+                          .where(
+                            (slot) =>
+                                slot.start.weekday == weekday &&
+                                slot.start.hour * 60 + slot.start.minute ==
+                                    range.$1 &&
+                                slot.end.hour * 60 + slot.end.minute ==
+                                    range.$2,
+                          )
+                          .toList(),
+                    ),
+                ],
+              ),
+          ],
+        ),
       ),
-    ),
+    );
+  }
+}
+
+class _TimetableGridHeader extends StatelessWidget {
+  const _TimetableGridHeader({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    child: Text(label, style: Theme.of(context).textTheme.labelLarge),
   );
+}
+
+class _TimetableGridCell extends StatelessWidget {
+  const _TimetableGridCell({required this.slots});
+  final List<TimetableSlot> slots;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 92),
+      child: Padding(
+        padding: const EdgeInsets.all(7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final slot in slots)
+              Container(
+                margin: const EdgeInsets.only(bottom: 5),
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  border: Border(
+                    left: BorderSide(color: scheme.primary, width: 4),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      slot.subjectName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        if (slot.lessonType != null) slot.lessonType!,
+                        if (slot.className != null) slot.className!,
+                        if (slot.room != null) 'Room ${slot.room!}',
+                        if (slot.lecturer != null) 'Teacher ${slot.lecturer!}',
+                      ].join(' · '),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _TimetableAgenda extends StatelessWidget {
@@ -2584,6 +2762,34 @@ DateTime _startOfWeek(DateTime value) {
   final local = DateTime(value.year, value.month, value.day);
   return local.subtract(Duration(days: local.weekday - DateTime.monday));
 }
+
+TimetableSlot _projectTimetableSlot(TimetableSlot slot, DateTime weekStart) {
+  final day = weekStart.add(Duration(days: slot.start.weekday - 1));
+  final start = DateTime(
+    day.year,
+    day.month,
+    day.day,
+    slot.start.hour,
+    slot.start.minute,
+  );
+  return TimetableSlot(
+    externalId: slot.externalId,
+    subjectCode: slot.subjectCode,
+    subjectName: slot.subjectName,
+    subjectId: slot.subjectId,
+    start: start,
+    end: start.add(slot.end.difference(slot.start)),
+    className: slot.className,
+    lessonType: slot.lessonType,
+    room: slot.room,
+    lecturer: slot.lecturer,
+    sourceUrl: slot.sourceUrl,
+  );
+}
+
+String _minutesLabel(int minutes) =>
+    '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minutes % 60).toString().padLeft(2, '0')}';
 
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
