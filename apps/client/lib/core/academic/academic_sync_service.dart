@@ -130,14 +130,23 @@ class AcademicSyncService implements AcademicHubActions {
   Future<AcademicSyncResult> synchronize({
     bool force = true,
     Set<String>? onlyStages,
+    DateTime? timetableFrom,
   }) async {
     final active = _running;
     if (active != null) {
       if (!force && onlyStages == null) return active;
       await active;
-      return synchronize(force: force, onlyStages: onlyStages);
+      return synchronize(
+        force: force,
+        onlyStages: onlyStages,
+        timetableFrom: timetableFrom,
+      );
     }
-    final operation = _synchronize(force: force, onlyStages: onlyStages);
+    final operation = _synchronize(
+      force: force,
+      onlyStages: onlyStages,
+      timetableFrom: timetableFrom,
+    );
     _running = operation;
     try {
       return await operation;
@@ -156,6 +165,10 @@ class AcademicSyncService implements AcademicHubActions {
 
   Future<bool> _due(String key, Duration age, bool force) async {
     if (force) return true;
+    if (key == 'timetable' &&
+        await _database.readCursor('academic_timetable_window_v2') == null) {
+      return true;
+    }
     final last = await _database.readCursor('academic_success_$key');
     final attempt = await _database.readCursor('academic_attempt_$key');
     final now = DateTime.now().toUtc();
@@ -169,6 +182,7 @@ class AcademicSyncService implements AcademicHubActions {
   Future<AcademicSyncResult> _synchronize({
     required bool force,
     required Set<String>? onlyStages,
+    required DateTime? timetableFrom,
   }) async {
     _report();
     await repairPortalCache();
@@ -223,6 +237,7 @@ class AcademicSyncService implements AcademicHubActions {
             portalErrors,
             force: force,
             onlyStages: portalStages,
+            timetableFrom: timetableFrom,
             credentials: PortalCredentials(
               username: portalUser,
               password: portalPassword,
@@ -285,6 +300,7 @@ class AcademicSyncService implements AcademicHubActions {
     List<String> errors, {
     required bool force,
     required Set<String>? onlyStages,
+    required DateTime? timetableFrom,
     required PortalCredentials credentials,
   }) async {
     var saved = 0;
@@ -311,22 +327,37 @@ class AcademicSyncService implements AcademicHubActions {
       },
       'timetable': () async {
         try {
-          final slots = (await _portal.getTimetable())
-              .map(
-                (item) => item.copyWith(
-                  subjectId: _mapSubject(
-                    item.subjectCode,
-                    item.subjectName,
-                    subjects,
-                  ),
-                ),
-              )
-              .toList();
+          final windowStart = _academicWeekStart(
+            timetableFrom ?? DateTime.now(),
+          );
+          final windowEnd = windowStart.add(const Duration(days: 35));
+          final slots =
+              (await _portal.getTimetable(from: windowStart, weeks: 5))
+                  .map(
+                    (item) => item.copyWith(
+                      subjectId: _mapSubject(
+                        item.subjectCode,
+                        item.subjectName,
+                        subjects,
+                      ),
+                    ),
+                  )
+                  .toList();
           final records = slots.map(_timetableRecord).toList();
+          final previous = await _database.readAcademicRecords(
+            source: AcademicSource.portal,
+            kind: AcademicRecordKind.timetable,
+          );
+          final retained = previous.where((record) {
+            final start = record.startsAt;
+            return start == null ||
+                start.isBefore(windowStart) ||
+                !start.isBefore(windowEnd);
+          });
           await _database.replaceAcademicRecords(
             source: AcademicSource.portal,
             kind: AcademicRecordKind.timetable,
-            records: records,
+            records: [...retained, ...records],
           );
           saved += records.length;
         } on IntegrationException catch (error) {
@@ -790,6 +821,12 @@ class AcademicSyncService implements AcademicHubActions {
           'academic_success_$key',
           DateTime.now().toUtc(),
         );
+        if (key == 'timetable') {
+          await _database.saveCursor(
+            'academic_timetable_window_v2',
+            DateTime.now().toUtc(),
+          );
+        }
       } else {
         for (var i = before; i < errors.length; i++) {
           errors[i] = 'Portal $key: ${errors[i]}';
@@ -1476,3 +1513,8 @@ Set<String> academicStagesForSection(int section) => switch (section) {
   5 => {'finance'},
   _ => <String>{},
 };
+
+DateTime _academicWeekStart(DateTime value) {
+  final local = DateTime(value.year, value.month, value.day);
+  return local.subtract(Duration(days: local.weekday - DateTime.monday));
+}

@@ -71,7 +71,7 @@ abstract interface class PortalAdapter {
   Future<bool> validateSession();
   Future<List<EnrollmentSubject>> getEnrollment();
   Future<List<GradeComponent>> getAcademicHistory();
-  Future<List<TimetableSlot>> getTimetable();
+  Future<List<TimetableSlot>> getTimetable({DateTime? from, int weeks = 1});
   Future<List<EvaluationEvent>> getExams();
   Future<List<ExamRegistration>> getExamRegistrations();
   Future<List<GradeComponent>> getGrades();
@@ -194,11 +194,33 @@ class IsepPortalClient implements PortalAdapter {
   }
 
   @override
-  Future<List<TimetableSlot>> getTimetable() async {
+  Future<List<TimetableSlot>> getTimetable({
+    DateTime? from,
+    int weeks = 1,
+  }) async {
+    if (weeks < 1 || weeks > 5) throw ArgumentError.value(weeks, 'weeks');
     final page = await _featurePage(const [
       'horario',
       'ver horario',
     ], preferredHrefContains: 'ver_horario/ver_horario.aspx');
+    if (from != null) {
+      final start = DateTime(
+        from.year,
+        from.month,
+        from.day,
+      ).subtract(Duration(days: from.weekday - DateTime.monday));
+      final values = <String, TimetableSlot>{};
+      for (var index = 0; index < weeks; index++) {
+        final week = await _timetableWeek(
+          page,
+          start.add(Duration(days: index * 7)),
+        );
+        for (final slot in week) {
+          values[slot.externalId] = slot;
+        }
+      }
+      return values.values.toList()..sort((a, b) => a.start.compareTo(b.start));
+    }
     return _parser.parseTimetable(page.html, sourceUrl: page.url);
   }
 
@@ -401,6 +423,110 @@ class IsepPortalClient implements PortalAdapter {
         retryable: false,
       );
     }
+  }
+
+  Future<List<TimetableSlot>> _timetableWeek(
+    PortalDocument page,
+    DateTime weekStart,
+  ) async {
+    final document = html_parser.parse(page.html);
+    String hidden(String id) =>
+        document.querySelector('#$id')?.attributes['value'] ?? '';
+    final codeUser = hidden('ContentPlaceHolderMain_hf_code_user');
+    final entity = hidden('ContentPlaceHolderMain_hf_tipo_user');
+    final codeUserCode = hidden('ContentPlaceHolderMain_hf_code_user_code');
+    if (codeUser.isEmpty || entity.isEmpty || codeUserCode.isEmpty) {
+      throw const IntegrationException(
+        integration: 'ISEP Portal',
+        code: 'portal_layout_changed',
+        userMessage:
+            'Portal timetable did not expose its read-only week controls.',
+        retryable: false,
+      );
+    }
+    final codeWeek = await _portalJsonMethod(page, 'getCodeWeekByData', {
+      'data': _javascriptDateString(weekStart),
+    });
+    if (codeWeek is! String && codeWeek is! num) {
+      throw const FormatException();
+    }
+    final payload = await _portalJsonMethod(page, 'mudar_semana', {
+      'code_week': '$codeWeek',
+      'code_user': codeUser,
+      'entidade': entity,
+      'code_user_code': codeUserCode,
+    });
+    if (payload is! String) throw const FormatException();
+    return _parser.parseTimetable(payload, sourceUrl: page.url);
+  }
+
+  Future<dynamic> _portalJsonMethod(
+    PortalDocument page,
+    String method,
+    Map<String, String> body,
+  ) async {
+    const allowed = {'getCodeWeekByData', 'mudar_semana'};
+    if (!allowed.contains(method)) throw ArgumentError.value(method);
+    final pageUri = Uri.parse(page.url);
+    final url = _portalUri('${pageUri.origin}${pageUri.path}/$method');
+    try {
+      final response = await _dio.post<dynamic>(
+        url.toString(),
+        data: jsonEncode(body),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          headers: {
+            'cookie': _cookies.entries
+                .map((entry) => '${entry.key}=${entry.value}')
+                .join('; '),
+            'referer': page.url,
+          },
+        ),
+      );
+      final bytes = await readBoundedResponse(response.data, response.headers);
+      late final String responseBody;
+      try {
+        responseBody = utf8.decode(bytes);
+      } on FormatException {
+        responseBody = latin1.decode(bytes);
+      }
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map || !decoded.containsKey('d')) {
+        throw const FormatException();
+      }
+      return decoded['d'];
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ISEP Portal', error);
+    } on FormatException {
+      throw const IntegrationException(
+        integration: 'ISEP Portal',
+        code: 'portal_layout_changed',
+        userMessage: 'Portal returned an invalid timetable week response.',
+        retryable: false,
+      );
+    }
+  }
+
+  static String _javascriptDateString(DateTime date) {
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${weekdays[date.weekday - 1]} ${months[date.month - 1]} '
+        '${date.day.toString().padLeft(2, '0')} ${date.year}';
   }
 
   Future<PortalDocument> _featurePage(
@@ -766,6 +892,22 @@ class IsepPortalParser {
           final parts = [
             for (var i = 1; i <= 5; i++) int.parse(match.group(i)!),
           ];
+          // The Portal builds a whole week by adding to the day argument of a
+          // JavaScript Date. At month boundaries this legitimately produces
+          // values such as September 32, which JavaScript normalizes to
+          // October 2. Mirror that bounded behavior without evaluating JS.
+          if (parts[0] < 2000 ||
+              parts[0] > 2100 ||
+              parts[1] < 0 ||
+              parts[1] > 11 ||
+              parts[2] < 1 ||
+              parts[2] > 37 ||
+              parts[3] < 0 ||
+              parts[3] > 23 ||
+              parts[4] < 0 ||
+              parts[4] > 59) {
+            return null;
+          }
           final parsed = DateTime(
             parts[0],
             parts[1] + 1,
@@ -773,12 +915,7 @@ class IsepPortalParser {
             parts[3],
             parts[4],
           );
-          return parsed.month == parts[1] + 1 &&
-                  parsed.day == parts[2] &&
-                  parsed.hour == parts[3] &&
-                  parsed.minute == parts[4]
-              ? parsed
-              : null;
+          return parsed;
         }
 
         String literal(String key) {

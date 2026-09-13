@@ -38,15 +38,13 @@ Future<void> main() async {
         final body = latin1.decode(bytes);
         final path = response.requestOptions.uri.path;
         var structureBody = body;
-        if (path.toLowerCase().contains('estudante.aspx/')) {
-          try {
-            final decoded = jsonDecode(body);
-            if (decoded is Map && decoded['d'] is String) {
-              structureBody = decoded['d'] as String;
-            }
-          } catch (_) {
-            // The structure reporter also accepts ordinary HTML responses.
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map && decoded['d'] is String) {
+            structureBody = decoded['d'] as String;
           }
+        } catch (_) {
+          // The structure reporter also accepts ordinary HTML responses.
         }
         steps.add({
           'method': response.requestOptions.method,
@@ -77,6 +75,8 @@ Future<void> main() async {
             'safeGradeParse': _safeGradeParse(structureBody),
           if (path.endsWith('/getStudentFileEvent'))
             'safeGradeParse': _safeGradeParse(structureBody, historical: true),
+          if (path.endsWith('/mudar_semana'))
+            'safeTimetableParse': _safeTimetableParse(structureBody),
         });
         response.data = ResponseBody.fromBytes(
           bytes,
@@ -102,8 +102,21 @@ Future<void> main() async {
     final features = <String, Object>{};
     if (sessionValid) {
       features['timetable'] = await _probeFeature(() async {
-        final values = await client.getTimetable();
+        final values = await client.getTimetable(
+          from: DateTime.now(),
+          weeks: 5,
+        );
         final starts = values.map((item) => item.start).toList()..sort();
+        final weeklyCounts = <String, int>{};
+        for (final item in values) {
+          final monday = DateTime(
+            item.start.year,
+            item.start.month,
+            item.start.day,
+          ).subtract(Duration(days: item.start.weekday - DateTime.monday));
+          final key = monday.toIso8601String().split('T').first;
+          weeklyCounts[key] = (weeklyCounts[key] ?? 0) + 1;
+        }
         return {
           'events': values.length,
           'withRoom': values.where((item) => item.room != null).length,
@@ -114,6 +127,7 @@ Future<void> main() async {
             'lastDate': starts.last.toIso8601String().split('T').first,
           'weekdays': (values.map((item) => item.start.weekday).toSet().toList()
             ..sort()),
+          'weeklyCounts': weeklyCounts,
         };
       });
       features['currentGrades'] = await _probeFeature(() async {
@@ -140,6 +154,29 @@ Future<void> main() async {
     stdout.write(jsonEncode({'result': error.code, 'steps': steps}));
   } catch (_) {
     stdout.write(jsonEncode({'result': 'probe_error', 'steps': steps}));
+  }
+}
+
+Map<String, Object> _safeTimetableParse(String html) {
+  try {
+    final values = const IsepPortalParser().parseTimetable(
+      html,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/ver_horario/ver_horario.aspx',
+    );
+    final starts = values.map((item) => item.start).toList()..sort();
+    return {
+      'status': 'ok',
+      'records': values.length,
+      if (starts.isNotEmpty)
+        'firstDate': starts.first.toIso8601String().split('T').first,
+      if (starts.isNotEmpty)
+        'lastDate': starts.last.toIso8601String().split('T').first,
+    };
+  } on IntegrationException catch (error) {
+    return {'status': error.code};
+  } catch (_) {
+    return {'status': 'parse_error'};
   }
 }
 
@@ -225,6 +262,7 @@ Map<String, Object> _safeStructure(String html) {
       'getEventData': html.contains('getEventData'),
       'fullCalendar': html.toLowerCase().contains('calendar'),
     },
+    'calendarShape': _calendarShape(document),
     'gradeGrammar': _gradeGrammarShape(document),
     'routePaths': _routePaths(html),
     'ajaxUrls': RegExp(r'''url\s*:\s*["']([^"']+)["']''', caseSensitive: false)
@@ -366,6 +404,201 @@ Map<String, Object> _safeStructure(String html) {
         .take(100)
         .toList(),
   };
+}
+
+Map<String, Object> _calendarShape(Document document) {
+  final relevantScripts = document
+      .querySelectorAll('script:not([src])')
+      .map((script) => script.text)
+      .where(
+        (source) =>
+            source.contains('getEventData') ||
+            source.toLowerCase().contains('fullcalendar'),
+      )
+      .toList();
+  final statements = relevantScripts
+      .expand((source) => source.split(RegExp(r'[;\n]')))
+      .map((statement) => statement.trim())
+      .where(
+        (statement) => RegExp(
+          r'calendar|event|date|week|prev|next|goto|location|ajax|url',
+          caseSensitive: false,
+        ).hasMatch(statement),
+      )
+      .map(_safeActionShape)
+      .where((statement) => statement.isNotEmpty)
+      .take(80)
+      .toList();
+  final navigationLinks = document
+      .querySelectorAll('a[href], button[onclick], input[onclick]')
+      .map(
+        (element) =>
+            '${element.attributes['href'] ?? ''} ${element.attributes['onclick'] ?? ''}',
+      )
+      .where(
+        (action) => RegExp(
+          r'calendar|date|week|prev|next|horario|data|semana',
+          caseSensitive: false,
+        ).hasMatch(action),
+      )
+      .map(_safeActionShape)
+      .take(40)
+      .toList();
+  final queryKeys = relevantScripts
+      .expand(
+        (source) => RegExp(
+          r'[?&]([A-Za-z_]\w*)=',
+        ).allMatches(source).map((match) => match.group(1)!),
+      )
+      .toSet()
+      .toList();
+  final eventKeys = relevantScripts
+      .expand(
+        (source) => RegExp(
+          r'''(?:^|[,\{])\s*["']?([A-Za-z_]\w*)["']?\s*:''',
+          multiLine: true,
+        ).allMatches(source).map((match) => match.group(1)!),
+      )
+      .toSet()
+      .toList();
+  return {
+    'statements': statements,
+    'navigationLinks': navigationLinks,
+    'queryKeys': queryKeys,
+    'eventKeys': eventKeys,
+    'eventGrammar': _eventGrammarShape(relevantScripts),
+  };
+}
+
+Map<String, Object> _eventGrammarShape(List<String> scripts) {
+  final entries = <String>[];
+  for (final source in scripts) {
+    final events = RegExp(
+      r'events\s*:\s*\[([\s\S]*?)\]\s*[,}]',
+    ).firstMatch(source);
+    if (events == null) continue;
+    entries.addAll(
+      RegExp(
+        r'\{([\s\S]*?)\}\s*,?',
+      ).allMatches(events.group(1)!).map((match) => match.group(1)!),
+    );
+  }
+
+  String quoteStyle(String value, String key) {
+    final match = RegExp("['\"]$key['\"]\\s*:\\s*(['\"])").firstMatch(value);
+    return switch (match?.group(1)) {
+      "'" => 'single',
+      '"' => 'double',
+      _ => 'missing',
+    };
+  }
+
+  bool hasDate(String value, String key) => RegExp(
+    "['\"]$key['\"]\\s*:\\s*new Date\\(\\d{4},\\s*\\d{1,2},\\s*\\d{1,2},\\s*\\d{1,2},\\s*\\d{1,2}\\)",
+  ).hasMatch(value);
+
+  DateTime? date(String value, String key) {
+    final match = RegExp(
+      "['\"]$key['\"]\\s*:\\s*new Date\\((\\d{4}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2})\\)",
+    ).firstMatch(value);
+    if (match == null) return null;
+    final parts = [for (var i = 1; i <= 5; i++) int.parse(match.group(i)!)];
+    return DateTime(parts[0], parts[1] + 1, parts[2], parts[3], parts[4]);
+  }
+
+  bool exactDate(String value, String key) {
+    final match = RegExp(
+      "['\"]$key['\"]\\s*:\\s*new Date\\((\\d{4}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2}),\\s*(\\d{1,2})\\)",
+    ).firstMatch(value);
+    if (match == null) return false;
+    final parts = [for (var i = 1; i <= 5; i++) int.parse(match.group(i)!)];
+    final parsed = DateTime(
+      parts[0],
+      parts[1] + 1,
+      parts[2],
+      parts[3],
+      parts[4],
+    );
+    return parsed.month == parts[1] + 1 &&
+        parsed.day == parts[2] &&
+        parsed.hour == parts[3] &&
+        parsed.minute == parts[4];
+  }
+
+  String literal(String value, String key) {
+    final match = RegExp(
+      "['\"]$key['\"]\\s*:\\s*'((?:\\\\.|[^'\\\\])*)'",
+    ).firstMatch(value);
+    return (match?.group(1) ?? '')
+        .replaceAll(r"\'", "'")
+        .replaceAll(r'\n', ' ')
+        .replaceAll(r'\\', r'\');
+  }
+
+  String compact(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  final shapes = entries.indexed.map((indexed) {
+    final (index, value) = indexed;
+    final title = html_parser.parseFragment(literal(value, 'title'));
+    final body = html_parser.parseFragment(literal(value, 'body'));
+    final footer = html_parser.parseFragment(literal(value, 'footer'));
+    final subjectLinks = [title, body, footer]
+        .expand((fragment) => fragment.querySelectorAll('a[title]'))
+        .where((link) {
+          final label = compact(link.attributes['title'] ?? '').toLowerCase();
+          return label.contains('disciplina') ||
+              label.contains('unidade curricular');
+        })
+        .toList();
+    final start = date(value, 'start');
+    final end = date(value, 'end');
+    final fallbackSubject = title
+        .querySelectorAll('td')
+        .where((cell) => cell.querySelector('label') == null)
+        .map((cell) => compact(cell.text))
+        .firstWhere((text) => text.isNotEmpty, orElse: () => '');
+    var individualParse = 'ok';
+    try {
+      const IsepPortalParser().parseTimetable(
+        '<script>function getEventData(){return {events:[{$value}]};}</script>',
+        sourceUrl: 'https://portal.isep.ipp.pt/intranet/ver_horario/',
+      );
+    } on IntegrationException catch (error) {
+      individualParse = error.code;
+    } catch (_) {
+      individualParse = 'parse_error';
+    }
+    return {
+      'index': index,
+      'individualParse': individualParse,
+      'start': hasDate(value, 'start'),
+      'end': hasDate(value, 'end'),
+      'startExact': exactDate(value, 'start'),
+      'endExact': exactDate(value, 'end'),
+      'durationMinutes': start == null || end == null
+          ? null
+          : end.difference(start).inMinutes,
+      'titleQuote': quoteStyle(value, 'title'),
+      'bodyQuote': quoteStyle(value, 'body'),
+      'footerQuote': quoteStyle(value, 'footer'),
+      'titleChars': compact(title.text ?? '').length,
+      'fallbackSubjectChars': fallbackSubject.length,
+      'subjectLinkChars': subjectLinks.isEmpty
+          ? null
+          : compact(subjectLinks.first.text).length,
+      'subjectLink': RegExp(
+        r'''title\s*=\s*["'](?:disciplina|unidade curricular)["']''',
+        caseSensitive: false,
+      ).hasMatch(value),
+      'td': RegExp(r'<td\b', caseSensitive: false).allMatches(value).length,
+      'label': RegExp(
+        r'<label\b',
+        caseSensitive: false,
+      ).allMatches(value).length,
+      'links': RegExp(r'<a\b', caseSensitive: false).allMatches(value).length,
+    };
+  }).toList();
+  return {'entries': entries.length, 'shapes': shapes};
 }
 
 Map<String, Object> _gradeGrammarShape(Document document) {

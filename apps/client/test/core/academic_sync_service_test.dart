@@ -349,10 +349,15 @@ void main() {
   );
 
   test('section refresh requests only its owning stages', () async {
-    await service.synchronize(onlyStages: academicStagesForSection(0));
+    await service.synchronize(
+      onlyStages: academicStagesForSection(0),
+      timetableFrom: DateTime(2026, 10, 7),
+    );
 
     expect(portal.authenticationCount, 1);
     expect(portal.requests, ['timetable']);
+    expect(portal.timetableFrom, DateTime(2026, 10, 5));
+    expect(portal.timetableWeeks, 5);
     expect(moodle.synchronizationCount, 0);
     expect(academicStagesForSection(1), isEmpty);
     expect(academicStagesForSection(4), {
@@ -433,6 +438,8 @@ class _FakePortal implements PortalAdapter {
   final requests = <String>[];
   final timetableStarted = Completer<void>();
   Completer<void>? timetableGate;
+  DateTime? timetableFrom;
+  int? timetableWeeks;
   List<TuitionCharge> tuitionCharges = [
     TuitionCharge(
       id: 'fee-1',
@@ -472,8 +479,13 @@ class _FakePortal implements PortalAdapter {
   ];
 
   @override
-  Future<List<TimetableSlot>> getTimetable() async {
+  Future<List<TimetableSlot>> getTimetable({
+    DateTime? from,
+    int weeks = 1,
+  }) async {
     requests.add('timetable');
+    timetableFrom = from;
+    timetableWeeks = weeks;
     if (!timetableStarted.isCompleted) timetableStarted.complete();
     await timetableGate?.future;
     return [

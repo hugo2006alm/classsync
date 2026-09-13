@@ -49,6 +49,25 @@ void main() {
     expect(values.single.end, DateTime(2026, 9, 16, 11));
   });
 
+  test('normalizes Portal JavaScript dates that cross a month boundary', () {
+    const html = '''<script>function getEventData() { return { events: [{
+      'start': new Date(2026,8,32,9,10),
+      'end': new Date(2026,8,32,10,0),
+      'title':'<table><tr><td><a title="Disciplina">TEST</a></td><td><label>TP</label></td></tr></table>',
+      'body':'',
+      'footer':''
+    }] }; }</script>''';
+
+    final values = parser.parseTimetable(
+      html,
+      sourceUrl: 'https://portal.isep.ipp.pt/timetable',
+    );
+
+    expect(values, hasLength(1));
+    expect(values.single.start, DateTime(2026, 10, 2, 9, 10));
+    expect(values.single.end, DateTime(2026, 10, 2, 10));
+  });
+
   test('accepts recognized empty Portal week calendar', () {
     final values = parser.parseTimetable(
       '<script>return { events: [] };</script>',
@@ -570,6 +589,96 @@ void main() {
       );
     },
   );
+
+  test('loads the requested timetable week and four weeks forward', () async {
+    var authenticated = false;
+    var weekIndex = 0;
+    final requestedDates = <String>[];
+    final dio = Dio(
+      BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+    );
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final path = options.uri.path;
+          if (options.method == 'POST' && path == '/intranet/') {
+            authenticated = true;
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<span id="CurrentUser">Student</span>'
+                '<a href="ver_horario/ver_horario.aspx">Horário</a>',
+              ),
+            );
+            return;
+          }
+          if (path.endsWith('/getCodeWeekByData')) {
+            final body = jsonDecode(options.data as String) as Map;
+            requestedDates.add(body['data'] as String);
+            handler.resolve(
+              _htmlResponse(options, jsonEncode({'d': 'week-$weekIndex'})),
+            );
+            return;
+          }
+          if (path.endsWith('/mudar_semana')) {
+            final start = DateTime(
+              2026,
+              9,
+              14,
+            ).add(Duration(days: weekIndex * 7));
+            final script =
+                '''<script>function getEventData() { return { events: [{
+              'start': new Date(${start.year},${start.month - 1},${start.day},9,10),
+              'end': new Date(${start.year},${start.month - 1},${start.day},10,0),
+              'title':'<table><tr><td><a title="Disciplina">UC$weekIndex</a></td></tr></table>',
+              'body':'', 'footer':''
+            }] }; }</script>''';
+            weekIndex++;
+            handler.resolve(_htmlResponse(options, jsonEncode({'d': script})));
+            return;
+          }
+          if (authenticated &&
+              path == '/intranet/ver_horario/ver_horario.aspx') {
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<input id="ContentPlaceHolderMain_hf_code_user" value="user">'
+                '<input id="ContentPlaceHolderMain_hf_tipo_user" value="student">'
+                '<input id="ContentPlaceHolderMain_hf_code_user_code" value="code">',
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            _htmlResponse(
+              options,
+              '<input type="hidden" name="__VIEWSTATE" value="state">'
+              '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+              '<input type="password">',
+            ),
+          );
+        },
+      ),
+    );
+    final client = IsepPortalClient(dio: dio);
+    await client.authenticate(
+      const PortalCredentials(username: 'student', password: 'secret'),
+    );
+
+    final values = await client.getTimetable(
+      from: DateTime(2026, 9, 16),
+      weeks: 5,
+    );
+
+    expect(values, hasLength(5));
+    expect(requestedDates, [
+      'Mon Sep 14 2026',
+      'Mon Sep 21 2026',
+      'Mon Sep 28 2026',
+      'Mon Oct 05 2026',
+      'Mon Oct 12 2026',
+    ]);
+  });
 
   test(
     'loads current grades and history through Portal page methods',
