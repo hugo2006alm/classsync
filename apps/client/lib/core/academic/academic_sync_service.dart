@@ -130,19 +130,28 @@ class AcademicSyncService implements AcademicHubActions {
   Future<AcademicSyncResult> synchronize({
     bool force = true,
     Set<String>? onlyStages,
-  }) {
-    return _running ??= _synchronize(force: force, onlyStages: onlyStages)
-        .whenComplete(() {
-          _running = null;
-          if (refreshState.running) {
-            _report(
-              running: false,
-              errors: const [
-                'Academic refresh could not complete. Try Refresh again.',
-              ],
-            );
-          }
-        });
+  }) async {
+    final active = _running;
+    if (active != null) {
+      if (!force && onlyStages == null) return active;
+      await active;
+      return synchronize(force: force, onlyStages: onlyStages);
+    }
+    final operation = _synchronize(force: force, onlyStages: onlyStages);
+    _running = operation;
+    try {
+      return await operation;
+    } finally {
+      if (identical(_running, operation)) _running = null;
+      if (refreshState.running) {
+        _report(
+          running: false,
+          errors: const [
+            'Academic refresh could not complete. Try Refresh again.',
+          ],
+        );
+      }
+    }
   }
 
   Future<bool> _due(String key, Duration age, bool force) async {

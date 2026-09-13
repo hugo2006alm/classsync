@@ -28,15 +28,13 @@ them with Gemini, and publishes structured study notes to Notion.
   published grades, and academic history, with fail-closed WebForms parsing.
 - Moodle Web Services integration for enrolled courses, assignments, and
   announcements; ambiguous subject mappings stay reviewable.
-- Focused offline Academic hub with a responsive week timetable: desktop table
-  or agenda, mobile agenda or horizontally scrollable table, and explicit class,
-  room, and teacher details. Tasks, evaluations, search, grades/progress, and
-  read-only finance remain directly accessible.
+- Focused offline Academic hub with a responsive weekly timetable: desktop
+  time-by-weekday grid or agenda, mobile agenda or horizontally scrollable grid,
+  and explicit class, room, and teacher details. Timetable and Tasks stay
+  directly accessible; Evaluations, Grades & progress, and Finance live under
+  the compact More menu.
 - Lecture action extraction with evidence, editable lifecycle state, and
   deadline calendar integration; regeneration preserves user decisions.
-- Local academic search across retained summaries/transcripts, FUC, Portal, and
-  Moodle content, with subject/semester/date/type filters and evidence-only
-  Gemini answers with source IDs.
 - Read-only Portal notices, official lesson summaries, exam-registration
   windows, enrolment/history, and ECTS progress with stable provenance and
   change detection.
@@ -125,11 +123,9 @@ changes Academic section. See [ISEP Portal details](docs/isep-portal.md) and
 
 Upgrades automatically remove identifiable Portal form/menu records from the
 academic cache on startup, including offline. Valid records and manual tasks
-are preserved. Use Academic **Refresh** to fetch current Portal data; unavailable
-data is shown as uncached. The small Academic reload control refreshes only the
-open page; local Tasks simply rereads the offline cache. Local search indexes
-readable academic content and excludes invalid records and internal JSON
-metadata.
+are preserved. Academic **Reload** fetches every configured academic source;
+the small wheel beside each page title refreshes only that page. Local Tasks
+simply rereads the offline cache. Unavailable data is shown as uncached.
 
 ## Deploy the relay
 

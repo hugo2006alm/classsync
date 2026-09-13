@@ -1,7 +1,6 @@
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/domain/academic/academic_hub_models.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
 
 Future<void> seedAcademicQa(ClassSyncDatabase database) async {
   final now = DateTime.utc(2026, 9, 9);
@@ -77,32 +76,24 @@ Future<void> seedAcademicQa(ClassSyncDatabase database) async {
 }
 
 Future<void> verifyAcademicTabs(WidgetTester tester) async {
-  Future<void> select(String label) async {
-    final chip = find.widgetWithText(ChoiceChip, label);
-    await tester.ensureVisible(chip);
-    await tester.tap(chip);
+  Future<void> selectMore(String label) async {
+    await tester.tap(find.textContaining('More').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
     await tester.pumpAndSettle();
   }
 
-  await select('Finance');
+  await selectMore('Finance');
   await tester.pumpAndSettle();
   expect(find.text('Propina'), findsOneWidget);
   expect(find.textContaining('120,50'), findsWidgets);
   expect(find.textContaining('Ano Letivo :'), findsNothing);
   expect(tester.takeException(), isNull);
-  await select('Grades & progress');
+  await selectMore('Grades & progress');
   expect(find.text('No progress data cached'), findsOneWidget);
   expect(find.textContaining('Data da Liquidação'), findsNothing);
   expect(find.textContaining('Morada EXAMPLE'), findsNothing);
-  await select('Search & ask');
-  await tester.enterText(
-    find.byWidgetPredicate((widget) => widget is EditableText),
-    'DTO',
-  );
-  await tester.tap(find.text('Search locally'));
-  await tester.pumpAndSettle();
-  expect(find.text('DTO course notes'), findsOneWidget);
+  expect(find.text('Search & ask'), findsNothing);
   expect(find.textContaining('Morada EXAMPLE'), findsNothing);
-  expect(find.textContaining('sourceUrl'), findsNothing);
   expect(tester.takeException(), isNull);
 }

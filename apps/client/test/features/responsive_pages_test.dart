@@ -75,9 +75,12 @@ void main() {
 
     expect(find.text('Timetable'), findsWidgets);
     expect(find.text('Tasks'), findsOneWidget);
+    expect(find.text('More'), findsOneWidget);
+    expect(find.text('Search & ask'), findsNothing);
+    await tester.tap(find.text('More'));
+    await tester.pumpAndSettle();
     expect(find.text('Evaluations'), findsOneWidget);
     expect(find.text('Grades & progress'), findsOneWidget);
-    expect(find.text('Search & ask'), findsOneWidget);
     expect(find.text('Finance'), findsOneWidget);
     expect(find.text('Updates'), findsNothing);
     expect(find.text('Course context'), findsNothing);
@@ -107,18 +110,19 @@ void main() {
 
     expect(find.textContaining('Room B301'), findsOneWidget);
     expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
-    expect(find.text('DAY'), findsNothing);
+    expect(find.text('TIME'), findsNothing);
     await tester.tap(find.text('Table'));
     await tester.pumpAndSettle();
-    expect(find.text('ROOM'), findsOneWidget);
-    expect(find.text('TEACHER'), findsOneWidget);
-    expect(find.text('B301'), findsOneWidget);
-    expect(find.text('Jane Teacher'), findsOneWidget);
+    expect(find.text('TIME'), findsOneWidget);
+    expect(find.text('MON'), findsOneWidget);
+    expect(find.text('09:10–11:00'), findsOneWidget);
+    expect(find.textContaining('Room B301'), findsOneWidget);
+    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
 
-  testWidgets('desktop timetable defaults to horizontally scrollable table', (
+  testWidgets('desktop timetable is a horizontally scrollable time-day grid', (
     tester,
   ) async {
     _useDesktopViewport(tester);
@@ -134,16 +138,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(DataTable), findsOneWidget);
-    expect(find.text('ROOM'), findsOneWidget);
-    expect(find.text('TEACHER'), findsOneWidget);
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.text('TIME'), findsOneWidget);
+    expect(find.text('MON'), findsOneWidget);
+    expect(find.text('09:10–11:00'), findsOneWidget);
     expect(
       find.ancestor(
-        of: find.byType(DataTable),
+        of: find.byType(Table),
         matching: find.byType(SingleChildScrollView),
       ),
       findsWidgets,
     );
+    expect(find.byTooltip('Reload Timetable only'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Reload'), findsOneWidget);
+    await tester.tap(find.byTooltip('Next week'));
+    await tester.pumpAndSettle();
+    expect(find.text('Operating Systems'), findsOneWidget);
+    expect(find.text('09:10–11:00'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

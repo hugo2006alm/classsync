@@ -16,39 +16,38 @@ class _NoCredentials extends SecureCredentialStore {
 
 void main() {
   for (final width in [400.0, 1280.0]) {
-    testWidgets(
-      'Finance, Progress and local search reject old cache noise at width $width',
-      (tester) async {
-        tester.view.physicalSize = Size(width, 950);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.reset);
-        final db = ClassSyncDatabase(NativeDatabase.memory());
-        await db.initialize();
-        await seedAcademicQa(db);
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              databaseProvider.overrideWithValue(db),
-              credentialStoreProvider.overrideWithValue(_NoCredentials()),
-              academicConnectionStateProvider.overrideWith(
-                (ref) async => const AcademicConnectionState(
-                  portalConfigured: true,
-                  moodleConfigured: false,
-                ),
+    testWidgets('Finance and Progress reject old cache noise at width $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 950);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final db = ClassSyncDatabase(NativeDatabase.memory());
+      await db.initialize();
+      await seedAcademicQa(db);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            credentialStoreProvider.overrideWithValue(_NoCredentials()),
+            academicConnectionStateProvider.overrideWith(
+              (ref) async => const AcademicConnectionState(
+                portalConfigured: true,
+                moodleConfigured: false,
               ),
-            ],
-            child: MaterialApp(
-              theme: ClassSyncTheme.dark(),
-              home: const Scaffold(body: AcademicScreen()),
             ),
+          ],
+          child: MaterialApp(
+            theme: ClassSyncTheme.dark(),
+            home: const Scaffold(body: AcademicScreen()),
           ),
-        );
-        await tester.pumpAndSettle();
-        await verifyAcademicTabs(tester);
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pumpAndSettle();
-        await db.close();
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      await verifyAcademicTabs(tester);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await db.close();
+    });
   }
 }

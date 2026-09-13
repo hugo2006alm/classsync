@@ -103,10 +103,17 @@ Future<void> main() async {
     if (sessionValid) {
       features['timetable'] = await _probeFeature(() async {
         final values = await client.getTimetable();
+        final starts = values.map((item) => item.start).toList()..sort();
         return {
           'events': values.length,
           'withRoom': values.where((item) => item.room != null).length,
           'withTeacher': values.where((item) => item.lecturer != null).length,
+          if (starts.isNotEmpty)
+            'firstDate': starts.first.toIso8601String().split('T').first,
+          if (starts.isNotEmpty)
+            'lastDate': starts.last.toIso8601String().split('T').first,
+          'weekdays': (values.map((item) => item.start.weekday).toSet().toList()
+            ..sort()),
         };
       });
       features['currentGrades'] = await _probeFeature(() async {
