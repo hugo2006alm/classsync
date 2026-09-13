@@ -172,11 +172,14 @@ try {
         git push origin $tag
         Assert-LastExitCode 'Tag push'
 
+        $androidAsset = (Join-Path $releaseDir 'ClassSync-Android.apk') + '#ClassSync Android APK'
+        $windowsAsset = (Join-Path $releaseDir "ClassSync-Setup-$version.exe") + '#ClassSync Windows installer'
+        $checksumsAsset = (Join-Path $releaseDir 'SHA256SUMS.txt') + '#SHA-256 checksums'
         $releaseArgs = @(
             'release', 'create', $tag,
-            (Join-Path $releaseDir 'ClassSync-Android.apk') + '#ClassSync Android APK',
-            (Join-Path $releaseDir "ClassSync-Setup-$version.exe") + '#ClassSync Windows installer',
-            (Join-Path $releaseDir 'SHA256SUMS.txt') + '#SHA-256 checksums',
+            $androidAsset,
+            $windowsAsset,
+            $checksumsAsset,
             '--title', "ClassSync $tag",
             '--verify-tag'
         )
