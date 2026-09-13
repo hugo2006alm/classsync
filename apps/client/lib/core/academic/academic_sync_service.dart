@@ -169,6 +169,10 @@ class AcademicSyncService implements AcademicHubActions {
         await _database.readCursor('academic_timetable_window_v2') == null) {
       return true;
     }
+    if (key == 'history' &&
+        await _database.readCursor('academic_history_curriculum_v2') == null) {
+      return true;
+    }
     final last = await _database.readCursor('academic_success_$key');
     final attempt = await _database.readCursor('academic_attempt_$key');
     final now = DateTime.now().toUtc();
@@ -827,6 +831,12 @@ class AcademicSyncService implements AcademicHubActions {
             DateTime.now().toUtc(),
           );
         }
+        if (key == 'history') {
+          await _database.saveCursor(
+            'academic_history_curriculum_v2',
+            DateTime.now().toUtc(),
+          );
+        }
       } else {
         for (var i = before; i < errors.length; i++) {
           errors[i] = 'Portal $key: ${errors[i]}';
@@ -1263,7 +1273,7 @@ class AcademicSyncService implements AcademicHubActions {
     for (final removed in old.where(
       (item) => !incomingKeys.contains(item.key),
     )) {
-      await _notifications.cancelAcademicReminder(removed.key);
+      await _cancelTuitionReminders(removed.key);
     }
     final saved = await _database.readAcademicRecords(
       source: AcademicSource.portal,
@@ -1281,23 +1291,51 @@ class AcademicSyncService implements AcademicHubActions {
     String key,
     TuitionCharge charge,
   ) async {
-    await _notifications.cancelAcademicReminder(key);
-    if (!charge.isOpenAt(DateTime.now()) ||
-        charge.reminderMinutes == null ||
-        charge.dueAt == null) {
+    await _cancelTuitionReminders(key);
+    final now = DateTime.now();
+    if (!charge.isOpenAt(now) || charge.dueAt == null) {
       return;
     }
-    final notifyAt = charge.dueAt!.subtract(
-      Duration(minutes: charge.reminderMinutes!),
-    );
-    if (notifyAt.isAfter(DateTime.now())) {
+    if (charge.reminderMinutes != null) {
+      final notifyAt = charge.dueAt!.subtract(
+        Duration(minutes: charge.reminderMinutes!),
+      );
+      if (notifyAt.isAfter(now)) {
+        await _notifications.scheduleAcademicReminder(
+          id: '$key:due',
+          title: 'Payment due · ${charge.title}',
+          scheduledAt: notifyAt,
+          section: 5,
+        );
+      }
+    }
+    if (charge.overdueReminder) {
+      var dailyAt = DateTime(
+        charge.dueAt!.year,
+        charge.dueAt!.month,
+        charge.dueAt!.day,
+        9,
+      );
+      if (!dailyAt.isAfter(now)) {
+        dailyAt = DateTime(now.year, now.month, now.day, 9);
+        if (!dailyAt.isAfter(now)) {
+          dailyAt = dailyAt.add(const Duration(days: 1));
+        }
+      }
       await _notifications.scheduleAcademicReminder(
-        id: key,
-        title: 'Payment due · ${charge.title}',
-        scheduledAt: notifyAt,
+        id: '$key:daily',
+        title: 'Payment still due · ${charge.title}',
+        scheduledAt: dailyAt,
         section: 5,
+        repeatDaily: true,
       );
     }
+  }
+
+  Future<void> _cancelTuitionReminders(String key) async {
+    await _notifications.cancelAcademicReminder(key);
+    await _notifications.cancelAcademicReminder('$key:due');
+    await _notifications.cancelAcademicReminder('$key:daily');
   }
 
   Future<void> _replaceEvaluations(

@@ -191,6 +191,27 @@ void main() {
     expect(value.toJson().values.join(' '), isNot(contains('123456789')));
   });
 
+  test('imports future Portal payment-plan instalments', () {
+    const html = '''<table id="tbPlanoPagamentosTotal">
+      <tr><td></td><td>Prestação</td><td>Acumulado</td><td>Data Limite</td><td>Data Pagamento</td><td>Propina Paga</td><td>Juros de mora Pago</td><td>Em Dívida</td></tr>
+      <tr><td>1ª Prestação</td><td>100,00 €</td><td>100,00 €</td><td>28/09/2026</td><td>27/09/2026</td><td>100,00 €</td><td>0,00 €</td><td>0,00 €</td></tr>
+      <tr><td>2ª Prestação</td><td>100,00 €</td><td>200,00 €</td><td>28/10/2026</td><td></td><td>0,00 €</td><td>0,00 €</td><td>0,00 €</td></tr>
+    </table>''';
+    final values = const StrictIsepPortalParser().parseTuitionCharges(
+      html,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/propinas/pedidorefmb.aspx',
+    );
+
+    expect(values, hasLength(2));
+    expect(values.first.state, TuitionPaymentState.paid);
+    expect(values.last.state, TuitionPaymentState.pending);
+    expect(values.last.id, 'plan:2 prestacao');
+    expect(values.last.amount, 100);
+    expect(values.last.outstandingAmount, isNull);
+    expect(values.last.dueAt, DateTime(2026, 10, 28));
+  });
+
   test('stable tuition identity survives due date change and detects overdue', () {
     const first =
         '''<table><tr><th>Descrição</th><th>Ano Letivo</th><th>Prestação</th><th>Vencimento</th><th>Estado</th></tr>

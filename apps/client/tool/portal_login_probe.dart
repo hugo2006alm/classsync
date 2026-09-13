@@ -7,6 +7,7 @@ import 'package:classsync/core/integrations/portal/isep_portal_client.dart';
 import 'package:classsync/core/integrations/portal/strict_isep_portal_parser.dart';
 import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/core/integrations/bounded_response.dart';
+import 'package:classsync/domain/academic/academic_hub_models.dart';
 
 Future<void> main() async {
   final input = jsonDecode(stdin.readLineSync()!) as Map<String, dynamic>;
@@ -101,6 +102,17 @@ Future<void> main() async {
     final sessionValid = await client.validateSession();
     final features = <String, Object>{};
     if (sessionValid) {
+      features['enrollment'] = await _probeFeature(() async {
+        final values = await client.getEnrollment();
+        return {
+          'records': values.length,
+          'withEcts': values.where((item) => item.ects != null).length,
+          'totalEcts': values.fold<double>(
+            0,
+            (sum, item) => sum + (item.ects ?? 0),
+          ),
+        };
+      });
       features['timetable'] = await _probeFeature(() async {
         final values = await client.getTimetable(
           from: DateTime.now(),
@@ -132,15 +144,29 @@ Future<void> main() async {
       });
       features['currentGrades'] = await _probeFeature(() async {
         final values = await client.getGrades();
-        return {'records': values.length};
+        return _safeGradeSummary(values);
       });
       features['academicHistory'] = await _probeFeature(() async {
         final values = await client.getAcademicHistory();
-        return {'records': values.length};
+        return _safeGradeSummary(values);
       });
       features['finance'] = await _probeFeature(() async {
         final values = await client.getTuitionCharges();
-        return {'records': values.length};
+        final dueDates =
+            values.map((item) => item.dueAt).whereType<DateTime>().toList()
+              ..sort();
+        return {
+          'records': values.length,
+          'stateCounts': {
+            for (final state in TuitionPaymentState.values)
+              state.name: values.where((item) => item.state == state).length,
+          },
+          'withDueDate': dueDates.length,
+          if (dueDates.isNotEmpty)
+            'firstDueDate': dueDates.first.toIso8601String().split('T').first,
+          if (dueDates.isNotEmpty)
+            'lastDueDate': dueDates.last.toIso8601String().split('T').first,
+        };
       });
     }
     stdout.write(
@@ -155,6 +181,58 @@ Future<void> main() async {
   } catch (_) {
     stdout.write(jsonEncode({'result': 'probe_error', 'steps': steps}));
   }
+}
+
+Map<String, Object> _safeGradeSummary(List<GradeComponent> values) {
+  final unique = <String, GradeComponent>{};
+  final uniqueWithoutYear = <String, GradeComponent>{};
+  final uniqueSubjects = <String, GradeComponent>{};
+  for (final item in values) {
+    final key = [
+      _normalize(item.subjectName),
+      item.academicYear ?? '',
+      _normalize(item.name),
+      item.value?.toStringAsFixed(4) ?? '',
+      item.ects?.toStringAsFixed(4) ?? '',
+    ].join('|');
+    unique.putIfAbsent(key, () => item);
+    final withoutYear = [
+      _normalize(item.subjectName),
+      _normalize(item.name),
+      item.value?.toStringAsFixed(4) ?? '',
+      item.ects?.toStringAsFixed(4) ?? '',
+    ].join('|');
+    uniqueWithoutYear.putIfAbsent(withoutYear, () => item);
+    uniqueSubjects.putIfAbsent(_normalize(item.subjectName), () => item);
+  }
+  return {
+    'records': values.length,
+    'semanticRecords': unique.length,
+    'semanticDuplicates': values.length - unique.length,
+    'rawEcts': values.fold<double>(0, (sum, item) => sum + (item.ects ?? 0)),
+    'semanticEcts': unique.values.fold<double>(
+      0,
+      (sum, item) => sum + (item.ects ?? 0),
+    ),
+    'yearIndependentRecords': uniqueWithoutYear.length,
+    'yearIndependentEcts': uniqueWithoutYear.values.fold<double>(
+      0,
+      (sum, item) => sum + (item.ects ?? 0),
+    ),
+    'distinctSubjects': uniqueSubjects.length,
+    'distinctSubjectEcts': uniqueSubjects.values.fold<double>(
+      0,
+      (sum, item) => sum + (item.ects ?? 0),
+    ),
+    'withoutGrade': values.where((item) => item.value == null).length,
+    'ectsDistribution': {
+      for (final ects
+          in values.map((item) => item.ects).whereType<double>().toSet())
+        ects.toStringAsFixed(1): values
+            .where((item) => item.ects == ects)
+            .length,
+    },
+  };
 }
 
 Map<String, Object> _safeTimetableParse(String html) {
@@ -239,7 +317,23 @@ Map<String, Object> _safeStructure(String html) {
     'créditos',
     'creditos',
     'valor',
+    'valor pago',
+    'valor pendente',
+    'montante',
+    'total',
+    'data',
+    'limite',
     'vencimento',
+    'prestação',
+    'prestacao',
+    'parcela',
+    'documento',
+    'plano',
+    'situação',
+    'situacao',
+    'liquidado',
+    'pago',
+    'pendente',
     'referência',
     'referencia',
     'pagamento',
@@ -264,6 +358,7 @@ Map<String, Object> _safeStructure(String html) {
     },
     'calendarShape': _calendarShape(document),
     'gradeGrammar': _gradeGrammarShape(document),
+    'financePlanGrammar': _financePlanGrammar(document),
     'routePaths': _routePaths(html),
     'ajaxUrls': RegExp(r'''url\s*:\s*["']([^"']+)["']''', caseSensitive: false)
         .allMatches(html)
@@ -470,6 +565,55 @@ Map<String, Object> _calendarShape(Document document) {
   };
 }
 
+Map<String, Object> _financePlanGrammar(Document document) {
+  final table = document.querySelector('#tbPlanoPagamentosTotal');
+  if (table == null) return const {'found': false};
+  final rows = table.querySelectorAll('tr');
+  return {
+    'found': true,
+    'rows': rows.length,
+    'headers': rows.isEmpty
+        ? const <String>[]
+        : rows.first.children
+              .where((cell) => cell.localName == 'th' || cell.localName == 'td')
+              .map((cell) => cell.text.replaceAll(RegExp(r'\s+'), ' ').trim())
+              .map(
+                (text) => text.length <= 40 && !RegExp(r'\d').hasMatch(text)
+                    ? text
+                    : '<data>',
+              )
+              .toList(),
+    'rowShapes': rows.take(20).map((row) {
+      final cells = row.children
+          .where((cell) => cell.localName == 'th' || cell.localName == 'td')
+          .toList();
+      return {
+        'cells': cells.indexed.map((indexed) {
+          final (index, cell) = indexed;
+          final text = cell.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+          return {
+            'index': index,
+            'chars': text.length,
+            'dates': RegExp(
+              r'\b\d{1,2}[/\-]\d{1,2}[/\-]\d{4}\b',
+            ).allMatches(text).length,
+            'money': RegExp(
+              r'\b\d[\d ]*[.,]\d{2}\s*(?:€|EUR)',
+              caseSensitive: false,
+            ).allMatches(text).length,
+            'inputs': cell
+                .querySelectorAll('input')
+                .map((item) => item.attributes['type'] ?? '')
+                .toList(),
+            'links': cell.querySelectorAll('a').length,
+            'strong': cell.querySelectorAll('strong,b').length,
+          };
+        }).toList(),
+      };
+    }).toList(),
+  };
+}
+
 Map<String, Object> _eventGrammarShape(List<String> scripts) {
   final entries = <String>[];
   for (final source in scripts) {
@@ -637,6 +781,8 @@ Map<String, Object> _gradeGrammarShape(Document document) {
   var historyRows = 0;
   var numericHistoryGrades = 0;
   var numericHistoryEcts = 0;
+  final subjectTokens = <String, String>{};
+  final historyTableShapes = <Map<String, Object>>[];
   for (final table in document.querySelectorAll('table')) {
     if (table.querySelector('table') != null) continue;
     final rows = table.querySelectorAll('tr');
@@ -650,6 +796,7 @@ Map<String, Object> _gradeGrammarShape(Document document) {
     final ectsIndex = headers.indexWhere((header) => header.contains('ects'));
     if (subjectIndex < 0 || gradeIndex < 0 || ectsIndex < 0) continue;
     historyTables++;
+    final tableRows = <Map<String, Object>>[];
     for (final row in rows.skip(1)) {
       final cells = row.children
           .where((cell) => cell.localName == 'th' || cell.localName == 'td')
@@ -662,17 +809,61 @@ Map<String, Object> _gradeGrammarShape(Document document) {
           ].reduce((left, right) => left > right ? left : right)) {
         continue;
       }
-      if (cells[subjectIndex].text.trim().isEmpty) continue;
+      final subject = _normalize(cells[subjectIndex].text).trim();
+      if (subject.isEmpty) continue;
       historyRows++;
       if (double.tryParse(cells[gradeIndex].text.trim().replaceAll(',', '.')) !=
           null) {
         numericHistoryGrades++;
       }
-      if (double.tryParse(cells[ectsIndex].text.trim().replaceAll(',', '.')) !=
-          null) {
+      final ects = double.tryParse(
+        cells[ectsIndex].text.trim().replaceAll(',', '.'),
+      );
+      if (ects != null) {
         numericHistoryEcts++;
       }
+      final rowShape = <String, Object>{
+        'subject': subjectTokens.putIfAbsent(
+          subject,
+          () => 'S${subjectTokens.length + 1}',
+        ),
+      };
+      if (ects != null) {
+        rowShape['ects'] = ects;
+      }
+      tableRows.add(rowShape);
     }
+    final ancestors = <Map<String, String>>[];
+    Element? ancestor = table.parent;
+    while (ancestor != null && ancestors.length < 10) {
+      ancestors.add({
+        'tag': ancestor.localName ?? '',
+        'id': ancestor.id,
+        'class': ancestor.className,
+        'style': _safeActionShape(ancestor.attributes['style'] ?? ''),
+      });
+      ancestor = ancestor.parent;
+    }
+    Element? section = table;
+    while (section?.parent != null &&
+        section!.parent!.id != 'accordionStudentFile') {
+      section = section.parent;
+    }
+    final heading = section?.previousElementSibling;
+    historyTableShapes.add({
+      'index': historyTables,
+      'ancestors': ancestors,
+      'section': {
+        'tag': heading?.localName ?? '',
+        'id': heading?.id ?? '',
+        'class': heading?.className ?? '',
+        'years': RegExp(r'\b\d{4}\s*[/\-]\s*\d{4}\b')
+            .allMatches(heading?.text ?? '')
+            .map((item) => item.group(0)!)
+            .toList(),
+      },
+      'rows': tableRows,
+    });
   }
   return {
     'detailLinks': detailLinks.length,
@@ -684,6 +875,7 @@ Map<String, Object> _gradeGrammarShape(Document document) {
     'historyRows': historyRows,
     'numericHistoryGrades': numericHistoryGrades,
     'numericHistoryEcts': numericHistoryEcts,
+    'historyTableShapes': historyTableShapes,
   };
 }
 

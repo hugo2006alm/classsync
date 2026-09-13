@@ -30,7 +30,8 @@ them with Gemini, and publishes structured study notes to Notion.
   announcements; ambiguous subject mappings stay reviewable.
 - Focused offline Academic hub with a responsive weekly timetable: desktop
   time-by-weekday grid or agenda, mobile agenda or horizontally scrollable grid,
-  and explicit class, room, and teacher details. Timetable and Tasks stay
+  fixed 50-minute ISEP period rows, and explicit class, room, and teacher
+  details. Longer classes occupy every period they span. Timetable and Tasks stay
   directly accessible; Evaluations, Grades & progress, and Finance live under
   the compact More menu.
 - Lecture action extraction with evidence, editable lifecycle state, and
@@ -38,8 +39,9 @@ them with Gemini, and publishes structured study notes to Notion.
 - Read-only Portal notices, official lesson summaries, exam-registration
   windows, enrolment/history, and ECTS progress with stable provenance and
   change detection.
-- Read-only Portal tuition, fee, and payment-deadline tracking with local
-  reminders and no full payment-reference storage.
+- Read-only Portal tuition, fee, and complete upcoming instalment tracking with
+  optional advance reminders and daily due-date reminders until Portal reports
+  payment; full payment references are never stored.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.
@@ -127,7 +129,9 @@ are preserved. Academic **Reload** fetches every configured academic source;
 the small wheel beside each page title refreshes only that page. Local Tasks
 simply rereads the offline cache. Timetable refresh loads the selected week and
 the following four weeks from Portal; opening an uncached week triggers the
-same focused refresh. Unavailable data is shown as uncached.
+same focused refresh. Academic history uses the latest dated completed
+curriculum block, preventing the Portal's duplicated unscoped rows from
+inflating earned ECTS. Unavailable data is shown as uncached.
 
 ## Deploy the relay
 

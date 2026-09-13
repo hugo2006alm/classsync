@@ -115,9 +115,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('TIME'), findsOneWidget);
     expect(find.text('MON'), findsOneWidget);
-    expect(find.text('09:10–11:00'), findsOneWidget);
-    expect(find.textContaining('Room B301'), findsOneWidget);
-    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
+    expect(find.text('09:10–10:00'), findsOneWidget);
+    expect(find.text('10:10–11:00'), findsOneWidget);
+    expect(find.textContaining('Room B301'), findsNWidgets(2));
+    expect(find.textContaining('Teacher Jane Teacher'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -141,7 +142,8 @@ void main() {
     expect(find.byType(Table), findsOneWidget);
     expect(find.text('TIME'), findsOneWidget);
     expect(find.text('MON'), findsOneWidget);
-    expect(find.text('09:10–11:00'), findsOneWidget);
+    expect(find.text('09:10–10:00'), findsOneWidget);
+    expect(find.text('10:10–11:00'), findsOneWidget);
     expect(
       find.ancestor(
         of: find.byType(Table),
@@ -153,8 +155,9 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Reload'), findsOneWidget);
     await tester.tap(find.byTooltip('Next week'));
     await tester.pumpAndSettle();
-    expect(find.text('Operating Systems'), findsOneWidget);
-    expect(find.text('09:10–11:00'), findsOneWidget);
+    expect(find.text('Operating Systems'), findsNWidgets(2));
+    expect(find.text('09:10–10:00'), findsOneWidget);
+    expect(find.text('10:10–11:00'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

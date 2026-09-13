@@ -708,6 +708,9 @@ class _FinanceSection extends ConsumerWidget {
       (sum, charge) => sum + (charge.outstandingAmount ?? charge.amount ?? 0),
     );
     final overdueCount = open.where((charge) => charge.isOverdueAt(now)).length;
+    final upcomingCount = open
+        .where((charge) => charge.dueAt?.isAfter(now) == true)
+        .length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -730,13 +733,13 @@ class _FinanceSection extends ConsumerWidget {
                       Text(
                         charges.isEmpty
                             ? 'No finance data cached'
-                            : '${_euro(outstanding)} currently open',
+                            : '${_euro(outstanding)} across ${open.length} open payment${open.length == 1 ? '' : 's'}',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Text(
                         overdueCount > 0
                             ? '$overdueCount overdue item${overdueCount == 1 ? '' : 's'} · verify in Portal'
-                            : '${open.length} open item${open.length == 1 ? '' : 's'} · read-only Portal data',
+                            : '$upcomingCount upcoming · read-only Portal payment plan',
                       ),
                     ],
                   ),
@@ -786,11 +789,14 @@ class _TuitionChargeTile extends ConsumerWidget {
     final now = DateTime.now();
     final overdue = charge.isOverdueAt(now);
     final paid = charge.state == TuitionPaymentState.paid;
+    final upcoming = charge.isOpenAt(now) && charge.dueAt?.isAfter(now) == true;
     final amount = charge.outstandingAmount ?? charge.amount;
     final state = overdue
         ? 'Overdue'
         : paid
         ? 'Paid'
+        : upcoming
+        ? 'Upcoming'
         : charge.state.name;
     return ListTile(
       leading: CircleAvatar(
@@ -859,8 +865,8 @@ class _TuitionChargeTile extends ConsumerWidget {
             value: 'overdue',
             child: Text(
               charge.overdueReminder
-                  ? 'Turn overdue alert off'
-                  : 'Alert when overdue',
+                  ? 'Turn daily due alert off'
+                  : 'Daily from due date',
             ),
           ),
           const PopupMenuItem(
@@ -1528,20 +1534,16 @@ class _TimetableTable extends StatelessWidget {
           (current, weekday) => weekday > current ? weekday : current,
         );
     final days = List.generate(lastWeekday, (index) => index + 1);
-    final timeRanges =
-        slots
-            .map(
-              (slot) => (
-                slot.start.hour * 60 + slot.start.minute,
-                slot.end.hour * 60 + slot.end.minute,
-              ),
-            )
-            .toSet()
-            .toList()
-          ..sort(
-            (a, b) =>
-                a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2),
-          );
+    final periodStarts = <int>{};
+    for (final slot in slots) {
+      final start = slot.start.hour * 60 + slot.start.minute;
+      final end = slot.end.hour * 60 + slot.end.minute;
+      for (var period = start; period < end; period += 60) {
+        periodStarts.add(period);
+      }
+    }
+    final timeRanges = periodStarts.map((start) => (start, start + 50)).toList()
+      ..sort((a, b) => a.$1.compareTo(b.$1));
     const timeWidth = 104.0;
     const dayWidth = 190.0;
     return Card(
@@ -1584,10 +1586,9 @@ class _TimetableTable extends StatelessWidget {
                           .where(
                             (slot) =>
                                 slot.start.weekday == weekday &&
-                                slot.start.hour * 60 + slot.start.minute ==
-                                    range.$1 &&
-                                slot.end.hour * 60 + slot.end.minute ==
-                                    range.$2,
+                                slot.start.hour * 60 + slot.start.minute <
+                                    range.$2 &&
+                                slot.end.hour * 60 + slot.end.minute > range.$1,
                           )
                           .toList(),
                     ),
@@ -2179,7 +2180,7 @@ class _GradesSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final grades = records
+    final rawGrades = records
         .where(
           (item) =>
               item.kind == AcademicRecordKind.grade ||
@@ -2187,6 +2188,19 @@ class _GradesSection extends ConsumerWidget {
         )
         .map((item) => GradeComponent.fromJson(item.payload))
         .toList();
+    final historyKeys = <String>{};
+    final grades = rawGrades.where((item) {
+      if (!item.isHistorical) return true;
+      return historyKeys.add(
+        [
+          SubjectMapper.normalize(item.subjectName),
+          item.academicYear ?? '',
+          SubjectMapper.normalize(item.name),
+          item.value?.toStringAsFixed(4) ?? '',
+          item.ects?.toStringAsFixed(4) ?? '',
+        ].join('|'),
+      );
+    }).toList();
     final grouped = <String, List<GradeComponent>>{};
     for (final grade in grades) {
       (grouped[grade.subjectId ?? grade.subjectName] ??= []).add(grade);

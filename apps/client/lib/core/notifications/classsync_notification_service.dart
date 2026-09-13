@@ -44,6 +44,7 @@ class ClassSyncNotificationService implements SyncNotifier {
     required String title,
     required DateTime scheduledAt,
     int section = 2,
+    bool repeatDaily = false,
   }) => _plugin.zonedSchedule(
     id: _stableNotificationId(id),
     title: 'ClassSync academic reminder',
@@ -53,7 +54,7 @@ class ClassSyncNotificationService implements SyncNotifier {
       android: AndroidNotificationDetails(
         'classsync_academic',
         'Academic deadlines',
-        channelDescription: 'User-controlled exam and assignment reminders',
+        channelDescription: 'User-controlled academic and payment reminders',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -63,6 +64,7 @@ class ClassSyncNotificationService implements SyncNotifier {
     ),
     androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     payload: 'academic:$section:$id',
+    matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
   );
 
   Future<void> cancelAcademicReminder(String id) =>

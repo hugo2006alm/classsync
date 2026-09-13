@@ -197,7 +197,11 @@ void main() {
       expect(charge.payload['paymentReferenceAvailable'], isTrue);
       expect(charge.payload.values.join(' '), isNot(contains('123456789')));
       await service.setTuitionReminder(charge, 1440, overdueReminder: true);
-      expect(notifications.scheduled, contains(charge.key));
+      expect(
+        notifications.scheduled,
+        containsAll(['${charge.key}:due', '${charge.key}:daily']),
+      );
+      expect(notifications.daily, contains('${charge.key}:daily'));
       portal.tuitionCharges = [
         const TuitionCharge(
           id: 'fee-1',
@@ -210,7 +214,10 @@ void main() {
         ),
       ];
       await service.synchronize();
-      expect(notifications.cancelled, contains(charge.key));
+      expect(
+        notifications.cancelled,
+        containsAll([charge.key, '${charge.key}:due', '${charge.key}:daily']),
+      );
 
       final formulaRecord = (await database.readAcademicRecords(
         kind: AcademicRecordKind.gradeFormula,
@@ -665,6 +672,7 @@ class _FakeMoodle extends MoodleClient {
 class _FakeNotifications extends ClassSyncNotificationService {
   bool failCancel = false;
   final scheduled = <String>[];
+  final daily = <String>[];
   final cancelled = <String>[];
   final shown = <String>[];
 
@@ -677,8 +685,10 @@ class _FakeNotifications extends ClassSyncNotificationService {
     required String title,
     required DateTime scheduledAt,
     int section = 2,
+    bool repeatDaily = false,
   }) async {
     scheduled.add(id);
+    if (repeatDaily) daily.add(id);
   }
 
   @override
