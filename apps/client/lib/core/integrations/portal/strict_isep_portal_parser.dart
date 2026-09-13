@@ -36,8 +36,11 @@ class StrictIsepPortalParser extends IsepPortalParser {
         'grades',
       );
     }
+    final historyHtml = forceHistorical
+        ? _latestDatedStudentFileSection(html)
+        : html;
     final values = super.parseGrades(
-      _filterTables(html, [
+      _filterTables(historyHtml, [
         _subjectHeaders,
         ['ects', 'nota', 'classificacao', 'componente', 'elemento avaliacao'],
       ]),
@@ -49,6 +52,29 @@ class StrictIsepPortalParser extends IsepPortalParser {
       (item) => '${item.subjectCode} ${item.subjectName} ${item.name}',
       forceHistorical ? 'academic history' : 'grades',
     );
+  }
+
+  static String _latestDatedStudentFileSection(String html) {
+    final document = html_parser.parse(html);
+    final accordion = document.querySelector('#accordionStudentFile');
+    if (accordion == null) return html;
+    final candidates = <({int year, Element section})>[];
+    Element? heading;
+    for (final child in accordion.children) {
+      if (child.localName == 'h3') {
+        heading = child;
+        continue;
+      }
+      if (heading == null) continue;
+      final match = RegExp(
+        r'\b(\d{4})\s*[/\-]\s*\d{2,4}\b',
+      ).firstMatch(heading.text);
+      if (match == null) continue;
+      candidates.add((year: int.parse(match.group(1)!), section: child));
+    }
+    if (candidates.isEmpty) return html;
+    candidates.sort((a, b) => b.year.compareTo(a.year));
+    return candidates.first.section.outerHtml;
   }
 
   static bool _hasBoundedPartialGradeData(String html) {

@@ -1736,8 +1736,12 @@ class IsepPortalParser {
     String html, {
     required String sourceUrl,
   }) {
-    final result = <TuitionCharge>[];
-    for (final row in _tableRows(html)) {
+    final document = html_parser.parse(html);
+    final result = _paymentPlanCharges(document, sourceUrl: sourceUrl);
+    for (final table in document.querySelectorAll('#tbPlanoPagamentosTotal')) {
+      table.remove();
+    }
+    for (final row in _tableRows(document.outerHtml)) {
       final title = _value(row, const [
         'artigo(s)',
         'tipo',
@@ -1851,7 +1855,21 @@ class IsepPortalParser {
         ),
       );
     }
-    final values = _dedupe(result, (item) => item.id);
+    final deduped = _dedupe(result, (item) => item.id);
+    final values = deduped.where((candidate) {
+      if (!candidate.id.startsWith('plan:') || candidate.dueAt == null) {
+        return true;
+      }
+      return !deduped.any(
+        (other) =>
+            !other.id.startsWith('plan:') &&
+            other.dueAt != null &&
+            _sameCalendarDay(other.dueAt!, candidate.dueAt!) &&
+            (other.amount == null ||
+                candidate.amount == null ||
+                (other.amount! - candidate.amount!).abs() < 0.01),
+      );
+    }).toList();
     if (values.isNotEmpty) return values;
     final normalizedPage = _normalize(html);
     if (normalizedPage.contains('nao existem pagamentos') ||
@@ -1861,6 +1879,77 @@ class IsepPortalParser {
     }
     return _requireParsed(values, 'tuition and payments');
   }
+
+  static List<TuitionCharge> _paymentPlanCharges(
+    Document document, {
+    required String sourceUrl,
+  }) {
+    final table = document.querySelector('#tbPlanoPagamentosTotal');
+    if (table == null) return <TuitionCharge>[];
+    final rows = _directRows(table);
+    if (rows.length < 2 || rows.length > 100) return <TuitionCharge>[];
+    final headers = _directCells(
+      rows.first,
+    ).map((cell) => _normalize(cell.text)).toList();
+    if (headers.length < 8 ||
+        headers[1] != 'prestacao' ||
+        headers[2] != 'acumulado' ||
+        headers[3] != 'data limite' ||
+        headers[4] != 'data pagamento' ||
+        headers[5] != 'propina paga' ||
+        headers[6] != 'juros de mora pago' ||
+        headers[7] != 'em divida') {
+      return <TuitionCharge>[];
+    }
+    final result = <TuitionCharge>[];
+    for (final row in rows.skip(1)) {
+      final cells = _directCells(row).toList();
+      if (cells.length < 8) continue;
+      String cell(int index) =>
+          cells[index].text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final installment = cell(0);
+      final amount = _money(cell(1));
+      final dueAt = _dateTime(cell(3), '');
+      final paidAt = _dateTime(cell(4), '');
+      final paidAmount = _money(cell(5));
+      final outstanding = _money(cell(7));
+      if (installment.isEmpty || amount == null || dueAt == null) {
+        throw const IntegrationException(
+          integration: 'ISEP Portal',
+          code: 'portal_layout_changed',
+          userMessage:
+              'ISEP Portal payment-plan format was not recognized. No partial data was saved.',
+          retryable: false,
+        );
+      }
+      final paid =
+          paidAt != null ||
+          (paidAmount != null && paidAmount + 0.001 >= amount);
+      result.add(
+        TuitionCharge(
+          // Installment labels are unique within the Portal payment plan. Keep
+          // the identity stable if ISEP changes a due date after publication.
+          id: 'plan:${_normalize(installment)}',
+          title: installment,
+          state: paid ? TuitionPaymentState.paid : TuitionPaymentState.pending,
+          sourceUrl: sourceUrl,
+          installment: installment,
+          amount: amount,
+          outstandingAmount: outstanding != null && outstanding > 0
+              ? outstanding
+              : null,
+          dueAt: dueAt,
+          paidAt: paidAt,
+        ),
+      );
+    }
+    return result;
+  }
+
+  static bool _sameCalendarDay(DateTime left, DateTime right) =>
+      left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
 
   static List<Map<String, String>> _tableRows(String html) {
     final document = html_parser.parse(html);

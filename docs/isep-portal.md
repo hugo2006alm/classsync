@@ -93,6 +93,10 @@ are cached as both timetable entries and evaluations, including all rooms.
 Current-grade components are read from the bounded `detailsDialog` data grammar
 without evaluating JavaScript. Student JSON methods tolerate the Portal's
 legacy Latin-1 response bytes before strict schema validation.
+Academic history is read from the latest explicitly dated curriculum section in
+the student-file accordion. The Portal also emits an unscoped curriculum block
+that repeats completed units; combining both blocks duplicates grades and ECTS,
+so ClassSync deliberately ignores that unscoped copy.
 
 ## Parsing and failure behavior
 
@@ -148,16 +152,18 @@ the authoritative Portal page.
 
 ## Tuition, fees, and payments
 
-ClassSync reads the authenticated Portal financial page when it is available.
-It stores a stable charge identity, description, academic year, installment,
-amount, outstanding balance, due/paid dates, state, and late-interest marker.
-A changed amount, due date, or state is retained in local academic history
-rather than duplicated.
+ClassSync reads the authenticated Portal financial page when it is available,
+including every row of `tbPlanoPagamentosTotal`, not only the currently payable
+document. It stores a stable charge identity, description, academic year,
+installment, amount, outstanding balance, due/paid dates, state, and
+late-interest marker. A changed amount, due date, or state is retained in local
+academic history rather than duplicated.
 
 Finance is strictly read-only. It opens the trusted Portal page and can schedule
-local reminders before a due date or when a charge becomes overdue. A charge
-reported paid or cancelled stops its scheduled reminder. ClassSync never starts
-or guarantees a payment and never stores card or banking credentials.
+a local reminder before a due date plus an optional daily 09:00 reminder from
+the due date onward. A charge reported paid or cancelled stops all its scheduled
+reminders on the next refresh. ClassSync never starts or guarantees a payment
+and never stores card or banking credentials.
 
 Payment references are sensitive. Complete references never enter cached
 records, device-sync payloads, the relay, or diagnostics. The UI keeps only a

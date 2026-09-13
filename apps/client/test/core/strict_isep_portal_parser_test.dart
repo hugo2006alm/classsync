@@ -79,6 +79,28 @@ void main() {
     expect(values.every((item) => item.academicYear == '2025/2026'), isTrue);
   });
 
+  test('uses latest dated student-file curriculum and ignores unscoped rows', () {
+    const table =
+        '''<table><tr><th>Unidade Curricular</th><th>ECTS</th><th>Nota</th><th>Data</th><th>TN</th><th>EE</th></tr>
+      <tr><td>Subject A</td><td>6</td><td>15</td><td>2025-07-01</td><td></td><td></td></tr></table>''';
+    final values = parser.parseGrades(
+      '''<div id="accordionStudentFile">
+        <h3>Previous curriculum</h3><div>$table</div>
+        <h3>Course plan 2025/2026</h3><div>
+          <table><tr><th>Unidade Curricular</th><th>ECTS</th><th>Nota</th><th>Data</th><th>TN</th><th>EE</th></tr>
+          <tr><td>Subject B</td><td>6</td><td>16</td><td>2026-07-01</td><td></td><td></td></tr></table>
+        </div>
+      </div>''',
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+      forceHistorical: true,
+    );
+
+    expect(values, hasLength(1));
+    expect(values.single.subjectName, 'Subject B');
+    expect(values.single.ects, 6);
+  });
+
   test('parses bounded current grades from Portal detail objects', () {
     final values = parser.parseGrades(
       '''<table><tr><th>Sigla</th><td>Unidade Curricular</td><td>Avaliação Contínua</td></tr>
