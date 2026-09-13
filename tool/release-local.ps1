@@ -112,7 +112,7 @@ try {
     }
     $certOutput = & $apksignerPath verify --print-certs $androidApk 2>&1
     Assert-LastExitCode 'Android APK signature verification'
-    $certLine = $certOutput | Select-String -Pattern '(?:Signer #1|V2 Signer) certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
+    $certLine = $certOutput | Select-String -Pattern '(?:Signer #1|V2 Signer):? certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
     if (-not $certLine) {
         throw 'Could not read the Android signing certificate SHA-256 fingerprint from the release APK.'
     }
