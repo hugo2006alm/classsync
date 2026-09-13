@@ -9,6 +9,12 @@ void main() {
     );
   });
 
+  test('public site URL is always an HTTPS build-time setting', () {
+    final site = Uri.parse(AppSettings.siteBaseUrl);
+    expect(site.scheme, 'https');
+    expect(site.host, isNotEmpty);
+  });
+
   test('nullable integration mappings can be cleared', () {
     final configured = AppSettings.defaults.copyWith(
       notionSubjectsDataSourceId: 'subjects',
