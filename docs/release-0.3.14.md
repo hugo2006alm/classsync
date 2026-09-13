@@ -16,5 +16,6 @@ Validated against the DPAPI-protected Portal account without exposing
 credentials or academic/payment contents: 65 timetable entries across five
 weeks, 20 unique completed units totaling 120 ECTS, and 10 payment-plan rows.
 Also validated with Flutter analyzer, focused regression tests, the full Flutter
-and relay suites, coverage gate, and local signed Windows/Android release builds.
+and relay suites, coverage gate, a local Windows installer, and a locally signed
+Android release build.
 No GitHub Actions build is used.
