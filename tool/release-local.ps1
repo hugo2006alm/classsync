@@ -70,8 +70,21 @@ try {
     $apksigner = Get-Command apksigner.bat -ErrorAction SilentlyContinue
     if (-not $apksigner) {
         $adb = Get-Command adb.exe -ErrorAction SilentlyContinue
+        $androidSdkCandidates = @()
         if ($adb) {
-            $androidSdk = Split-Path (Split-Path $adb.Source -Parent) -Parent
+            $androidSdkCandidates += Split-Path (Split-Path $adb.Source -Parent) -Parent
+        }
+        if ($env:ANDROID_SDK_ROOT) {
+            $androidSdkCandidates += $env:ANDROID_SDK_ROOT
+        }
+        if ($env:ANDROID_HOME) {
+            $androidSdkCandidates += $env:ANDROID_HOME
+        }
+        if ($env:LOCALAPPDATA) {
+            $androidSdkCandidates += Join-Path $env:LOCALAPPDATA 'Android\Sdk'
+        }
+
+        foreach ($androidSdk in $androidSdkCandidates | Select-Object -Unique) {
             $buildToolsRoot = Join-Path $androidSdk 'build-tools'
             if (Test-Path $buildToolsRoot) {
                 $latestBuildTools = Get-ChildItem $buildToolsRoot -Directory |
@@ -81,6 +94,7 @@ try {
                     $candidate = Join-Path $latestBuildTools.FullName 'apksigner.bat'
                     if (Test-Path $candidate) {
                         $apksigner = Get-Item $candidate
+                        break
                     }
                 }
             }
@@ -98,7 +112,7 @@ try {
     }
     $certOutput = & $apksignerPath verify --print-certs $androidApk 2>&1
     Assert-LastExitCode 'Android APK signature verification'
-    $certLine = $certOutput | Select-String -Pattern 'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
+    $certLine = $certOutput | Select-String -Pattern '(?:Signer #1|V2 Signer) certificate SHA-256 digest:\s*([0-9a-fA-F]+)' | Select-Object -First 1
     if (-not $certLine) {
         throw 'Could not read the Android signing certificate SHA-256 fingerprint from the release APK.'
     }
