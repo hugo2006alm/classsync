@@ -5,6 +5,10 @@ const _unsetSetting = Object();
 class AppSettings {
   static const productionRelayBaseUrl =
       'https://classsync-relay.classsync-relay.workers.dev';
+  static const siteBaseUrl = String.fromEnvironment(
+    'CLASSSYNC_SITE_URL',
+    defaultValue: 'https://hugo2006alm.github.io/classsync-site',
+  );
 
   const AppSettings({
     required this.displayName,
