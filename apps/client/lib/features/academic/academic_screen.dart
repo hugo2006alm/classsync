@@ -28,6 +28,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
       : 0;
   late DateTime _weekStart = _startOfWeek(DateTime.now());
   _TimetableView? _timetableView;
+  final _requestedTimetableWindows = <DateTime>{};
 
   static const _sectionLabels = {
     0: 'Timetable',
@@ -44,6 +45,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
   }
 
   Future<void> _reloadCurrentSection() async {
+    if (_section == 0) {
+      await _reloadTimetableWindow(_weekStart);
+      return;
+    }
     final stages = academicStagesForSection(_section);
     if (stages.isEmpty) {
       ref.invalidate(academicRecordsProvider);
@@ -53,7 +58,24 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
   }
 
   Future<void> _reloadAll() async {
-    await ref.read(academicSyncServiceProvider).synchronize();
+    final service = ref.read(academicSyncServiceProvider);
+    await service.synchronize(timetableFrom: _weekStart);
+  }
+
+  Future<void> _reloadTimetableWindow(DateTime weekStart) async {
+    final service = ref.read(academicSyncServiceProvider);
+    await service.synchronize(
+      onlyStages: const {'timetable'},
+      timetableFrom: weekStart,
+    );
+  }
+
+  void _requestEmptyTimetableWindow(DateTime weekStart) {
+    final normalized = _startOfWeek(weekStart);
+    if (!_requestedTimetableWindows.add(normalized)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reloadTimetableWindow(normalized);
+    });
   }
 
   @override
@@ -184,6 +206,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                         view: _timetableView,
                         onWeekChanged: (value) =>
                             setState(() => _weekStart = value),
+                        onEmptyWeek: connections?.portalConfigured == true
+                            ? _requestEmptyTimetableWindow
+                            : (_) {},
                         onViewChanged: (value) =>
                             setState(() => _timetableView = value),
                       ),
@@ -1384,35 +1409,30 @@ class _TimetableSection extends StatelessWidget {
     required this.weekStart,
     required this.view,
     required this.onWeekChanged,
+    required this.onEmptyWeek,
     required this.onViewChanged,
   });
   final List<AcademicRecord> records;
   final DateTime weekStart;
   final _TimetableView? view;
   final ValueChanged<DateTime> onWeekChanged;
+  final ValueChanged<DateTime> onEmptyWeek;
   final ValueChanged<_TimetableView> onViewChanged;
 
   @override
   Widget build(BuildContext context) {
     final end = weekStart.add(const Duration(days: 7));
-    final sourceSlots = records
-        .where((item) => item.kind == AcademicRecordKind.timetable)
-        .map((item) => TimetableSlot.fromJson(item.payload))
-        .toList();
     final slots =
-        sourceSlots
+        records
+            .where((item) => item.kind == AcademicRecordKind.timetable)
+            .map((item) => TimetableSlot.fromJson(item.payload))
             .where(
               (item) =>
-                  !item.exceptional ||
-                  (!item.start.isBefore(weekStart) && item.start.isBefore(end)),
-            )
-            .map(
-              (item) => item.exceptional
-                  ? item
-                  : _projectTimetableSlot(item, weekStart),
+                  !item.start.isBefore(weekStart) && item.start.isBefore(end),
             )
             .toList()
           ..sort((a, b) => a.start.compareTo(b.start));
+    if (slots.isEmpty) onEmptyWeek(weekStart);
     return LayoutBuilder(
       builder: (context, constraints) {
         final effectiveView =
@@ -1449,7 +1469,7 @@ class _TimetableSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
-                'Regular Portal classes repeat across weeks. Exceptional events keep their official date.',
+                'Each week is loaded from Portal with its official classes and exceptions.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -2761,30 +2781,6 @@ class _MoodleSection extends ConsumerWidget {
 DateTime _startOfWeek(DateTime value) {
   final local = DateTime(value.year, value.month, value.day);
   return local.subtract(Duration(days: local.weekday - DateTime.monday));
-}
-
-TimetableSlot _projectTimetableSlot(TimetableSlot slot, DateTime weekStart) {
-  final day = weekStart.add(Duration(days: slot.start.weekday - 1));
-  final start = DateTime(
-    day.year,
-    day.month,
-    day.day,
-    slot.start.hour,
-    slot.start.minute,
-  );
-  return TimetableSlot(
-    externalId: slot.externalId,
-    subjectCode: slot.subjectCode,
-    subjectName: slot.subjectName,
-    subjectId: slot.subjectId,
-    start: start,
-    end: start.add(slot.end.difference(slot.start)),
-    className: slot.className,
-    lessonType: slot.lessonType,
-    room: slot.room,
-    lecturer: slot.lecturer,
-    sourceUrl: slot.sourceUrl,
-  );
 }
 
 String _minutesLabel(int minutes) =>

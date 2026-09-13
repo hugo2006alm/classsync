@@ -125,7 +125,9 @@ Upgrades automatically remove identifiable Portal form/menu records from the
 academic cache on startup, including offline. Valid records and manual tasks
 are preserved. Academic **Reload** fetches every configured academic source;
 the small wheel beside each page title refreshes only that page. Local Tasks
-simply rereads the offline cache. Unavailable data is shown as uncached.
+simply rereads the offline cache. Timetable refresh loads the selected week and
+the following four weeks from Portal; opening an uncached week triggers the
+same focused refresh. Unavailable data is shown as uncached.
 
 ## Deploy the relay
 

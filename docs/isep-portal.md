@@ -134,9 +134,11 @@ small wheel beside each page title forces only that page's owning stages. A
 manual page reload waits for any in-flight refresh and then runs, so its request
 cannot be discarded. The active Academic section is re-evaluated between
 requests so its next pending stage moves first without cancelling in-flight
-work. Portal's regular timetable payload is one dated weekly template;
-ClassSync projects those regular slots across selected weeks while keeping
-exceptional events bound to their official dates.
+work. A timetable refresh calls Portal's read-only calendar methods for the
+selected week and the following four weeks, preserving each week's official
+classes and exceptions. Navigating to an uncached empty week automatically
+requests that same five-week window. Portal's JavaScript date rollover at month
+boundaries is parsed with bounded JavaScript-compatible semantics.
 
 Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,

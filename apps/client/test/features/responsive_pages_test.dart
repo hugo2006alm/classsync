@@ -522,36 +522,41 @@ Future<void> _saveTimetable(ClassSyncDatabase database) async {
     Duration(days: DateTime.now().weekday - DateTime.monday),
   );
   final start = DateTime(monday.year, monday.month, monday.day, 9, 10);
-  final slot = TimetableSlot(
-    externalId: 'slot-live-format',
-    subjectCode: 'SO',
-    subjectName: 'Operating Systems',
-    subjectId: _subject.notionId,
-    start: start,
-    end: start.add(const Duration(hours: 1, minutes: 50)),
-    className: '3DA',
-    lessonType: 'TP',
-    room: 'B301',
-    lecturer: 'Jane Teacher',
-  );
-  await database.upsertAcademicRecord(
-    AcademicRecord(
-      key: AcademicRecord.keyFor(
-        AcademicSource.portal,
-        AcademicRecordKind.timetable,
-        slot.externalId,
+  final slots = [
+    for (final weekOffset in [0, 7])
+      TimetableSlot(
+        externalId: 'slot-live-format-$weekOffset',
+        subjectCode: 'SO',
+        subjectName: 'Operating Systems',
+        subjectId: _subject.notionId,
+        start: start.add(Duration(days: weekOffset)),
+        end: start.add(Duration(days: weekOffset, hours: 1, minutes: 50)),
+        className: '3DA',
+        lessonType: 'TP',
+        room: 'B301',
+        lecturer: 'Jane Teacher',
       ),
-      source: AcademicSource.portal,
-      kind: AcademicRecordKind.timetable,
-      externalId: slot.externalId,
-      title: slot.subjectName,
-      subjectId: slot.subjectId,
-      startsAt: slot.start,
-      endsAt: slot.end,
-      payload: slot.toJson(),
-      syncedAt: DateTime.now().toUtc(),
-    ),
-  );
+  ];
+  for (final slot in slots) {
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: AcademicRecord.keyFor(
+          AcademicSource.portal,
+          AcademicRecordKind.timetable,
+          slot.externalId,
+        ),
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.timetable,
+        externalId: slot.externalId,
+        title: slot.subjectName,
+        subjectId: slot.subjectId,
+        startsAt: slot.start,
+        endsAt: slot.end,
+        payload: slot.toJson(),
+        syncedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
 }
 
 Future<void> _saveGrade(
