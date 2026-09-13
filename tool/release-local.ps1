@@ -26,7 +26,7 @@ if (-not $versionLine) {
 $version = $versionLine.Matches[0].Groups[1].Value.Split('+')[0]
 $tag = "v$version"
 $releaseDir = Join-Path $repoRoot "dist\release-$version"
-$expectedAndroidCertSha256 = '8dcc7a9d11d53480e27d7e06e8b6a2e7537135f873656c5e3ab4a6632d3d9fe8'
+$expectedAndroidCertSha256 = 'c1b5b4db5e23e2f468dab06262bf149cb03ad3f9562307d7dfc8946092ded30d'
 
 Push-Location $repoRoot
 try {

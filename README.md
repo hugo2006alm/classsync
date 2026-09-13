@@ -184,6 +184,18 @@ signing configuration, and `[skip ci]` in the release commit. It refuses to
 push the version tag otherwise, preventing the tag-triggered workflow from
 starting.
 
+Back up `apps/client/android/app/classsync-release.jks` in a password manager
+that supports file attachments, together with its key alias, store password,
+and key password. All four items are required to sign an installable update.
+The local rotation helper additionally protects a recovery copy of the signing
+metadata with Windows DPAPI under the current Windows account. Key rotation is
+deliberately explicit because an APK signed by a different key cannot update an
+existing installation:
+
+```powershell
+.\tool\rotate-android-signing.ps1 -ConfirmRotation -UpdateGitHubSecrets
+```
+
 ## Privacy and failure behavior
 
 - Logs and diagnostics redact tokens, Authorization headers, transcripts, and
