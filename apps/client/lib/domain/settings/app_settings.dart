@@ -107,7 +107,7 @@ class AppSettings {
     syncOnLaunch: true,
     backgroundMobileSync: true,
     notificationsEnabled: true,
-    pollingMinutes: 30,
+    pollingMinutes: 360,
     overlapHours: 48,
     workerCount: 1,
     keepTranscripts: false,
