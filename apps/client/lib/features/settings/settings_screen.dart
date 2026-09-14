@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
@@ -10,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
 import '../../core/security/secure_credential_store.dart';
+import '../../core/integrations/relay/account_sync_client.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
@@ -65,7 +68,7 @@ class _SettingsBody extends StatelessWidget {
             category: _SettingsCategory.connections,
             icon: Icons.link_rounded,
             title: 'Connections',
-            subtitle: 'Fireflies, Gemini, Notion, Portal, Moodle, and relay',
+            subtitle: 'Fireflies sources, Gemini, Notion, Portal, and Moodle',
           ),
           (
             category: _SettingsCategory.deviceSync,
@@ -277,16 +280,6 @@ class _SettingsDetailBody extends ConsumerWidget {
                             .read(notionClientProvider)
                             .testConnection(value),
                       ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _IntegrationTile(
-                      name: 'ClassSync Relay',
-                      icon: Icons.cloud_queue_rounded,
-                      credential: CredentialKey.relayDeviceToken,
-                      onConfigure: () =>
-                          _configureRelay(context, ref, settings),
                     ),
                   ),
                 ],
@@ -894,9 +887,9 @@ class _FirefliesConnectionsTile extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final (status, detail, color) = value.when(
       data: (connections) => connections.isEmpty
-          ? ('Not configured', 'Add your first named API key', scheme.error)
+          ? ('Not configured', 'Add your first Fireflies source', scheme.error)
           : (
-              '${connections.length} connected',
+              '${connections.length} ${connections.length == 1 ? 'source' : 'sources'}',
               connections.map((item) => item.name).join(' · '),
               scheme.primary,
             ),
@@ -939,7 +932,7 @@ class _FirefliesConnectionsTile extends ConsumerWidget {
             IconButton(
               onPressed: onManage,
               icon: const Icon(Icons.manage_accounts_outlined),
-              tooltip: 'Manage Fireflies connections',
+              tooltip: 'Manage Fireflies sources',
             ),
           ],
         ),
@@ -1031,6 +1024,15 @@ class _Diagnostics extends ConsumerWidget {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
+                  onPressed: () => _configureRelay(context, ref, settings),
+                  icon: const Icon(Icons.dns_outlined),
+                  label: const Text('Advanced relay settings'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
                   onPressed: () =>
                       _exportDiagnostics(context, ref, settings, jobs),
                   icon: const Icon(Icons.download_rounded),
@@ -1069,6 +1071,7 @@ Future<void> _manageFirefliesConnections(
   final connections = List<FirefliesConnection>.of(
     await ref.read(credentialStoreProvider).readFirefliesConnections(),
   );
+  final webhook = await _loadAccountWebhook(ref);
   if (!context.mounted) return;
   String? error;
   var busy = false;
@@ -1076,7 +1079,8 @@ Future<void> _manageFirefliesConnections(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
-        title: const Text('Fireflies connections'),
+        scrollable: true,
+        title: const Text('Fireflies sources'),
         content: SizedBox(
           width: 560,
           child: Column(
@@ -1084,67 +1088,109 @@ Future<void> _manageFirefliesConnections(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'A webhook announces a transcript, but an API key must still fetch it. Add one named key for each Fireflies account whose recordings ClassSync should process.',
+                'A Fireflies source is an account this ClassSync account may query. Every source works through polling; realtime delivery is an optional account-level accelerator.',
               ),
               const SizedBox(height: 8),
               Text(
-                'Only add keys shared with permission. Each key can access its Fireflies account.',
+                'Only add API keys shared with permission.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),
               if (connections.isEmpty)
                 const ListTile(
                   leading: Icon(Icons.key_off_outlined),
-                  title: Text('No Fireflies connections'),
+                  title: Text('No Fireflies sources'),
                 )
               else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: connections.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) => ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.person_outline_rounded),
-                      ),
-                      title: Text(connections[index].name),
-                      subtitle: const Text('API key stored securely'),
-                      trailing: Wrap(
-                        spacing: 4,
-                        children: [
-                          IconButton(
-                            tooltip: 'Edit connection',
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: busy
-                                ? null
-                                : () async {
-                                    final updated =
-                                        await _editFirefliesConnection(
-                                          dialogContext,
-                                          ref,
-                                          existing: connections[index],
-                                        );
-                                    if (updated != null) {
-                                      setState(
-                                        () => connections[index] = updated,
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (
+                      var index = 0;
+                      index < connections.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const Divider(height: 1),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.person_outline_rounded),
+                        ),
+                        title: Text(connections[index].name),
+                        subtitle: FutureBuilder<DateTime?>(
+                          future: ref
+                              .read(databaseProvider)
+                              .readCursor('fireflies:${connections[index].id}'),
+                          builder: (context, snapshot) => Text(
+                            'API ${connections[index].validatedAt == null ? 'saved' : 'connected'} · Polling active${snapshot.data == null ? '' : ' · Last ${_shortTimestamp(snapshot.data!)}'} · ${webhook?.lastReceivedAt == null ? 'Realtime not confirmed' : 'Realtime active'}',
+                          ),
+                        ),
+                        trailing: Wrap(
+                          spacing: 4,
+                          children: [
+                            IconButton(
+                              tooltip: 'Manage source',
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: busy
+                                  ? null
+                                  : () async {
+                                      final updated =
+                                          await _editFirefliesConnection(
+                                            dialogContext,
+                                            ref,
+                                            existing: connections[index],
+                                            allConnections: connections,
+                                            webhook: webhook,
+                                          );
+                                      if (updated != null) {
+                                        setState(() {
+                                          busy = true;
+                                          error = null;
+                                          connections[index] = updated;
+                                        });
+                                        try {
+                                          await _saveFirefliesSources(
+                                            ref,
+                                            connections,
+                                          );
+                                        } catch (failure) {
+                                          error = failure.toString();
+                                        } finally {
+                                          setState(() => busy = false);
+                                        }
+                                      }
+                                    },
+                            ),
+                            IconButton(
+                              tooltip: 'Remove source',
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              onPressed: busy
+                                  ? null
+                                  : () async {
+                                      final removed = connections.removeAt(
+                                        index,
                                       );
-                                    }
-                                  },
-                          ),
-                          IconButton(
-                            tooltip: 'Remove connection',
-                            icon: const Icon(Icons.delete_outline_rounded),
-                            onPressed: busy
-                                ? null
-                                : () => setState(
-                                    () => connections.removeAt(index),
-                                  ),
-                          ),
-                        ],
+                                      setState(() {
+                                        busy = true;
+                                        error = null;
+                                      });
+                                      try {
+                                        await _saveFirefliesSources(
+                                          ref,
+                                          connections,
+                                        );
+                                      } catch (failure) {
+                                        connections.insert(index, removed);
+                                        error = failure.toString();
+                                      } finally {
+                                        setState(() => busy = false);
+                                      }
+                                    },
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
+                    ],
+                  ],
                 ),
               if (error != null) ...[
                 const SizedBox(height: 10),
@@ -1159,7 +1205,7 @@ Future<void> _manageFirefliesConnections(
         actions: [
           TextButton(
             onPressed: busy ? null : () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: const Text('Done'),
           ),
           OutlinedButton.icon(
             onPressed:
@@ -1169,51 +1215,27 @@ Future<void> _manageFirefliesConnections(
                     final added = await _editFirefliesConnection(
                       dialogContext,
                       ref,
+                      allConnections: connections,
+                      webhook: webhook,
                     );
-                    if (added != null) setState(() => connections.add(added));
-                  },
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add key'),
-          ),
-          FilledButton(
-            onPressed: busy
-                ? null
-                : () async {
-                    setState(() {
-                      busy = true;
-                      error = null;
-                    });
-                    try {
-                      await ref
-                          .read(credentialStoreProvider)
-                          .writeFirefliesConnections(connections);
-                      ref.invalidate(firefliesConnectionsProvider);
-                      ref.invalidate(
-                        credentialConfiguredProvider(
-                          CredentialKey.firefliesApiKey,
-                        ),
-                      );
-                      try {
-                        await ref
-                            .read(deviceSyncServiceProvider)
-                            .pushConfiguration();
-                      } catch (_) {
-                        // Saved locally; device sync retries later.
-                      }
-                      if (dialogContext.mounted) Navigator.pop(dialogContext);
-                    } catch (failure) {
+                    if (added != null) {
+                      connections.add(added);
                       setState(() {
-                        busy = false;
-                        error = failure.toString();
+                        busy = true;
+                        error = null;
                       });
+                      try {
+                        await _saveFirefliesSources(ref, connections);
+                      } catch (failure) {
+                        connections.removeLast();
+                        error = failure.toString();
+                      } finally {
+                        setState(() => busy = false);
+                      }
                     }
                   },
-            child: busy
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Save'),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Fireflies source'),
           ),
         ],
       ),
@@ -1221,26 +1243,62 @@ Future<void> _manageFirefliesConnections(
   );
 }
 
+Future<void> _saveFirefliesSources(
+  WidgetRef ref,
+  List<FirefliesConnection> connections,
+) async {
+  await ref
+      .read(credentialStoreProvider)
+      .writeFirefliesConnections(connections);
+  ref.invalidate(firefliesConnectionsProvider);
+  ref.invalidate(credentialConfiguredProvider(CredentialKey.firefliesApiKey));
+  try {
+    await ref.read(deviceSyncServiceProvider).pushConfiguration();
+  } catch (_) {
+    // Saved locally; device sync retries later.
+  }
+  unawaited(ref.read(syncControllerProvider.notifier).run(SyncReason.manual));
+}
+
+Future<AccountWebhookConfig?> _loadAccountWebhook(WidgetRef ref) async {
+  final settings = await ref.read(settingsProvider.future);
+  final account = await ref
+      .read(accountSyncClientProvider)
+      .readAccount(ref.read(credentialStoreProvider));
+  if (account == null || settings.relayBaseUrl?.isNotEmpty != true) return null;
+  try {
+    return await ref
+        .read(accountSyncClientProvider)
+        .webhookConfig(baseUrl: settings.relayBaseUrl!, account: account);
+  } catch (_) {
+    // Polling remains operational while relay status is unavailable.
+    return null;
+  }
+}
+
 Future<FirefliesConnection?> _editFirefliesConnection(
   BuildContext context,
   WidgetRef ref, {
   FirefliesConnection? existing,
+  required List<FirefliesConnection> allConnections,
+  AccountWebhookConfig? webhook,
 }) async {
   final nameController = TextEditingController(text: existing?.name);
   final keyController = TextEditingController();
   String? error;
   var busy = false;
+  var currentWebhook = webhook;
   final result = await showDialog<FirefliesConnection>(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
-        title: Text(
-          existing == null ? 'Add Fireflies key' : 'Edit Fireflies key',
-        ),
+        scrollable: true,
+        title: Text(existing == null ? 'Add Fireflies source' : existing.name),
         content: SizedBox(
           width: 480,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
                 controller: nameController,
@@ -1263,6 +1321,76 @@ Future<FirefliesConnection?> _editFirefliesConnection(
                       : 'Leave blank to keep current key.',
                 ),
               ),
+              const SizedBox(height: 16),
+              Text(
+                'API connection · ${existing?.validatedAt == null ? 'Validate before saving' : 'Connected'}',
+              ),
+              const SizedBox(height: 12),
+              const Text('Transcript discovery'),
+              const Text('Polling · Enabled'),
+              FutureBuilder<DateTime?>(
+                future: existing == null
+                    ? Future<DateTime?>.value()
+                    : ref
+                          .read(databaseProvider)
+                          .readCursor('fireflies:${existing.id}'),
+                builder: (context, snapshot) => Text(
+                  snapshot.data == null
+                      ? 'Last successful poll · Not yet'
+                      : 'Last successful poll · ${_shortTimestamp(snapshot.data!)}',
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Realtime delivery for this ClassSync account'),
+              Text(
+                currentWebhook == null
+                    ? 'Unavailable · Polling remains active'
+                    : currentWebhook!.lastReceivedAt == null
+                    ? 'Not confirmed · Configure Webhooks V2 manually'
+                    : 'Active · Last event ${_shortTimestamp(currentWebhook!.lastReceivedAt!)}',
+              ),
+              if (existing?.accountEmail != null)
+                Text('Fireflies account · ${existing!.accountEmail}'),
+              if (currentWebhook != null) ...[
+                const SizedBox(height: 8),
+                SelectableText('Webhook URL\n${currentWebhook!.webhookUrl}'),
+                const SizedBox(height: 8),
+                const Text('Signing secret\n••••••••••••'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => Clipboard.setData(
+                        ClipboardData(text: currentWebhook!.webhookUrl),
+                      ),
+                      icon: const Icon(Icons.copy_rounded),
+                      label: const Text('Copy URL'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => Clipboard.setData(
+                        ClipboardData(text: currentWebhook!.signingSecret),
+                      ),
+                      icon: const Icon(Icons.key_rounded),
+                      label: const Text('Copy secret'),
+                    ),
+                    TextButton.icon(
+                      onPressed: busy
+                          ? null
+                          : () async {
+                              setState(() => busy = true);
+                              currentWebhook = await _loadAccountWebhook(ref);
+                              setState(() => busy = false);
+                            },
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Refresh status'),
+                    ),
+                  ],
+                ),
+                const Text(
+                  'In Fireflies Webhooks V2, use these values and subscribe to meeting.transcribed. Fireflies does not expose saved-webhook setup through its public API.',
+                ),
+              ],
               if (error != null) ...[
                 const SizedBox(height: 10),
                 Text(
@@ -1293,22 +1421,32 @@ Future<FirefliesConnection?> _editFirefliesConnection(
                       );
                       return;
                     }
-                    final candidate = FirefliesConnection(
-                      id: existing?.id ?? const Uuid().v4(),
-                      name: name,
-                      apiKey: apiKey,
-                    );
                     setState(() {
                       busy = true;
                       error = null;
                     });
                     try {
-                      candidate.validate();
-                      if (existing == null || enteredKey.isNotEmpty) {
-                        await ref
-                            .read(firefliesClientProvider)
-                            .testConnection(apiKey);
+                      final identity = await ref
+                          .read(firefliesClientProvider)
+                          .testConnection(apiKey);
+                      if (allConnections.any(
+                        (item) =>
+                            item.id != existing?.id &&
+                            item.firefliesUserId == identity.userId,
+                      )) {
+                        throw const FormatException(
+                          'This Fireflies account is already added.',
+                        );
                       }
+                      final candidate = FirefliesConnection(
+                        id: existing?.id ?? const Uuid().v4(),
+                        name: name,
+                        apiKey: apiKey,
+                        firefliesUserId: identity.userId,
+                        accountEmail: identity.email,
+                        validatedAt: DateTime.now().toUtc(),
+                      );
+                      candidate.validate();
                       if (dialogContext.mounted) {
                         Navigator.pop(dialogContext, candidate);
                       }
@@ -1324,7 +1462,9 @@ Future<FirefliesConnection?> _editFirefliesConnection(
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Test and use'),
+                : Text(
+                    existing == null ? 'Validate and add' : 'Validate and save',
+                  ),
           ),
         ],
       ),
@@ -1333,6 +1473,15 @@ Future<FirefliesConnection?> _editFirefliesConnection(
   nameController.dispose();
   keyController.dispose();
   return result;
+}
+
+String _shortTimestamp(DateTime value) {
+  final local = value.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$day/$month $hour:$minute';
 }
 
 Future<void> _configureSecret(
@@ -1425,7 +1574,6 @@ Future<void> _configureRelay(
   AppSettings settings,
 ) async {
   final urlController = TextEditingController(text: settings.relayBaseUrl);
-  final tokenController = TextEditingController();
   String? error;
   await showDialog<void>(
     context: context,
@@ -1442,10 +1590,8 @@ Future<void> _configureRelay(
                 decoration: const InputDecoration(labelText: 'Relay base URL'),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: tokenController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Device token'),
+              const Text(
+                'For development, staging, or self-hosting. Existing account credentials authenticate this device; no bootstrap token is stored here.',
               ),
               if (error != null) ...[
                 const SizedBox(height: 10),
@@ -1465,38 +1611,22 @@ Future<void> _configureRelay(
           FilledButton(
             onPressed: () async {
               try {
-                await ref
-                    .read(relayClientProvider)
-                    .testConnection(
-                      urlController.text.trim(),
-                      token: tokenController.text.trim(),
-                    );
                 final credentialStore = ref.read(credentialStoreProvider);
-                final oldSession = await credentialStore.read(
-                  CredentialKey.relayDeviceCredential,
-                );
-                if (oldSession != null && settings.relayBaseUrl != null) {
-                  try {
-                    await ref
-                        .read(relayClientProvider)
-                        .revokeDevice(
-                          baseUrl: settings.relayBaseUrl!,
-                          token: oldSession,
-                        );
-                  } catch (_) {
-                    // Rotation still succeeds while old relay is unavailable.
-                  }
+                final account = await ref
+                    .read(accountSyncClientProvider)
+                    .readAccount(credentialStore);
+                if (account == null) {
+                  throw const FormatException(
+                    'Create or recover a ClassSync account before changing relay infrastructure.',
+                  );
                 }
-                await credentialStore.delete(
-                  CredentialKey.relayDeviceCredential,
-                );
-                await credentialStore.write(
-                  CredentialKey.relayDeviceToken,
-                  tokenController.text,
-                );
-                ref.invalidate(
-                  credentialConfiguredProvider(CredentialKey.relayDeviceToken),
-                );
+                await ref
+                    .read(accountSyncClientProvider)
+                    .webhookConfig(
+                      baseUrl: urlController.text.trim(),
+                      account: account,
+                    );
+                await credentialStore.delete(CredentialKey.relayDeviceToken);
                 await ref
                     .read(settingsControllerProvider)
                     .save(
@@ -1516,7 +1646,6 @@ Future<void> _configureRelay(
     ),
   );
   urlController.dispose();
-  tokenController.dispose();
 }
 
 Future<void> _exportDiagnostics(

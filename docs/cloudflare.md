@@ -18,13 +18,14 @@ Configure Fireflies Webhooks V2 with:
 https://classsync-relay.classsync-relay.workers.dev/webhooks/fireflies
 ```
 
-Subscribe only to `meeting.transcribed` and use same signing secret. Enter
-bootstrap token once in ClassSync. Client creates random per-device credential;
-Worker stores only its SHA-256 hash. Lost device can be revoked by setting
-`revoked_at` in `relay_device_auth`.
+Subscribe only to `meeting.transcribed` and use same signing secret. Device API
+token is bootstrap credential used only to create a new ClassSync account.
+After account creation, client deletes it and authenticates with account ID,
+account auth secret, and this device's generated device ID.
 
-Fireflies' signed synthetic Test Webhook receives `200` but is not stored or
-sent to devices. Production `meeting.transcribed` deliveries receive `202`.
+Fireflies' signed synthetic Test Webhook receives `200`, updates bounded
+account webhook activity metadata, but is not stored as a lecture or sent to
+devices. Production `meeting.transcribed` deliveries receive `202`.
 
 ## Multiple people and devices
 
@@ -38,8 +39,13 @@ opaque snapshots. Apply it before installing a client that uses account sync.
 The Worker stores a hash of the account authentication secret. API keys and
 shared preferences reach D1 only as AES-256-GCM ciphertext.
 
-The global `DEVICE_API_TOKEN` is now also the account-creation setup code. It
+The global `DEVICE_API_TOKEN` is only account-creation setup code. It is not a
+Fireflies credential, is not included in recovery or encrypted snapshots, and
 does not grant access to an existing account or decrypt its snapshots.
+
+D1 migration `0007_account_webhook_activity.sql` stores only account ID, last
+signed webhook receipt time, and event type so source UI can report known
+realtime status.
 
 The relay stores no transcript, prompt, summary, or Notion content.
 FCM tokens are stored only for authenticated Android devices. See

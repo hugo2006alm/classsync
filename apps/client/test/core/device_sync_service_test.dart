@@ -145,32 +145,128 @@ void main() {
     },
   );
 
+  test('pushes all account-scoped credentials in schema v3 config', () async {
+    await database.saveSettings(
+      AppSettings.defaults.copyWith(displayName: 'Hugo'),
+    );
+    await credentials.writeFirefliesConnections(const [
+      FirefliesConnection(
+        id: 'mine',
+        name: 'Hugo',
+        apiKey: 'key-mine',
+        firefliesUserId: 'fireflies-user-hugo',
+        accountEmail: 'hugo@example.com',
+      ),
+      FirefliesConnection(id: 'ana', name: 'Ana', apiKey: 'key-ana'),
+    ]);
+    await credentials.write(CredentialKey.moodleToken, 'moodle-token');
+    await credentials.write(CredentialKey.portalUsername, 'portal-user');
+    await credentials.write(CredentialKey.portalPassword, ' portal pass ');
+    await credentials.write(CredentialKey.syncDeviceId, 'device-local');
+    await credentials.write(CredentialKey.relayDeviceToken, 'bootstrap-local');
+    final client = _SnapshotAccountClient();
+    final service = DeviceSyncService(
+      database: database,
+      credentials: credentials,
+      client: client,
+    );
+
+    await service.pushConfiguration();
+
+    final config = client.writes['config']!;
+    expect(config['schemaVersion'], 3);
+    expect((config['settings'] as Map)['displayName'], 'Hugo');
+    final savedCredentials = config['credentials'] as Map;
+    expect(savedCredentials['firefliesConnections'], hasLength(2));
+    expect(savedCredentials['moodleToken'], 'moodle-token');
+    expect(savedCredentials['portalUsername'], 'portal-user');
+    expect(savedCredentials['portalPassword'], ' portal pass ');
+    expect(savedCredentials.containsKey('syncDeviceId'), isFalse);
+    expect(savedCredentials.containsKey('relayDeviceToken'), isFalse);
+  });
+
   test(
-    'pushes profile and all named Fireflies keys in encrypted config',
+    'recovery restores Moodle and Portal without copying device state',
     () async {
-      await database.saveSettings(
-        AppSettings.defaults.copyWith(displayName: 'Hugo'),
+      await credentials.write(CredentialKey.syncDeviceId, 'new-device');
+      final client = _SnapshotAccountClient(
+        remoteConfiguration: {
+          'schemaVersion': 3,
+          'settings': {
+            'displayName': 'Restored',
+            'notionSubjectsDataSourceId': 'subjects',
+            'notionSummariesDataSourceId': 'summaries',
+          },
+          'credentials': {
+            'firefliesConnections': const [
+              {
+                'id': 'source-stable',
+                'name': 'My Fireflies',
+                'apiKey': 'fireflies-key',
+                'firefliesUserId': 'ff-user',
+              },
+            ],
+            'gemini': 'gemini-key',
+            'notion': 'notion-key',
+            'moodleToken': 'moodle-token',
+            'portalUsername': 'portal-user',
+            'portalPassword': ' portal pass ',
+          },
+        },
       );
-      await credentials.writeFirefliesConnections(const [
-        FirefliesConnection(id: 'mine', name: 'Hugo', apiKey: 'key-mine'),
-        FirefliesConnection(id: 'ana', name: 'Ana', apiKey: 'key-ana'),
-      ]);
-      final client = _SnapshotAccountClient();
       final service = DeviceSyncService(
         database: database,
         credentials: credentials,
         client: client,
       );
 
-      await service.pushConfiguration();
+      await service.restoreConfiguration(baseUrl: 'https://relay.test');
 
-      final config = client.writes['config']!;
-      expect(config['schemaVersion'], 2);
-      expect((config['settings'] as Map)['displayName'], 'Hugo');
       expect(
-        (config['credentials'] as Map)['firefliesConnections'],
-        hasLength(2),
+        (await credentials.readFirefliesConnections()).single.id,
+        'source-stable',
       );
+      expect(await credentials.read(CredentialKey.moodleToken), 'moodle-token');
+      expect(
+        await credentials.read(CredentialKey.portalUsername),
+        'portal-user',
+      );
+      expect(
+        await credentials.read(CredentialKey.portalPassword),
+        ' portal pass ',
+      );
+      expect(await credentials.read(CredentialKey.syncDeviceId), 'new-device');
+      expect(await credentials.read(CredentialKey.relayDeviceToken), isNull);
+    },
+  );
+
+  test(
+    'schema v2 without academic credentials preserves valid local values',
+    () async {
+      await credentials.write(CredentialKey.moodleToken, 'local-moodle');
+      final client = _SnapshotAccountClient(
+        remoteConfiguration: {
+          'schemaVersion': 2,
+          'settings': {
+            'notionSubjectsDataSourceId': 'subjects',
+            'notionSummariesDataSourceId': 'summaries',
+          },
+          'credentials': {
+            'fireflies': 'fireflies-key',
+            'gemini': 'gemini-key',
+            'notion': 'notion-key',
+          },
+        },
+      );
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+
+      await service.restoreConfiguration(baseUrl: 'https://relay.test');
+
+      expect(await credentials.read(CredentialKey.moodleToken), 'local-moodle');
     },
   );
 }

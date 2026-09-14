@@ -22,11 +22,12 @@ generates your account-specific Fireflies signing secret during setup.
 Choose **Use recovery code** on Welcome. Enter your own account recovery code;
 for a self-hosted account, expand **Custom relay** and use its existing HTTPS
 URL. ClassSync authenticates, decrypts the saved configuration, and restores
-Fireflies connections, Gemini/Notion keys, and Notion mappings into local secure
-storage/settings. Continue through Automation and Ready. No API-key setup,
+Fireflies sources, Gemini/Notion keys, and Notion mappings into local secure
+storage/settings. Schema-v3 snapshots also restore Moodle app token and Portal
+username/password. Continue through Automation and Ready. No API-key setup,
 bootstrap token, Notion schema change, or Fireflies webhook reconfiguration is
-required. Portal/Moodle credentials remain device-local and can be connected
-later.
+required. Missing optional academic fields do not invalidate older snapshots;
+that integration can be reconnected later.
 
 If no complete configuration has been synced, finish setup and sync on the
 first device, then retry. Recovery never replaces a missing remote snapshot
@@ -50,26 +51,26 @@ with the new device's blank defaults. Keep the recovery code private.
 ## The nine screens
 
 1. **Welcome** lists everything needed and explains what stays local.
-2. **Fireflies** accepts a named API key and tests it before continuing.
-3. **Gemini** accepts the API key and tests the recommended model. The model is
+2. **Relay** uses
+   `https://classsync-relay.classsync-relay.workers.dev`. Paste Device API token
+   for initial account creation only. A different URL can be entered under
+   **Use a different relay** for self-hosting or staging.
+3. **Account** records owner's display name and creates a private account for
+   one person. Save recovery code before continuing.
+4. **Fireflies** is one source-centric setup: name and API key validation,
+   stable Fireflies account identity, always-on polling, and copyable account
+   Webhooks V2 URL/signing secret.
+5. **Gemini** accepts the API key and tests the recommended model. The model is
    under Advanced because most users should not change it.
-4. **Notion** discovers every database shared with the integration. Select
+6. **Notion** discovers every database shared with the integration. Select
    `Lista de Cadeiras` and `Histórico de Resumos`. Keep the recommended
    `Fireflies ID` option enabled for reliable cross-device duplicate detection.
-5. **Academic** optionally tests ISEP Portal and Moodle using their normal
+7. **Academic** optionally tests ISEP Portal and Moodle using their normal
    username/password sign-ins. Moodle exchanges the credentials for an app
    token and stores only that token; its password is not retained.
    Leave either section blank to skip it and connect later under
    **Academic → Connections**. Portal access is read-only; ClassSync does not
    submit exam registrations.
-6. **Relay** already uses
-   `https://classsync-relay.classsync-relay.workers.dev`. Paste only the device
-   API token. A different URL can be entered under **Use a different relay** for
-   self-hosting or staging.
-7. **Account** records the owner's display name, creates a private account for
-   one person, or joins that person's other devices with a recovery code. Copy
-   its unique URL and signing secret into Fireflies Webhooks V2 and subscribe
-   to `meeting.transcribed`.
 8. **Automation** controls problem notifications and the platform-specific
    background option.
 9. **Ready** reviews every verified connection before saving the credentials to
@@ -90,16 +91,20 @@ Normal Worker code deployments, secret rotations, and D1 migrations do not
 change the production Worker URL. Change the URL in ClassSync only when moving
 to another Worker name, Cloudflare account, custom domain, or staging relay.
 
-The bootstrap device API token authorizes creation of a random private account.
-It cannot open an existing account. The recovery code contains separate relay
-authentication and encryption secrets; store it in a password manager.
+The bootstrap Device API token authorizes creation of one random private
+account and is deleted locally after that account exists. It cannot open an
+existing account, add/edit a Fireflies source, or recover a device. Relay URL
+management lives under Diagnostics → Advanced relay settings. Recovery code
+contains separate relay authentication and encryption secrets; store it in a
+password manager.
 
 ## Colleague recordings
 
 A colleague does not need ClassSync on their phone and must not receive your
 ClassSync recovery code. Configure your account's webhook URL and signing
-secret in their Fireflies account, then add their Fireflies API key with their
-name under **Settings → Connections → Fireflies**. The webhook announces the
+secret in their Fireflies account, then add their Fireflies API key as a named
+source under **Settings → Connections → Fireflies**. Same source screen shows
+API, polling, and realtime state. The webhook announces the
 transcript; their key authorizes ClassSync to fetch it. Your own key works only
 if Fireflies already grants it access to that transcript.
 

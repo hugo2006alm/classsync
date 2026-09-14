@@ -50,7 +50,7 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
                   Text('What follows you'),
                   SizedBox(height: 8),
                   Text(
-                    'Fireflies, Gemini, and Notion keys; Notion database mappings; AI preferences; and lecture job status.',
+                    'Fireflies sources; Gemini and Notion keys; Notion mappings; Moodle token; Portal login; AI preferences; and lecture job status.',
                   ),
                   SizedBox(height: 14),
                   Text('What stays on this device'),
@@ -147,11 +147,6 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
             icon: const Icon(Icons.key_rounded),
             label: const Text('Copy recovery code'),
           ),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : () => _showWebhook(account),
-            icon: const Icon(Icons.webhook_rounded),
-            label: const Text('Fireflies webhook'),
-          ),
           TextButton(
             onPressed: _busy ? null : _disconnect,
             child: const Text('Disconnect this device'),
@@ -164,12 +159,10 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
   Future<void> _create() async {
     final name = await _requestName();
     if (name == null) return;
+    final setupToken = await _requestBootstrapToken();
+    if (setupToken == null) return;
     await _run(() async {
       final store = ref.read(credentialStoreProvider);
-      final setupToken = await store.read(CredentialKey.relayDeviceToken);
-      if (setupToken == null || setupToken.isEmpty) {
-        throw StateError('Configure the ClassSync Relay setup token first.');
-      }
       final account = await ref
           .read(accountSyncClientProvider)
           .createAccount(
@@ -264,44 +257,6 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
     setState(() => _message = 'Devices are up to date.');
   });
 
-  Future<void> _showWebhook(SyncAccount account) async {
-    await _run(() async {
-      final config = await ref
-          .read(accountSyncClientProvider)
-          .webhookConfig(
-            baseUrl:
-                widget.settings.relayBaseUrl ??
-                AppSettings.productionRelayBaseUrl,
-            account: account,
-          );
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Your Fireflies webhook'),
-          content: SelectableText(
-            'URL\n${config.webhookUrl}\n\nSigning secret\n${config.signingSecret}\n\nThe same URL can receive permitted colleagues’ recordings. Add each colleague’s named Fireflies API key under Connections so ClassSync can fetch their transcript.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () =>
-                  _copy(config.signingSecret, 'Signing secret copied.'),
-              child: const Text('Copy secret'),
-            ),
-            TextButton(
-              onPressed: () => _copy(config.webhookUrl, 'Webhook URL copied.'),
-              child: const Text('Copy URL'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
   Future<void> _disconnect() => _run(() async {
     await ref
         .read(accountSyncClientProvider)
@@ -357,6 +312,41 @@ class _DeviceSyncSettingsState extends ConsumerState<DeviceSyncSettings> {
       setState(() => _message = 'Account name cannot be empty.');
       return null;
     }
+    return value;
+  }
+
+  Future<String?> _requestBootstrapToken() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create ClassSync account'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Device API token',
+            helperText:
+                'Bootstrap credential used once for account creation. It is not saved.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final token = controller.text.trim();
+              if (token.length >= 32) Navigator.pop(context, token);
+            },
+            child: const Text('Create account'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
     return value;
   }
 

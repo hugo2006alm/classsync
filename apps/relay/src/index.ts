@@ -134,13 +134,37 @@ async function accountWebhookConfig(
   const accountId = await authenticatedAccount(request, env);
   if (!accountId) return json({ error: "unauthorized" }, 401);
   const url = new URL(request.url);
+  const activity = await env.DB.prepare(
+    `SELECT last_received_at, last_event_type
+     FROM account_webhook_activity WHERE account_id = ?`,
+  ).bind(accountId).first<{
+    last_received_at: string;
+    last_event_type: string;
+  }>();
   return json({
     webhookUrl: `${url.origin}/webhooks/fireflies/${encodeURIComponent(accountId)}`,
     signingSecret: await accountWebhookSecret(
       accountId,
       env.FIREFLIES_WEBHOOK_SECRET,
     ),
+    lastReceivedAt: activity?.last_received_at ?? null,
+    lastEventType: activity?.last_event_type ?? null,
   });
+}
+
+async function recordAccountWebhookActivity(
+  env: Env,
+  accountId: string,
+  eventType: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO account_webhook_activity
+       (account_id, last_received_at, last_event_type)
+     VALUES (?, ?, ?)
+     ON CONFLICT(account_id) DO UPDATE SET
+       last_received_at = excluded.last_received_at,
+       last_event_type = excluded.last_event_type`,
+  ).bind(accountId, new Date().toISOString(), eventType).run();
 }
 
 async function receiveAccountWebhook(
@@ -178,6 +202,7 @@ async function receiveAccountWebhook(
     return json({ error: "invalid_json" }, 400);
   }
   if (isFirefliesTestPayload(payload)) {
+    await recordAccountWebhookActivity(env, accountId, "test");
     return json({ accepted: true, test: true });
   }
   if (!validPayload(payload)) return json({ error: "invalid_payload" }, 400);
@@ -187,6 +212,7 @@ async function receiveAccountWebhook(
   if (Math.abs(Date.now() - timestampMs) > webhookSkewMs) {
     return json({ error: "stale_webhook" }, 401);
   }
+  await recordAccountWebhookActivity(env, accountId, payload.event);
   const id = `${accountId}:${payload.event}:${payload.meeting_id}`;
   const inserted = await env.DB.prepare(
     `INSERT INTO account_relay_events

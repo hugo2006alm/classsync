@@ -29,9 +29,13 @@ class AccountWebhookConfig {
   const AccountWebhookConfig({
     required this.webhookUrl,
     required this.signingSecret,
+    this.lastReceivedAt,
+    this.lastEventType,
   });
   final String webhookUrl;
   final String signingSecret;
+  final DateTime? lastReceivedAt;
+  final String? lastEventType;
 }
 
 class EncryptedSnapshot {
@@ -60,6 +64,9 @@ class AccountSyncClient {
       store.read(CredentialKey.syncDeviceId),
     ]);
     if (values.any((value) => value == null || value.isEmpty)) return null;
+    // Account credentials replace legacy bootstrap and enrolled-device secrets.
+    await store.delete(CredentialKey.relayDeviceToken);
+    await store.delete(CredentialKey.relayDeviceCredential);
     return SyncAccount(
       id: values[0]!,
       authSecret: values[1]!,
@@ -156,6 +163,10 @@ class AccountSyncClient {
       return AccountWebhookConfig(
         webhookUrl: response.data?['webhookUrl'] as String,
         signingSecret: response.data?['signingSecret'] as String,
+        lastReceivedAt: DateTime.tryParse(
+          response.data?['lastReceivedAt'] as String? ?? '',
+        )?.toUtc(),
+        lastEventType: response.data?['lastEventType'] as String?,
       );
     } on DioException catch (error) {
       throw IntegrationException.fromDio('Device sync', error);
@@ -198,7 +209,7 @@ class AccountSyncClient {
           'baseRevision': baseRevision,
           'ciphertext': encrypted.ciphertext,
           'nonce': encrypted.nonce,
-          'schemaVersion': 1,
+          'schemaVersion': (payload['schemaVersion'] as num?)?.toInt() ?? 1,
         },
         options: Options(headers: _headers(account)),
       );
@@ -271,6 +282,8 @@ class AccountSyncClient {
       CredentialKey.syncConfigRevision: '0',
       CredentialKey.syncJobsRevision: '0',
     });
+    await store.delete(CredentialKey.relayDeviceToken);
+    await store.delete(CredentialKey.relayDeviceCredential);
   }
 
   Map<String, String> _headers(SyncAccount account) => {

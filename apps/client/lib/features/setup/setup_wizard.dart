@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/integrations/notion/notion_client.dart';
+import '../../core/integrations/fireflies/fireflies_client.dart';
 import '../../core/integrations/relay/account_sync_client.dart';
 import '../../core/providers.dart';
 import '../../core/security/trusted_url_launcher.dart';
@@ -56,11 +57,12 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _joinedExistingAccount = false;
   var _recoveryEntry = false;
   List<int> get _flow =>
-      _recoveryEntry ? const [0, 6, 7, 8] : List.generate(_stepCount, (i) => i);
+      _recoveryEntry ? const [0, 6, 7, 8] : const [0, 5, 6, 1, 2, 3, 4, 7, 8];
   SyncAccount? _syncAccount;
   AccountWebhookConfig? _webhookConfig;
+  FirefliesIdentity? _primaryFirefliesIdentity;
+  List<String> _recoveryMissingConnections = const [];
 
-  static const _stepCount = 9;
   static const _steps = <_StepDefinition>[
     _StepDefinition('Welcome', Icons.waving_hand_outlined),
     _StepDefinition('Fireflies', Icons.mic_none_rounded),
@@ -230,7 +232,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   );
 
   Widget _fireflies() => _StepBody(
-    eyebrow: 'SOURCE · 1 OF 4',
+    eyebrow: 'FIREFLIES SOURCE',
     icon: Icons.mic_none_rounded,
     title: 'Bring in your lectures.',
     description:
@@ -242,7 +244,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           items: [
             'Open Settings → Personal → Developer settings.',
             'Copy your API key.',
-            'Keep this page open. Your private webhook URL appears in the Account step.',
+            'Keep this page open for Webhooks V2 values shown below.',
           ],
         ),
         const SizedBox(height: 16),
@@ -262,12 +264,63 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 'Use a person or account name so transcript ownership is clear.',
           ),
         ),
+        const SizedBox(height: 12),
+        const _InfoStrip(
+          icon: Icons.sync_rounded,
+          message:
+              'Polling is always enabled. Realtime webhook improves latency but is not required.',
+        ),
+        if (_webhookConfig != null) ...[
+          const SizedBox(height: 12),
+          _firefliesWebhookSetup(),
+        ],
       ],
     ),
   );
 
+  Widget _firefliesWebhookSetup() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Realtime webhook · manual setup'),
+          const SizedBox(height: 8),
+          const Text(
+            'In Fireflies Webhooks V2, use these values, subscribe only to meeting.transcribed, save, then run Test Webhook.',
+          ),
+          const SizedBox(height: 14),
+          SelectableText('URL\n${_webhookConfig!.webhookUrl}'),
+          const SizedBox(height: 10),
+          const Text('Signing secret\n••••••••••••'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => Clipboard.setData(
+                  ClipboardData(text: _webhookConfig!.webhookUrl),
+                ),
+                icon: const Icon(Icons.link_rounded),
+                label: const Text('Copy URL'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => Clipboard.setData(
+                  ClipboardData(text: _webhookConfig!.signingSecret),
+                ),
+                icon: const Icon(Icons.key_rounded),
+                label: const Text('Copy secret'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
   Widget _gemini() => _StepBody(
-    eyebrow: 'AI · 2 OF 4',
+    eyebrow: 'AI',
     icon: Icons.auto_awesome_rounded,
     title: 'Shape raw speech into notes.',
     description:
@@ -315,7 +368,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   );
 
   Widget _notion() => _StepBody(
-    eyebrow: 'DESTINATION · 3 OF 4',
+    eyebrow: 'DESTINATION',
     icon: Icons.account_tree_outlined,
     title: 'Point to your study workspace.',
     description:
@@ -415,7 +468,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   );
 
   Widget _relay() => _StepBody(
-    eyebrow: 'DELIVERY · 4 OF 4',
+    eyebrow: 'CLASSSYNC INFRASTRUCTURE',
     icon: Icons.cloud_queue_rounded,
     title: 'Connect this device.',
     description:
@@ -500,7 +553,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         const _InfoStrip(
           icon: Icons.lock_outline_rounded,
           message:
-              'These credentials stay in this device’s OS secure storage. ClassSync only reads academic data and never submits an exam registration.',
+              'These credentials stay in OS secure storage and transfer only inside your encrypted account snapshot. ClassSync only reads academic data and never submits an exam registration.',
         ),
         const SizedBox(height: 14),
         Card(
@@ -582,7 +635,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   );
 
   Widget _account() => _StepBody(
-    eyebrow: 'YOUR DEVICES',
+    eyebrow: 'YOUR ACCOUNT',
     icon: Icons.devices_rounded,
     title: _recoveryEntry
         ? 'Restore your study desk.'
@@ -656,7 +709,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             ),
           ),
         ),
-        if (_syncAccount != null && _webhookConfig != null) ...[
+        if (_syncAccount != null && !_joinAccount) ...[
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -664,36 +717,16 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('In Fireflies Webhooks V2'),
+                  const Text('Account recovery'),
                   const SizedBox(height: 8),
                   const Text(
-                    'Use the URL and signing secret below. Subscribe only to meeting.transcribed, save, then run Test Webhook.',
-                  ),
-                  const SizedBox(height: 14),
-                  SelectableText('URL\n${_webhookConfig!.webhookUrl}'),
-                  const SizedBox(height: 10),
-                  SelectableText(
-                    'Signing secret\n${_webhookConfig!.signingSecret}',
+                    'Save this recovery code before continuing. It restores account identity and decrypts account configuration on another device.',
                   ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: () => Clipboard.setData(
-                          ClipboardData(text: _webhookConfig!.webhookUrl),
-                        ),
-                        icon: const Icon(Icons.link_rounded),
-                        label: const Text('Copy URL'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () => Clipboard.setData(
-                          ClipboardData(text: _webhookConfig!.signingSecret),
-                        ),
-                        icon: const Icon(Icons.key_rounded),
-                        label: const Text('Copy secret'),
-                      ),
                       OutlinedButton.icon(
                         onPressed: () => Clipboard.setData(
                           ClipboardData(text: _syncAccount!.recoveryCode),
@@ -750,6 +783,16 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         await ref
             .read(deviceSyncServiceProvider)
             .restoreConfiguration(baseUrl: baseUrl);
+        final restoredCredentials = ref.read(credentialStoreProvider);
+        final restoredStates = await Future.wait([
+          restoredCredentials.isConfigured(CredentialKey.moodleToken),
+          restoredCredentials.isConfigured(CredentialKey.portalUsername),
+          restoredCredentials.isConfigured(CredentialKey.portalPassword),
+        ]);
+        _recoveryMissingConnections = [
+          if (!restoredStates[0]) 'Moodle',
+          if (!(restoredStates[1] && restoredStates[2])) 'ISEP Portal',
+        ];
       }
       final webhook = _joinAccount
           ? null
@@ -825,8 +868,8 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             _ReadyRow(
               Icons.mic_none_rounded,
               _joinedExistingAccount
-                  ? 'Fireflies connections restored'
-                  : 'Fireflies connection verified',
+                  ? 'Fireflies sources restored'
+                  : 'Fireflies source verified',
             ),
             const SizedBox(height: 12),
             _ReadyRow(
@@ -845,6 +888,15 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               Icons.webhook_rounded,
               'This device can reach the relay',
             ),
+            if (_joinedExistingAccount) ...[
+              const SizedBox(height: 12),
+              _ReadyRow(
+                Icons.school_outlined,
+                _recoveryMissingConnections.isEmpty
+                    ? 'Moodle and Portal credentials restored'
+                    : 'Recovery complete · reconnect ${_recoveryMissingConnections.join(' and ')}',
+              ),
+            ],
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Divider(),
@@ -882,7 +934,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               'Enter a Fireflies API key and connection name.',
             );
           }
-          await ref
+          _primaryFirefliesIdentity = await ref
               .read(firefliesClientProvider)
               .testConnection(_firefliesController.text.trim());
         case 2:
@@ -966,13 +1018,10 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           await _finish();
           return;
       }
-      if (_page < _stepCount - 1) {
-        setState(() => _page += 1);
-        await _pageController.animateToPage(
-          _page,
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-        );
+      final currentIndex = _flow.indexOf(_page);
+      if (currentIndex < _flow.length - 1) {
+        setState(() => _page = _flow[currentIndex + 1]);
+        _pageController.jumpToPage(_page);
       }
     } catch (error) {
       setState(
@@ -1036,7 +1085,6 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     }
     if (!_joinedExistingAccount) {
       await credentialStore.writeAll({
-        CredentialKey.relayDeviceToken: _relayTokenController.text.trim(),
         CredentialKey.geminiApiKey: _geminiController.text.trim(),
         CredentialKey.notionToken: notionToken,
       });
@@ -1045,6 +1093,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           id: _primaryFirefliesId,
           name: _firefliesNameController.text.trim(),
           apiKey: _firefliesController.text.trim(),
+          firefliesUserId: _primaryFirefliesIdentity?.userId,
+          accountEmail: _primaryFirefliesIdentity?.email,
+          validatedAt: DateTime.now().toUtc(),
         ),
       ]);
     }
@@ -1102,11 +1153,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         _page = _flow[_flow.indexOf(_page) - 1];
       }
     });
-    _pageController.animateToPage(
-      _page,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-    );
+    _pageController.jumpToPage(_page);
   }
 }
 
@@ -1186,7 +1233,7 @@ class _SetupRail extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Credentials stay in secure storage on this device.',
+              'Credentials stay in secure storage and encrypted snapshots.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: scheme.onPrimary.withValues(alpha: 0.78),
               ),
@@ -1376,7 +1423,7 @@ class _SetupFooter extends StatelessWidget {
       >= 1 && <= 3 => 'Test & continue',
       4 => 'Save or skip',
       5 => 'Test & continue',
-      6 => 'Review setup',
+      6 => 'Continue',
       7 => 'Continue',
       _ => 'Finish setup',
     };

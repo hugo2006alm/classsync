@@ -17,17 +17,45 @@ class FirefliesTranscriptRef {
   final String? url;
 }
 
+class FirefliesIdentity {
+  const FirefliesIdentity({
+    required this.userId,
+    required this.email,
+    this.name,
+  });
+
+  final String userId;
+  final String email;
+  final String? name;
+}
+
 class FirefliesClient {
   FirefliesClient({Dio? dio})
     : _dio = dio ?? createDio(baseUrl: 'https://api.fireflies.ai/graphql');
 
   final Dio _dio;
 
-  Future<void> testConnection(String apiKey) async {
-    await _request(
+  Future<FirefliesIdentity> testConnection(String apiKey) async {
+    final data = await _request(
       apiKey,
-      'query CurrentUser { user { user_id email } }',
+      'query CurrentUser { user { user_id email name } }',
       const {},
+    );
+    final user = data['user'];
+    if (user is! Map<String, dynamic> ||
+        (user['user_id']?.toString().trim().isEmpty ?? true) ||
+        (user['email']?.toString().trim().isEmpty ?? true)) {
+      throw const IntegrationException(
+        integration: 'Fireflies',
+        code: 'identity_unavailable',
+        userMessage: 'Fireflies did not return a stable account identity.',
+        retryable: false,
+      );
+    }
+    return FirefliesIdentity(
+      userId: user['user_id'].toString().trim(),
+      email: user['email'].toString().trim(),
+      name: user['name']?.toString().trim(),
     );
   }
 

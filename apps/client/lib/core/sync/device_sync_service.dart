@@ -75,42 +75,7 @@ class DeviceSyncService {
       );
     }
     final payload = await _client.decrypt(account, snapshot);
-    final settings = payload['settings'];
-    final credentials = payload['credentials'];
-    var hasFireflies = false;
-    if (credentials is Map) {
-      final connections = credentials['firefliesConnections'];
-      if (connections is List) {
-        hasFireflies =
-            connections.isNotEmpty &&
-            connections.length <= FirefliesConnection.maxConnections &&
-            connections.every((value) => value is Map<String, dynamic>);
-        if (hasFireflies) {
-          for (final value in connections) {
-            FirefliesConnection.fromJson(value as Map<String, dynamic>);
-          }
-        }
-      } else {
-        hasFireflies =
-            credentials['fireflies'] is String &&
-            (credentials['fireflies'] as String).trim().isNotEmpty;
-      }
-    }
-    if (settings is! Map ||
-        credentials is! Map ||
-        settings['notionSubjectsDataSourceId'] is! String ||
-        settings['notionSummariesDataSourceId'] is! String ||
-        (settings['notionSubjectsDataSourceId'] as String).isEmpty ||
-        (settings['notionSummariesDataSourceId'] as String).isEmpty ||
-        credentials['gemini'] is! String ||
-        (credentials['gemini'] as String).isEmpty ||
-        credentials['notion'] is! String ||
-        (credentials['notion'] as String).isEmpty ||
-        !hasFireflies) {
-      throw const FormatException(
-        'Saved setup is incomplete. Finish setup and sync your first device, then retry recovery.',
-      );
-    }
+    _validateConfiguration(payload, requireCompleteSetup: true);
     await _applyConfiguration(payload);
     await _credentials.write(
       CredentialKey.syncConfigRevision,
@@ -135,6 +100,7 @@ class DeviceSyncService {
         0;
     if (snapshot.exists && snapshot.revision > lastRevision && !forcePush) {
       final payload = await _client.decrypt(account, snapshot);
+      _validateConfiguration(payload);
       await _applyConfiguration(payload);
       await _credentials.write(
         CredentialKey.syncConfigRevision,
@@ -145,6 +111,7 @@ class DeviceSyncService {
     final local = await _configurationPayload();
     if (snapshot.exists && !forcePush) {
       final remote = await _client.decrypt(account, snapshot);
+      _validateConfiguration(remote);
       if (_canonical(remote) == _canonical(local)) {
         await _credentials.write(
           CredentialKey.syncConfigRevision,
@@ -231,9 +198,12 @@ class DeviceSyncService {
     final values = await Future.wait([
       _credentials.read(CredentialKey.geminiApiKey),
       _credentials.read(CredentialKey.notionToken),
+      _credentials.read(CredentialKey.moodleToken),
+      _credentials.read(CredentialKey.portalUsername),
+      _credentials.read(CredentialKey.portalPassword),
     ]);
     return {
-      'schemaVersion': 2,
+      'schemaVersion': 3,
       'settings': {
         'displayName': settings.displayName,
         'automaticSync': settings.automaticSync,
@@ -258,8 +228,127 @@ class DeviceSyncService {
         'firefliesConnections': fireflies.map((item) => item.toJson()).toList(),
         'gemini': values[0],
         'notion': values[1],
+        'moodleToken': values[2],
+        'portalUsername': values[3],
+        'portalPassword': values[4],
       },
     };
+  }
+
+  void _validateConfiguration(
+    Map<String, dynamic> payload, {
+    bool requireCompleteSetup = false,
+  }) {
+    final rawVersion = payload['schemaVersion'];
+    if (rawVersion != null && rawVersion is! num) {
+      throw const FormatException('Saved configuration is malformed.');
+    }
+    final version = (rawVersion as num?)?.toInt() ?? 1;
+    if (version < 1 || version > 3) {
+      throw const FormatException(
+        'Saved configuration uses an unsupported schema version.',
+      );
+    }
+    final settings = payload['settings'];
+    final credentials = payload['credentials'];
+    if (settings is! Map<String, dynamic> ||
+        credentials is! Map<String, dynamic>) {
+      throw const FormatException('Saved configuration is malformed.');
+    }
+    for (final key in const [
+      'displayName',
+      'classificationModel',
+      'summaryModel',
+      'summaryLanguage',
+      'summaryDetail',
+      'notionSubjectsDataSourceId',
+      'notionSummariesDataSourceId',
+    ]) {
+      final value = settings[key];
+      if (value != null && value is! String) {
+        throw const FormatException('Saved settings are malformed.');
+      }
+    }
+    for (final key in const [
+      'automaticSync',
+      'keepTranscripts',
+      'cleanCompletedPayloads',
+      'notionMetadataEnabled',
+    ]) {
+      final value = settings[key];
+      if (value != null && value is! bool) {
+        throw const FormatException('Saved settings are malformed.');
+      }
+    }
+    for (final key in const [
+      'pollingMinutes',
+      'overlapHours',
+      'workerCount',
+      'diagnosticsRetentionDays',
+      'autoClassifyThreshold',
+      'reviewThreshold',
+    ]) {
+      final value = settings[key];
+      if (value != null && value is! num) {
+        throw const FormatException('Saved settings are malformed.');
+      }
+    }
+    final encodedConnections = credentials['firefliesConnections'];
+    if (encodedConnections != null) {
+      if (encodedConnections is! List ||
+          encodedConnections.length > FirefliesConnection.maxConnections ||
+          encodedConnections.any((value) => value is! Map<String, dynamic>)) {
+        throw const FormatException('Saved Fireflies sources are malformed.');
+      }
+      final connections = encodedConnections
+          .cast<Map<String, dynamic>>()
+          .map(FirefliesConnection.fromJson)
+          .toList();
+      if (connections.map((item) => item.id).toSet().length !=
+          connections.length) {
+        throw const FormatException(
+          'Saved Fireflies source IDs are not unique.',
+        );
+      }
+      final accountIds = connections
+          .map((item) => item.firefliesUserId)
+          .whereType<String>()
+          .toList();
+      if (accountIds.toSet().length != accountIds.length) {
+        throw const FormatException(
+          'Saved Fireflies account identities are not unique.',
+        );
+      }
+    }
+    for (final key in const [
+      'fireflies',
+      'gemini',
+      'notion',
+      'moodleToken',
+      'portalUsername',
+      'portalPassword',
+    ]) {
+      final value = credentials[key];
+      if (value != null && value is! String) {
+        throw const FormatException('Saved credentials are malformed.');
+      }
+    }
+    if (requireCompleteSetup) {
+      final hasSources = encodedConnections is List
+          ? encodedConnections.isNotEmpty
+          : (credentials['fireflies'] as String?)?.isNotEmpty == true;
+      if (!hasSources ||
+          (credentials['gemini'] as String?)?.isNotEmpty != true ||
+          (credentials['notion'] as String?)?.isNotEmpty != true ||
+          (settings['notionSubjectsDataSourceId'] as String?)?.isNotEmpty !=
+              true ||
+          (settings['notionSummariesDataSourceId'] as String?)?.isNotEmpty !=
+              true) {
+        throw const FormatException(
+          'Saved setup is incomplete. Finish setup and sync your first device, then retry recovery.',
+        );
+      }
+    }
   }
 
   Future<void> _applyConfiguration(Map<String, dynamic> payload) async {
@@ -319,6 +408,9 @@ class DeviceSyncService {
     for (final entry in <CredentialKey, String?>{
       CredentialKey.geminiApiKey: credentials['gemini'] as String?,
       CredentialKey.notionToken: credentials['notion'] as String?,
+      CredentialKey.moodleToken: credentials['moodleToken'] as String?,
+      CredentialKey.portalUsername: credentials['portalUsername'] as String?,
+      CredentialKey.portalPassword: credentials['portalPassword'] as String?,
     }.entries) {
       if (entry.value != null && entry.value!.isNotEmpty) {
         valuesToWrite[entry.key] = entry.value!;

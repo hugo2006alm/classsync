@@ -2,7 +2,9 @@
 
 ClassSync uses a read-only adapter for the legacy ASP.NET WebForms Portal at
 `https://portal.isep.ipp.pt/intranet/`. Portal credentials and cookies never
-enter SQLite, diagnostics, the Cloudflare relay, or source control.
+enter SQLite, diagnostics, relay plaintext, or source control. Username and
+password may cross relay only inside account's opaque AES-256-GCM configuration
+snapshot; cookies and Portal content never do.
 
 ## Authentication and session flow
 

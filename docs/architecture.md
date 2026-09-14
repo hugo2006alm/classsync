@@ -39,7 +39,9 @@ Features depend on domain contracts. Integration adapters depend on Dio and secu
 - OS secure storage: all credentials, including multiple named Fireflies keys.
 
 Portal and Moodle are read-only academic sources. Their adapters normalize data
-at one integration boundary. No Portal/Moodle content or credentials enter the
-relay. See [Portal](isep-portal.md) and [Moodle](moodle.md).
+at one integration boundary. No Portal/Moodle academic content or plaintext
+credentials enter relay storage. Moodle token and Portal login may travel only
+inside account's opaque AES-256-GCM configuration snapshot. See
+[Portal](isep-portal.md) and [Moodle](moodle.md).
 
 See ADRs under `docs/architecture/` for trade-offs.
