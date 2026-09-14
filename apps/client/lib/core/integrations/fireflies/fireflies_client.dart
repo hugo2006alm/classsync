@@ -31,7 +31,7 @@ class FirefliesIdentity {
 
 class FirefliesClient {
   FirefliesClient({Dio? dio})
-    : _dio = dio ?? createDio(baseUrl: 'https://api.fireflies.ai/graphql');
+    : _dio = dio ?? createDio(baseUrl: 'https://api.fireflies.ai');
 
   final Dio _dio;
 
@@ -177,53 +177,82 @@ class FirefliesClient {
     String query,
     Map<String, dynamic> variables,
   ) async {
+    final key = apiKey.trim();
+    if (key.isEmpty) {
+      throw const IntegrationException(
+        integration: 'Fireflies',
+        code: 'invalid_credentials',
+        userMessage: 'Enter a Fireflies API key.',
+        retryable: false,
+      );
+    }
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '',
+        '/graphql',
         data: {'query': query, 'variables': variables},
-        options: Options(headers: {'authorization': 'Bearer $apiKey'}),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          headers: {
+            'authorization': 'Bearer $key',
+            'accept': 'application/json',
+          },
+        ),
       );
-      final body = response.data ?? const <String, dynamic>{};
-      final errors = body['errors'];
-      if (errors is List && errors.isNotEmpty) {
-        final first = errors.first as Map?;
-        final message = first?['message']?.toString() ?? '';
-        final extensions = first?['extensions'] as Map?;
-        final providerCode =
-            extensions?['code']?.toString().toLowerCase() ?? '';
-        final normalized = '$providerCode $message'.toLowerCase();
-        final notReady =
-            normalized.contains('not ready') ||
-            normalized.contains('processing') ||
-            normalized.contains('temporarily') ||
-            normalized.contains('internal');
-        final terminal =
-            normalized.contains('auth') ||
-            normalized.contains('permission') ||
-            normalized.contains('forbidden') ||
-            normalized.contains('not found') ||
-            normalized.contains('invalid') ||
-            normalized.contains('plan') ||
-            normalized.contains('limit');
-        throw IntegrationException(
-          integration: 'Fireflies',
-          code: terminal
-              ? 'graphql_terminal'
-              : notReady
-              ? 'transcript_not_ready'
-              : 'graphql_error',
-          userMessage: terminal
-              ? 'Fireflies rejected this request. Check access, plan, and transcript ID.'
-              : notReady
-              ? 'Fireflies has not finished this transcript yet.'
-              : 'Fireflies returned an unexpected GraphQL error.',
-          retryable: notReady,
-        );
-      }
-      return (body['data'] as Map<String, dynamic>?) ?? const {};
+      return _dataOrThrow(response.data ?? const <String, dynamic>{});
     } on DioException catch (error) {
+      final data = error.response?.data;
+      if (data is Map<String, dynamic>) {
+        final errors = data['errors'];
+        if (errors is List && errors.isNotEmpty) _throwGraphQl(errors);
+      }
       throw IntegrationException.fromDio('Fireflies', error);
     }
+  }
+
+  Map<String, dynamic> _dataOrThrow(Map<String, dynamic> body) {
+    final errors = body['errors'];
+    if (errors is List && errors.isNotEmpty) _throwGraphQl(errors);
+    return (body['data'] as Map<String, dynamic>?) ?? const {};
+  }
+
+  Never _throwGraphQl(List<dynamic> errors) {
+    final firstValue = errors.isEmpty ? null : errors.first;
+    final first = firstValue is Map ? firstValue : null;
+    final message = first?['message']?.toString().trim() ?? '';
+    final extensions = first?['extensions'] as Map?;
+    final providerCode = extensions?['code']?.toString().toLowerCase() ?? '';
+    final normalized = '$providerCode $message'.toLowerCase();
+    final notReady =
+        normalized.contains('not ready') ||
+        normalized.contains('processing') ||
+        normalized.contains('temporarily') ||
+        normalized.contains('internal');
+    final terminal =
+        normalized.contains('auth') ||
+        normalized.contains('permission') ||
+        normalized.contains('forbidden') ||
+        normalized.contains('not found') ||
+        normalized.contains('invalid') ||
+        normalized.contains('plan') ||
+        normalized.contains('limit');
+    final shortened = message.length > 180
+        ? '${message.substring(0, 180)}…'
+        : message;
+    final detail = shortened.isEmpty ? '' : ' Fireflies says: $shortened';
+    throw IntegrationException(
+      integration: 'Fireflies',
+      code: terminal
+          ? 'graphql_terminal'
+          : notReady
+          ? 'transcript_not_ready'
+          : 'graphql_error',
+      userMessage: terminal
+          ? 'Fireflies rejected this request.$detail'
+          : notReady
+          ? 'Fireflies has not finished this transcript yet.$detail'
+          : 'Fireflies returned a GraphQL error.$detail',
+      retryable: notReady,
+    );
   }
 
   FirefliesTranscriptRef _refFromJson(Map<String, dynamic> json) =>
