@@ -399,14 +399,22 @@ class _SettingsDetailBody extends ConsumerWidget {
                 const Divider(),
                 ListTile(
                   title: const Text('Recovery polling interval'),
-                  subtitle: const Text('Webhook loss stays harmless.'),
+                  subtitle: const Text(
+                    '6 h is recommended when the realtime webhook is active.',
+                  ),
                   trailing: DropdownButton<int>(
                     value: settings.pollingMinutes,
-                    items: const [15, 30, 60, 120]
+                    items: const [15, 30, 60, 120, 360, 720, 1440]
                         .map(
                           (minutes) => DropdownMenuItem(
                             value: minutes,
-                            child: Text('$minutes min'),
+                            child: Text(
+                              minutes == 360
+                                  ? '6 h · recommended'
+                                  : minutes < 60
+                                  ? '$minutes min'
+                                  : '${minutes ~/ 60} h',
+                            ),
                           ),
                         )
                         .toList(),
