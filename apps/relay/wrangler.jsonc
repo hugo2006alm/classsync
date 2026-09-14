@@ -1,12 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "classsync-relay",
-  "main": "src/index.ts",
+  "main": "src/entrypoint.ts",
   "compatibility_date": "2026-09-01",
   "observability": { "enabled": true },
   "triggers": { "crons": ["17 3 * * *"] },
   "vars": {
-    "FIREBASE_PROJECT_ID": "classsync-obl1vi0uzz"
+    "FIREBASE_PROJECT_ID": "classsync-obl1vi0uzz",
+    "ACCOUNT_REGISTRATION_MODE": "open"
   },
   "d1_databases": [
     {

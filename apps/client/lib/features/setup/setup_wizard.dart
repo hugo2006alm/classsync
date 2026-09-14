@@ -62,6 +62,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       _recoveryEntry ? const [0, 6, 7, 8] : const [0, 5, 6, 1, 2, 3, 4, 7, 8];
   SyncAccount? _syncAccount;
   AccountWebhookConfig? _webhookConfig;
+  AccountRegistrationPolicy? _registrationPolicy;
   FirefliesIdentity? _primaryFirefliesIdentity;
   List<String> _recoveryMissingConnections = const [];
 
@@ -209,19 +210,18 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         const Text('Already have an account? Restore your saved setup.'),
         const SizedBox(height: 14),
         const _GuideCard(
-          title: 'Have these four things ready',
+          title: 'Have these three things ready',
           items: [
             'A Fireflies API key',
             'A Gemini API key',
             'A Notion integration token and the ISEP page shared with it',
-            'The ClassSync device API token',
           ],
         ),
         const SizedBox(height: 14),
         const _InfoStrip(
           icon: Icons.check_circle_outline_rounded,
           message:
-              'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
+              'The hosted ClassSync relay creates accounts without a setup token. A custom relay may require an invite or registration token.',
         ),
         const SizedBox(height: 10),
         const _InfoStrip(
@@ -488,9 +488,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   Widget _relay() => _StepBody(
     eyebrow: 'CLASSSYNC INFRASTRUCTURE',
     icon: Icons.cloud_queue_rounded,
-    title: 'Connect this device.',
+    title: 'Choose your relay.',
     description:
-        'The hosted relay URL is built in. App and relay updates keep the same address, so you only need to paste the bootstrap device token.',
+        'The hosted ClassSync relay is already selected and allows account creation directly. Self-hosted relays can be open or require an invite/registration token.',
     child: Column(
       children: [
         Card(
@@ -513,9 +513,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                       const SizedBox(height: 4),
                       const SelectableText(AppSettings.productionRelayBaseUrl),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Already selected · future deployments use this same URL',
-                      ),
+                      const Text('Account registration is open · no code required'),
                     ],
                   ),
                 ),
@@ -526,23 +524,21 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
         const SizedBox(height: 16),
         _SecretField(
           controller: _relayTokenController,
-          label: 'Device API token',
-          hint: 'Paste the 32+ character bootstrap token',
+          label: 'Invite / registration token (optional)',
+          hint: 'Leave blank unless your relay requires one',
         ),
         const SizedBox(height: 10),
         const _InfoStrip(
           icon: Icons.info_outline_rounded,
           message:
-              'This is DEVICE_API_TOKEN from Cloudflare—not the Fireflies webhook secret. It is used once to enroll this installation.',
+              'ClassSync detects whether the selected relay is open, invite-only, or token-protected before creating your account.',
         ),
         const SizedBox(height: 12),
         Card(
           child: ExpansionTile(
             leading: const Icon(Icons.dns_outlined),
             title: const Text('Use a different relay'),
-            subtitle: const Text(
-              'Only for self-hosting or a staging environment.',
-            ),
+            subtitle: const Text('Self-hosting or staging.'),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
               TextField(
@@ -695,7 +691,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           ),
         if (_joinAccount && _syncAccount == null) ...[
           const Text(
-            'Use your recovery code to restore saved API keys and Notion mappings. No setup token needed.',
+            'Use your recovery code to restore saved API keys and Notion mappings. No registration token needed.',
           ),
           const SizedBox(height: 14),
           TextField(
@@ -785,6 +781,10 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       final client = ref.read(accountSyncClientProvider);
       final store = ref.read(credentialStoreProvider);
       final baseUrl = _relayUrlController.text.trim();
+      final policy = _joinAccount
+          ? null
+          : (_registrationPolicy ??
+                await client.registrationPolicy(baseUrl: baseUrl));
       final account = _joinAccount
           ? await client.joinAccount(
               baseUrl: baseUrl,
@@ -793,7 +793,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             )
           : await client.createAccount(
               baseUrl: baseUrl,
-              setupToken: _relayTokenController.text.trim(),
+              registrationCredential: policy!.needsCredential
+                  ? _relayTokenController.text.trim()
+                  : null,
               store: store,
             );
       ref.invalidate(syncAccountProvider);
@@ -1013,18 +1015,22 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             }
           }
         case 5:
-          if (_relayUrlController.text.trim().isEmpty ||
-              _relayTokenController.text.trim().length < 32) {
-            throw const FormatException(
-              'Paste a device API token of at least 32 characters.',
+          final relayUrl = _relayUrlController.text.trim();
+          if (relayUrl.isEmpty) {
+            throw const FormatException('Enter a ClassSync relay URL.');
+          }
+          final policy = await ref
+              .read(accountSyncClientProvider)
+              .registrationPolicy(baseUrl: relayUrl);
+          if (policy.needsCredential &&
+              _relayTokenController.text.trim().isEmpty) {
+            throw FormatException(
+              policy.mode == AccountRegistrationMode.invite
+                  ? 'This relay requires an invite code.'
+                  : 'This relay requires a registration token.',
             );
           }
-          await ref
-              .read(relayClientProvider)
-              .testConnection(
-                _relayUrlController.text.trim(),
-                token: _relayTokenController.text.trim(),
-              );
+          _registrationPolicy = policy;
         case 6:
           if (_syncAccount == null ||
               (!_joinedExistingAccount && _webhookConfig == null)) {
@@ -1440,7 +1446,7 @@ class _SetupFooter extends StatelessWidget {
       0 => 'Start setup',
       >= 1 && <= 3 => 'Test & continue',
       4 => 'Save or skip',
-      5 => 'Test & continue',
+      5 => 'Check relay & continue',
       6 => 'Continue',
       7 => 'Continue',
       _ => 'Finish setup',

@@ -8,6 +8,15 @@ import 'package:uuid/uuid.dart';
 import '../../security/secure_credential_store.dart';
 import '../integration_exception.dart';
 
+enum AccountRegistrationMode { open, invite, token }
+
+class AccountRegistrationPolicy {
+  const AccountRegistrationPolicy(this.mode);
+
+  final AccountRegistrationMode mode;
+  bool get needsCredential => mode != AccountRegistrationMode.open;
+}
+
 class SyncAccount {
   const SyncAccount({
     required this.id,
@@ -56,6 +65,31 @@ class AccountSyncClient {
   final Dio _dio;
   final AesGcm _cipher = AesGcm.with256bits();
 
+  Future<AccountRegistrationPolicy> registrationPolicy({
+    required String baseUrl,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '${_base(baseUrl)}/registration',
+      );
+      final raw = response.data?['mode']?.toString().trim().toLowerCase();
+      final mode = switch (raw) {
+        'open' => AccountRegistrationMode.open,
+        'invite' => AccountRegistrationMode.invite,
+        'token' => AccountRegistrationMode.token,
+        _ => throw const FormatException(
+          'This relay returned an unsupported account registration mode.',
+        ),
+      };
+      return AccountRegistrationPolicy(mode);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return const AccountRegistrationPolicy(AccountRegistrationMode.token);
+      }
+      throw IntegrationException.fromDio('Device sync', error);
+    }
+  }
+
   Future<SyncAccount?> readAccount(SecureCredentialStore store) async {
     final values = await Future.wait([
       store.read(CredentialKey.syncAccountId),
@@ -64,7 +98,6 @@ class AccountSyncClient {
       store.read(CredentialKey.syncDeviceId),
     ]);
     if (values.any((value) => value == null || value.isEmpty)) return null;
-    // Account credentials replace legacy bootstrap and enrolled-device secrets.
     await store.delete(CredentialKey.relayDeviceToken);
     await store.delete(CredentialKey.relayDeviceCredential);
     return SyncAccount(
@@ -77,7 +110,8 @@ class AccountSyncClient {
 
   Future<SyncAccount> createAccount({
     required String baseUrl,
-    required String setupToken,
+    String? registrationCredential,
+    String? setupToken,
     required SecureCredentialStore store,
   }) async {
     final owner = await store.read(CredentialKey.syncLocalOwnerId);
@@ -87,9 +121,14 @@ class AccountSyncClient {
       );
     }
     try {
+      final credential = (registrationCredential ?? setupToken)?.trim();
       final response = await _dio.post<Map<String, dynamic>>(
         '${_base(baseUrl)}/accounts',
-        options: Options(headers: {'authorization': 'Bearer $setupToken'}),
+        options: Options(
+          headers: credential?.isNotEmpty == true
+              ? {'authorization': 'Bearer $credential'}
+              : const {},
+        ),
       );
       final data = response.data ?? const {};
       final account = SyncAccount(

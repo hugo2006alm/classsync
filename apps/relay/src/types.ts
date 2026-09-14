@@ -2,6 +2,9 @@ export interface Env {
   DB: D1Database;
   FIREFLIES_WEBHOOK_SECRET: string;
   DEVICE_API_TOKEN: string;
+  ACCOUNT_REGISTRATION_MODE?: string;
+  ACCOUNT_REGISTRATION_TOKEN?: string;
+  RELAY_ADMIN_TOKEN?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
 }
