@@ -263,11 +263,8 @@ class _JobContent extends ConsumerWidget {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () => _openUrl(
-                        context,
-                        job.notionUrl!,
-                        trustedNotionHosts,
-                      ),
+                      onPressed: () =>
+                          _openUrl(context, job.notionUrl!, trustedNotionHosts),
                       icon: const Icon(Icons.open_in_new_rounded),
                       label: const Text('Open summary in Notion'),
                     ),

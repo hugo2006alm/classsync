@@ -308,7 +308,9 @@ class _SettingsDetailBody extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.account_tree_outlined),
                   title: const Text('Notion workspace mapping'),
-                  subtitle: const Text('Review the databases selected during setup.'),
+                  subtitle: const Text(
+                    'Review the databases selected during setup.',
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -441,7 +443,9 @@ class _SettingsDetailBody extends ConsumerWidget {
                 const Divider(),
                 ListTile(
                   title: const Text('Concurrent lecture jobs'),
-                  subtitle: const Text('Keep this conservative for API limits.'),
+                  subtitle: const Text(
+                    'Keep this conservative for API limits.',
+                  ),
                   trailing: DropdownButton<int>(
                     value: settings.workerCount,
                     items: const [1, 2]
@@ -498,9 +502,13 @@ class _SettingsDetailBody extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
-                    key: ValueKey('summary-language:${settings.summaryLanguage}'),
+                    key: ValueKey(
+                      'summary-language:${settings.summaryLanguage}',
+                    ),
                     initialValue: settings.summaryLanguage,
-                    decoration: const InputDecoration(labelText: 'Summary language'),
+                    decoration: const InputDecoration(
+                      labelText: 'Summary language',
+                    ),
                     onFieldSubmitted: (value) => _save(
                       ref,
                       settings.copyWith(summaryLanguage: value.trim()),
@@ -508,7 +516,9 @@ class _SettingsDetailBody extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   _GeminiModelDropdown(
-                    fieldKey: ValueKey('summary-model:${settings.summaryModel}'),
+                    fieldKey: ValueKey(
+                      'summary-model:${settings.summaryModel}',
+                    ),
                     label: 'Summary model',
                     currentModel: settings.summaryModel,
                     onChanged: (value) =>
@@ -869,8 +879,8 @@ class _AcademicIntegrationTile extends ConsumerWidget {
         : state.moodleConfigured
         ? 'Moodle connected · Portal not configured'
         : 'Not configured';
-    final configured = state != null &&
-        (state.portalConfigured || state.moodleConfigured);
+    final configured =
+        state != null && (state.portalConfigured || state.moodleConfigured);
     final color = state == null
         ? scheme.onSurfaceVariant
         : configured
@@ -945,7 +955,10 @@ class _FirefliesConnectionsTile extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Fireflies', style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Fireflies',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   Text(status, style: TextStyle(color: color)),
                   Text(
                     detail,
@@ -1040,7 +1053,10 @@ class _GeminiModelDropdown extends StatelessWidget {
           },
         ),
         const SizedBox(height: 6),
-        Text(selected.description, style: Theme.of(context).textTheme.bodySmall),
+        Text(
+          selected.description,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       ],
     );
   }
@@ -1189,7 +1205,11 @@ Future<void> _manageFirefliesConnections(
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (var index = 0; index < connections.length; index++) ...[
+                    for (
+                      var index = 0;
+                      index < connections.length;
+                      index++
+                    ) ...[
                       if (index > 0) const Divider(height: 1),
                       ListTile(
                         leading: const CircleAvatar(
@@ -1213,13 +1233,14 @@ Future<void> _manageFirefliesConnections(
                               onPressed: busy
                                   ? null
                                   : () async {
-                                      final updated = await _editFirefliesConnection(
-                                        dialogContext,
-                                        ref,
-                                        existing: connections[index],
-                                        allConnections: connections,
-                                        webhook: webhook,
-                                      );
+                                      final updated =
+                                          await _editFirefliesConnection(
+                                            dialogContext,
+                                            ref,
+                                            existing: connections[index],
+                                            allConnections: connections,
+                                            webhook: webhook,
+                                          );
                                       if (updated != null) {
                                         setState(() {
                                           busy = true;
@@ -1227,7 +1248,10 @@ Future<void> _manageFirefliesConnections(
                                           connections[index] = updated;
                                         });
                                         try {
-                                          await _saveFirefliesSources(ref, connections);
+                                          await _saveFirefliesSources(
+                                            ref,
+                                            connections,
+                                          );
                                         } catch (failure) {
                                           error = failure.toString();
                                         } finally {
@@ -1242,13 +1266,18 @@ Future<void> _manageFirefliesConnections(
                               onPressed: busy
                                   ? null
                                   : () async {
-                                      final removed = connections.removeAt(index);
+                                      final removed = connections.removeAt(
+                                        index,
+                                      );
                                       setState(() {
                                         busy = true;
                                         error = null;
                                       });
                                       try {
-                                        await _saveFirefliesSources(ref, connections);
+                                        await _saveFirefliesSources(
+                                          ref,
+                                          connections,
+                                        );
                                       } catch (failure) {
                                         connections.insert(index, removed);
                                         error = failure.toString();

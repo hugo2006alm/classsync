@@ -513,7 +513,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                       const SizedBox(height: 4),
                       const SelectableText(AppSettings.productionRelayBaseUrl),
                       const SizedBox(height: 6),
-                      const Text('Account registration is open · no code required'),
+                      const Text(
+                        'Account registration is open · no code required',
+                      ),
                     ],
                   ),
                 ),

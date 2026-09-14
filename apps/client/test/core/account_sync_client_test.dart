@@ -65,27 +65,33 @@ void main() {
     expect(policy.needsCredential, isFalse);
   });
 
-  test('older relay registration discovery fails closed to token mode', () async {
-    final dio = Dio();
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) => handler.reject(
-          DioException(
-            requestOptions: options,
-            response: Response<void>(requestOptions: options, statusCode: 404),
-            type: DioExceptionType.badResponse,
+  test(
+    'older relay registration discovery fails closed to token mode',
+    () async {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) => handler.reject(
+            DioException(
+              requestOptions: options,
+              response: Response<void>(
+                requestOptions: options,
+                statusCode: 404,
+              ),
+              type: DioExceptionType.badResponse,
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    final policy = await AccountSyncClient(
-      dio: dio,
-    ).registrationPolicy(baseUrl: 'https://legacy-relay.test');
+      final policy = await AccountSyncClient(
+        dio: dio,
+      ).registrationPolicy(baseUrl: 'https://legacy-relay.test');
 
-    expect(policy.mode, AccountRegistrationMode.token);
-    expect(policy.needsCredential, isTrue);
-  });
+      expect(policy.mode, AccountRegistrationMode.token);
+      expect(policy.needsCredential, isTrue);
+    },
+  );
 
   test(
     'joining persists every account field on a serialized secure store',
@@ -156,10 +162,9 @@ void main() {
     );
     final store = _SerializedCredentialStore();
 
-    await AccountSyncClient(dio: dio).createAccount(
-      baseUrl: 'https://relay.test',
-      store: store,
-    );
+    await AccountSyncClient(
+      dio: dio,
+    ).createAccount(baseUrl: 'https://relay.test', store: store);
 
     expect(await store.read(CredentialKey.syncAccountId), isNotNull);
     expect(await store.read(CredentialKey.syncDeviceId), isNotNull);
