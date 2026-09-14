@@ -6,9 +6,9 @@
   encrypted account snapshot while keeping device automation preferences local.
 - Improve first-run and Settings flows for source setup, recovery, webhook
   status, and configurable public-site links.
-- Update Riverpod 3, Workmanager, relay, and GitHub Actions dependencies; keep
-  GoRouter and build tooling on Dart 3.11-compatible versions and repair the
-  merged pnpm lockfile so frozen installs succeed.
+- Update Riverpod 3, relay, and GitHub Actions dependencies; keep GoRouter,
+  Workmanager, and build tooling on Dart 3.11/Flutter 3.41-compatible versions
+  and repair the merged pnpm lockfile so frozen installs succeed.
 - Add relay migration 0007 for account webhook activity and extend client and
   Worker regression coverage.
 
