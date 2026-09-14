@@ -12,11 +12,14 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  CLASSSYNC_SITE_URL: ${{ vars.CLASSSYNC_SITE_URL || 'https://hugo2006alm.github.io/classsync-site' }}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 10.18.3
@@ -49,7 +52,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
@@ -73,13 +76,13 @@ jobs:
       - working-directory: apps/client
         run: flutter pub get
       - working-directory: apps/client
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - working-directory: apps/client
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - run: |
           cp apps/client/build/app/outputs/flutter-apk/app-release.apk ClassSync-Android.apk
           cp apps/client/build/app/outputs/bundle/release/app-release.aab ClassSync-Android.aab
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ClassSync-Android
           path: |
@@ -90,7 +93,7 @@ jobs:
     needs: validate
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           channel: stable
@@ -98,7 +101,7 @@ jobs:
       - working-directory: apps/client
         run: flutter pub get
       - working-directory: apps/client
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - name: Prepare Windows signing
         id: windows_signing
         shell: pwsh
@@ -139,7 +142,7 @@ jobs:
           if ($installers.Count -ne 1) { throw "Expected one installer, found $($installers.Count)." }
           $installer = $installers[0].FullName
           & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:RUNNER_TEMP\classsync.pfx" /p $env:CERTIFICATE_PASSWORD $installer
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: ClassSync-Windows
           path: dist/*.exe
@@ -153,17 +156,17 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: release
           merge-multiple: true
       - name: Generate SHA-256 checksums
         working-directory: release
         run: sha256sum * > SHA256SUMS.txt
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-path: release/*
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           files: release/*
           generate_release_notes: true
