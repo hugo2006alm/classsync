@@ -14,8 +14,10 @@ collect that colleague's recordings.
 
 ## Decision
 
-One ClassSync account may hold multiple named Fireflies connections. Each
-connection has a stable ID, display name, and API key. Keys remain in OS secure
+One ClassSync account may hold multiple named Fireflies connections, presented
+to users as **Fireflies Sources**. Each source has a stable ClassSync ID,
+display name, API key, and stable Fireflies `user_id` captured during validation.
+Keys remain in OS secure
 storage and travel between the owner's devices only inside the existing
 AES-256-GCM encrypted configuration snapshot.
 
@@ -24,8 +26,10 @@ cursor. A webhook event has no source ID, so the client tries the named keys in
 order until one can fetch the transcript, then records the winning connection
 ID on the job. Fireflies transcript ID remains the global deduplication key.
 
-Permitted colleagues configure the ClassSync owner's existing webhook URL and
-signing secret in their Fireflies account. They do not join the ClassSync
+Fireflies currently exposes dashboard setup for saved Webhooks V2 but no public
+mutation to configure one. Permitted colleagues therefore configure the
+ClassSync owner's existing webhook URL and signing secret in their Fireflies
+account. They do not join the ClassSync
 account. The ClassSync owner adds each colleague's API key under a clear name.
 
 The ClassSync account also has a synchronized display name. It is presentation

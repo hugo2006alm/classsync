@@ -46,3 +46,18 @@ validates a saved configuration without uploading defaults; finishing setup
 preserves restored secrets. Joined account credentials authorize processing
 without the account-creation bootstrap token. Account push retries use their
 own durable delivery table and cannot fan out through legacy recipients.
+
+## Configuration schema v3 clarification
+
+Encrypted account configuration schema v3 adds every named Fireflies source,
+Gemini and Notion credentials/settings, Moodle app token, and Portal
+username/password. Moodle password is never retained after token exchange.
+Portal needs its login to create new sessions, so no narrower credential is
+available. Older snapshots remain valid and absent optional fields never erase
+valid local credentials.
+
+Device ID, FCM token, notification permission/preferences, platform background
+settings, leases, caches, diagnostics, and bootstrap Device API token remain
+device-local and outside configuration snapshots. Relay stores ciphertext,
+nonce, schema number, revisions, and coordination metadata; encryption key
+remains only in recovery code and devices.

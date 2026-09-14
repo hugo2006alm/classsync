@@ -86,11 +86,16 @@ class SecureCredentialStore {
   Future<void> writeFirefliesConnections(
     List<FirefliesConnection> connections,
   ) async {
+    final accountIds = connections
+        .map((item) => item.firefliesUserId)
+        .whereType<String>()
+        .toList();
     if (connections.length > FirefliesConnection.maxConnections ||
         connections.map((item) => item.id).toSet().length !=
-            connections.length) {
+            connections.length ||
+        accountIds.toSet().length != accountIds.length) {
       throw const FormatException(
-        'Use at most 20 Fireflies connections with unique IDs.',
+        'Use at most 20 Fireflies sources with unique source and account IDs.',
       );
     }
     for (final connection in connections) {

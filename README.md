@@ -13,7 +13,7 @@ them with Gemini, and publishes structured study notes to Notion.
 - Durable Drift/SQLite queue with retries, review states, local cache, manual
   transcript import, and per-job timelines.
 - Multiple named Fireflies GraphQL connections with independent pagination,
-  plus signed Webhooks V2 ingestion.
+  stable Fireflies account identity, plus signed Webhooks V2 ingestion.
 - Gemini structured classification and long-transcript summarization.
 - Notion schema validation, subject filtering, D1-backed global processing
   claims, and retry-safe ClassSync-owned page sections.
@@ -90,7 +90,7 @@ device must have finished setup and synced its configuration.
 
 The first-run wizard links to the public
 [ClassSync Notion template](https://checker-dryer-7e3.notion.site/ClassSync-Template-3d387b0ef0908153a466c7aa2f8f7332),
-tests a named Fireflies connection, Gemini, and Notion; discovers the shared
+tests a named Fireflies source, Gemini, and Notion; discovers the shared
 Notion data sources; asks before adding the optional `Fireflies ID` property;
 uses the hosted production relay URL by default; creates or joins a private
 device account with a display name; shows its unique Fireflies webhook
@@ -113,7 +113,8 @@ Optional academic integrations can be skipped during first-run setup and are
 also configured under **Academic → Connections**.
 One ISEP username/password connects Portal and Moodle; a separate Moodle login
 remains available for external accounts. Portal credentials and the Moodle app
-token stay in OS secure storage. Moodle obtains its token from the official
+token stay in OS secure storage and travel between the owner's devices only
+inside the encrypted account snapshot. Moodle obtains its token from the official
 login endpoint and never stores the submitted password. Portal login
 recognizes the actual sign-in form, including when the
 authenticated dashboard contains account password controls. A local Windows
@@ -149,7 +150,9 @@ pnpm deploy
 
 The setup wizard creates an account-specific `https://<worker>/webhooks/fireflies/<account>`
 endpoint and shows its 32-character signing secret. Register those values in
-Fireflies Webhooks V2 for `meeting.transcribed`. Legacy single-user installs can
+Fireflies Webhooks V2 for `meeting.transcribed`; Fireflies currently requires
+this dashboard step and exposes no public saved-webhook configuration API.
+Legacy single-user installs can
 continue using `/webhooks/fireflies`. Full details are in
 [Cloudflare setup](docs/cloudflare.md) and [Fireflies setup](docs/fireflies.md).
 

@@ -13,8 +13,9 @@ Moodle account for external identities. It sends the password once, over HTTPS,
 to Moodle's official `/login/token.php` endpoint with the
 `moodle_mobile_app` service shortname. If ISEP enables that service, Moodle
 returns a user-scoped Web Services token. ClassSync stores only that token in OS
-secure storage and does not retain the password. Neither credential enters
-the relay, SQLite, logs, or diagnostics.
+secure storage and does not retain the password. Token may cross relay only
+inside account's opaque AES-256-GCM configuration snapshot. Password never
+does. Neither credential enters SQLite, logs, diagnostics, or relay plaintext.
 
 ## Read-only functions
 

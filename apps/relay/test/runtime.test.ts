@@ -71,6 +71,45 @@ describe("real Worker and D1", () => {
     expect(await db.prepare("SELECT account_id FROM relay_devices WHERE push_token = ?").bind("account-owned-push-token-00000000000000").first("account_id")).toBe(first["x-classsync-account-id"]);
   });
 
+  it("records signed account webhook tests for source status", async () => {
+    const created = await request("/accounts", {
+      method: "POST",
+      headers: { authorization: `Bearer ${bootstrap}` },
+    });
+    const account = await created.json() as { accountId: string; authSecret: string };
+    const accountHeaders = {
+      authorization: `Bearer ${account.authSecret}`,
+      "x-classsync-account-id": account.accountId,
+      "x-classsync-device-id": "webhook-status-device",
+    };
+    const firstConfig = await (await request("/account/webhook-config", {
+      headers: accountHeaders,
+    })).json() as { webhookUrl: string; signingSecret: string; lastReceivedAt: string | null };
+    expect(firstConfig.lastReceivedAt).toBeNull();
+
+    const body = JSON.stringify({ event: "test" });
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(firstConfig.signingSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+    const signature = `sha256=${Buffer.from(digest).toString("hex")}`;
+    expect((await runtime.dispatchFetch(firstConfig.webhookUrl, {
+      method: "POST",
+      headers: { "x-hub-signature": signature, "content-type": "application/json" },
+      body,
+    })).status).toBe(200);
+
+    const status = await (await request("/account/webhook-config", {
+      headers: accountHeaders,
+    })).json() as { lastReceivedAt: string | null; lastEventType: string | null };
+    expect(status.lastReceivedAt).not.toBeNull();
+    expect(status.lastEventType).toBe("test");
+  });
+
   it("does not let a different legacy device delete a push registration", async () => {
     const body = JSON.stringify({ pushToken: "push-token-owned-by-device-one-0000000000", platform: "android" });
     expect((await request("/devices/register", { method: "POST", headers: headers("device-one"), body })).status).toBe(200);

@@ -87,6 +87,39 @@ void main() {
     expect(await store.read(CredentialKey.geminiApiKey), 'gemini-key');
     expect(await store.read(CredentialKey.notionToken), 'notion-key');
   });
+
+  test('account creation consumes and removes bootstrap credential', () async {
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response<Map<String, dynamic>>(
+            requestOptions: options,
+            statusCode: 201,
+            data: const {
+              'accountId': '12345678-1234-1234-1234-123456789012',
+              'authSecret': 'abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG',
+            },
+          ),
+        ),
+      ),
+    );
+    final store = _SerializedCredentialStore();
+    await store.write(
+      CredentialKey.relayDeviceToken,
+      'bootstrap-token-that-is-not-account-auth',
+    );
+
+    await AccountSyncClient(dio: dio).createAccount(
+      baseUrl: 'https://relay.test',
+      setupToken: 'bootstrap-token-that-is-not-account-auth',
+      store: store,
+    );
+
+    expect(await store.read(CredentialKey.relayDeviceToken), isNull);
+    expect(await store.read(CredentialKey.syncAccountId), isNotNull);
+    expect(await store.read(CredentialKey.syncDeviceId), isNotNull);
+  });
 }
 
 class _SerializedCredentialStore extends SecureCredentialStore {
