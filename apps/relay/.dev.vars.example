@@ -1,2 +1,13 @@
 FIREFLIES_WEBHOOK_SECRET=replace-with-a-strong-signing-secret
+
+# Account registration: open, invite, or token. When omitted, the relay falls
+# back to token mode for backwards-compatible fail-closed self-hosting.
+ACCOUNT_REGISTRATION_MODE=token
+ACCOUNT_REGISTRATION_TOKEN=replace-with-a-random-32-byte-token
+
+# Protects invite creation/admin endpoints. Keep this operator-only.
+RELAY_ADMIN_TOKEN=replace-with-a-different-random-32-byte-token
+
+# Legacy bootstrap secret retained only for old /session and /devices/enroll
+# clients. New account registration does not require it when mode=open.
 DEVICE_API_TOKEN=replace-with-a-random-32-byte-token
