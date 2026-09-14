@@ -14,6 +14,12 @@ Android may defer/stop work, so app-resume recovery continues unfinished jobs.
 Foreground-service promotion is not yet implemented; oversized transcripts are
 rejected and AI work is bounded to reduce execution risk.
 
+A manually started request runs in the app process and can pause while Android
+suspends that process in the background. Returning to ClassSync resumes normal
+recovery. A processing lease that has genuinely expired is shown with a
+**Recover** action after 30 minutes. Repeated-failure model prompts appear only
+while the app is foregrounded; otherwise the durable retry plan continues.
+
 ## iOS and macOS
 
 macOS has network-client entitlement and CI compile coverage, but remains

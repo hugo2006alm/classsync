@@ -44,6 +44,7 @@ class SyncCoordinator {
     RetryPolicy retryPolicy = const RetryPolicy(),
     Uuid uuid = const Uuid(),
     SyncNotifier notifier = const NoopSyncNotifier(),
+    void Function(ModelRetryPrompt prompt)? onModelRetrySuggested,
   }) : _database = database,
        _credentials = credentials,
        _fireflies = fireflies,
@@ -53,6 +54,7 @@ class SyncCoordinator {
        _retryPolicy = retryPolicy,
        _uuid = uuid,
        _notifier = notifier,
+       _onModelRetrySuggested = onModelRetrySuggested,
        _owner = uuid.v4();
 
   final ClassSyncDatabase _database;
@@ -64,6 +66,7 @@ class SyncCoordinator {
   final RetryPolicy _retryPolicy;
   final Uuid _uuid;
   final SyncNotifier _notifier;
+  final void Function(ModelRetryPrompt prompt)? _onModelRetrySuggested;
   final String _owner;
 
   Future<SyncRunResult> run(SyncReason reason) async {
@@ -262,7 +265,7 @@ class SyncCoordinator {
   Future<void> confirmSubject(String jobId, AcademicSubject subject) async {
     if (!await _prepareIfIdle(jobId, () async {
       await _database.learnClassificationCorrection(jobId, subject);
-      await _database.saveManualSubject(jobId, subject);
+      await _database.prepareManualSubject(jobId, subject);
     })) {
       return;
     }
@@ -413,7 +416,9 @@ class SyncCoordinator {
         await _database.setJobStatus(
           jobId,
           SyncJobStatus.classifying,
-          'Classifying against active Notion classes',
+          settings.useAiClassification
+              ? 'Classifying against active Notion classes'
+              : 'Preparing manual class selection',
         );
         final correction = await _database.matchingCorrection(transcript.title);
         final correctedSubject = correction == null
@@ -422,46 +427,23 @@ class SyncCoordinator {
                   .where((item) => item.notionId == correction.subjectId)
                   .firstOrNull;
         if (correctedSubject == null) {
-          final timetableRecords = await _database.readAcademicRecords(
-            kind: AcademicRecordKind.timetable,
-          );
-          final slots = <TimetableSlot>[];
-          for (final record in timetableRecords) {
-            try {
-              slots.add(TimetableSlot.fromJson(record.payload));
-            } on FormatException {
-              // A stale malformed cache row cannot block lecture processing.
-            }
+          final context = await _timetableContext(transcript);
+          if (settings.useAiClassification) {
+            final semantic = await _gemini.classify(
+              apiKey: geminiKey,
+              model: settings.classificationModel,
+              transcript: transcript,
+              subjects: subjects,
+              timetableContext: context,
+            );
+            classification = TimetableMatcher.combine(
+              semantic,
+              context,
+              subjects,
+            );
+          } else {
+            classification = _manualClassification(subjects, context);
           }
-          final lastSentenceSecond = transcript.sentences
-              .map((item) => item.endTimeSeconds ?? item.startTimeSeconds ?? 0)
-              .fold<double>(
-                0,
-                (maximum, value) => value > maximum ? value : maximum,
-              );
-          final context = TimetableMatcher.match(
-            meetingStart: transcript.date,
-            meetingEnd: transcript.date.add(
-              Duration(
-                seconds: lastSentenceSecond > 0
-                    ? lastSentenceSecond.ceil()
-                    : 5400,
-              ),
-            ),
-            slots: slots,
-          );
-          final semantic = await _gemini.classify(
-            apiKey: geminiKey,
-            model: settings.classificationModel,
-            transcript: transcript,
-            subjects: subjects,
-            timetableContext: context,
-          );
-          classification = TimetableMatcher.combine(
-            semantic,
-            context,
-            subjects,
-          );
         } else {
           classification = ClassificationResult(
             decision: ClassificationDecision.match,
@@ -746,6 +728,66 @@ class SyncCoordinator {
     );
   });
 
+  Future<TimetableContext> _timetableContext(
+    LectureTranscript transcript,
+  ) async {
+    final timetableRecords = await _database.readAcademicRecords(
+      kind: AcademicRecordKind.timetable,
+    );
+    final slots = <TimetableSlot>[];
+    for (final record in timetableRecords) {
+      try {
+        slots.add(TimetableSlot.fromJson(record.payload));
+      } on FormatException {
+        // A stale malformed cache row cannot block lecture processing.
+      }
+    }
+    final lastSentenceSecond = transcript.sentences
+        .map((item) => item.endTimeSeconds ?? item.startTimeSeconds ?? 0)
+        .fold<double>(0, (maximum, value) => value > maximum ? value : maximum);
+    return TimetableMatcher.match(
+      meetingStart: transcript.date,
+      meetingEnd: transcript.date.add(
+        Duration(
+          seconds: lastSentenceSecond > 0 ? lastSentenceSecond.ceil() : 5400,
+        ),
+      ),
+      slots: slots,
+    );
+  }
+
+  ClassificationResult _manualClassification(
+    List<AcademicSubject> subjects,
+    TimetableContext context,
+  ) {
+    final ordered = [...subjects]
+      ..sort((left, right) {
+        final leftMatches = context.subjectIds.contains(left.notionId);
+        final rightMatches = context.subjectIds.contains(right.notionId);
+        if (leftMatches != rightMatches) return leftMatches ? -1 : 1;
+        return left.name.toLowerCase().compareTo(right.name.toLowerCase());
+      });
+    return ClassificationResult(
+      decision: ClassificationDecision.uncertain,
+      confidence: 0,
+      candidates: ordered
+          .map(
+            (subject) => ClassificationCandidate(
+              subjectId: subject.notionId,
+              subjectName: subject.name,
+              confidence: context.subjectIds.contains(subject.notionId)
+                  ? 0.65
+                  : 0,
+            ),
+          )
+          .toList(),
+      reasoningSummary: [
+        'AI class identification is disabled; manual selection required',
+        context.explanation,
+      ],
+    );
+  }
+
   Future<void> _renewLease(String jobId) async {
     if (!await _database.renewLease(jobId, _owner)) {
       throw const IntegrationException(
@@ -861,6 +903,7 @@ class SyncCoordinator {
   }
 
   Future<void> _recordFailure(String jobId, IntegrationException error) async {
+    ModelRetryPrompt? modelPrompt;
     final recorded = await _database.transaction(() async {
       final current = await _database.readJob(jobId);
       if (current == null || current.leaseOwner != _owner) return false;
@@ -877,8 +920,32 @@ class SyncCoordinator {
         retryable: retryable,
         nextRetryAt: retryable ? DateTime.now().toUtc().add(delay) : null,
       );
+      final operation = switch (current.status) {
+        SyncJobStatus.classifying => GeminiOperation.classification,
+        SyncJobStatus.summarizing => GeminiOperation.summary,
+        _ => null,
+      };
+      if (error.integration == 'Gemini' &&
+          operation != null &&
+          nextAttempt >= 3 &&
+          (nextAttempt == 3 || nextAttempt == 6 || !retryable)) {
+        final settings = await _database.readSettings();
+        modelPrompt = ModelRetryPrompt(
+          jobId: jobId,
+          operation: operation,
+          currentModel: operation == GeminiOperation.classification
+              ? settings.classificationModel
+              : settings.summaryModel,
+          attemptCount: nextAttempt,
+          message: SecretRedactor.redact(error.userMessage),
+          retryScheduled: retryable,
+        );
+      }
       return true;
     });
+    if (recorded && modelPrompt != null) {
+      _onModelRetrySuggested?.call(modelPrompt!);
+    }
     if (recorded && (await _database.readSettings()).notificationsEnabled) {
       await _notifier.failure(jobId, SecretRedactor.redact(error.userMessage));
     }

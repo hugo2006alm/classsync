@@ -203,7 +203,7 @@ class DeviceSyncService {
       _credentials.read(CredentialKey.portalPassword),
     ]);
     return {
-      'schemaVersion': 3,
+      'schemaVersion': 4,
       'settings': {
         'displayName': settings.displayName,
         'automaticSync': settings.automaticSync,
@@ -213,6 +213,7 @@ class DeviceSyncService {
         'keepTranscripts': settings.keepTranscripts,
         'cleanCompletedPayloads': settings.cleanCompletedPayloads,
         'diagnosticsRetentionDays': settings.diagnosticsRetentionDays,
+        'useAiClassification': settings.useAiClassification,
         'classificationModel': settings.classificationModel,
         'summaryModel': settings.summaryModel,
         'autoClassifyThreshold': settings.autoClassifyThreshold,
@@ -244,7 +245,7 @@ class DeviceSyncService {
       throw const FormatException('Saved configuration is malformed.');
     }
     final version = (rawVersion as num?)?.toInt() ?? 1;
-    if (version < 1 || version > 3) {
+    if (version < 1 || version > 4) {
       throw const FormatException(
         'Saved configuration uses an unsupported schema version.',
       );
@@ -273,6 +274,7 @@ class DeviceSyncService {
       'automaticSync',
       'keepTranscripts',
       'cleanCompletedPayloads',
+      'useAiClassification',
       'notionMetadataEnabled',
     ]) {
       final value = settings[key];
@@ -367,6 +369,7 @@ class DeviceSyncService {
       cleanCompletedPayloads: values['cleanCompletedPayloads'] as bool?,
       diagnosticsRetentionDays: (values['diagnosticsRetentionDays'] as num?)
           ?.toInt(),
+      useAiClassification: values['useAiClassification'] as bool?,
       classificationModel: values['classificationModel'] as String?,
       summaryModel: values['summaryModel'] as String?,
       autoClassifyThreshold: (values['autoClassifyThreshold'] as num?)

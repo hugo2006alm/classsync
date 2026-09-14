@@ -36,6 +36,11 @@ void main() {
       final job = (await database.readJob('remote'))!;
       expect(job.status, SyncJobStatus.success);
       expect(job.notionPageId, 'published-page');
+      expect(job.lastErrorType, isNull);
+      expect(
+        (await database.watchJobEvents('remote').first).last.message,
+        'Status synced from another device: published to Notion',
+      );
       expect(await database.claimRunnableJobs(owner: 'local'), isEmpty);
     },
   );
@@ -133,6 +138,83 @@ void main() {
       SyncJobStatus.fetchingTranscript,
     );
     expect(await database.watchJobEvents('job').first, hasLength(2));
+  });
+
+  test('successful transition clears an earlier retryable error', () async {
+    await database.discoverJob(
+      id: 'recovered',
+      firefliesId: 'meeting-recovered',
+      title: 'Recovered lecture',
+      meetingDate: DateTime.utc(2026),
+    );
+    await database.markFailure(
+      id: 'recovered',
+      errorType: 'Gemini.timeout',
+      message: 'Gemini is temporarily unavailable.',
+      retryable: true,
+      nextRetryAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
+    );
+
+    await database.setJobStatus(
+      'recovered',
+      SyncJobStatus.success,
+      'Published to Notion',
+      terminal: true,
+    );
+
+    final job = (await database.readJob('recovered'))!;
+    expect(job.lastErrorType, isNull);
+    expect(job.lastErrorMessage, isNull);
+    expect(job.nextRetryAt, isNull);
+  });
+
+  test('manual subject change invalidates derived content safely', () async {
+    await database.discoverJob(
+      id: 'manual-subject',
+      firefliesId: 'meeting-manual',
+      title: 'Lecture',
+      meetingDate: DateTime.utc(2026),
+    );
+    await database.saveClassification(
+      'manual-subject',
+      const ClassificationResult(
+        decision: ClassificationDecision.match,
+        subjectId: 'old',
+        subjectName: 'Old subject',
+        confidence: 0.98,
+        candidates: [],
+        reasoningSummary: [],
+      ),
+    );
+    await database.saveSummary(
+      'manual-subject',
+      const LectureSummary(title: 'Old summary', context: '', sections: []),
+    );
+    await database.saveNotionPage(
+      'manual-subject',
+      'page-id',
+      'https://notion.so/page-id',
+    );
+    await database.setJobStatus(
+      'manual-subject',
+      SyncJobStatus.success,
+      'Published',
+      terminal: true,
+    );
+
+    await database.prepareManualSubject(
+      'manual-subject',
+      _subject('new', 'In progress'),
+    );
+
+    final job = (await database.readJob('manual-subject'))!;
+    expect(job.status, SyncJobStatus.queued);
+    expect(job.subjectId, 'new');
+    expect(job.classificationConfidence, isNull);
+    expect(job.classificationCandidatesJson, isNull);
+    expect(job.summaryJson, isNull);
+    expect(job.reprocessMode, 'replace');
+    expect(job.notionPageId, 'page-id');
   });
 
   test(

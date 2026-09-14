@@ -3006,6 +3006,20 @@ class $SettingsRecordsTable extends SettingsRecords
         type: DriftSqlType.int,
         requiredDuringInsert: true,
       );
+  static const VerificationMeta _useAiClassificationMeta =
+      const VerificationMeta('useAiClassification');
+  @override
+  late final GeneratedColumn<bool> useAiClassification = GeneratedColumn<bool>(
+    'use_ai_classification',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("use_ai_classification" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _classificationModelMeta =
       const VerificationMeta('classificationModel');
   @override
@@ -3135,6 +3149,7 @@ class $SettingsRecordsTable extends SettingsRecords
     keepTranscripts,
     cleanCompletedPayloads,
     diagnosticsRetentionDays,
+    useAiClassification,
     classificationModel,
     summaryModel,
     autoClassifyThreshold,
@@ -3299,6 +3314,15 @@ class $SettingsRecordsTable extends SettingsRecords
       );
     } else if (isInserting) {
       context.missing(_diagnosticsRetentionDaysMeta);
+    }
+    if (data.containsKey('use_ai_classification')) {
+      context.handle(
+        _useAiClassificationMeta,
+        useAiClassification.isAcceptableOrUnknown(
+          data['use_ai_classification']!,
+          _useAiClassificationMeta,
+        ),
+      );
     }
     if (data.containsKey('classification_model')) {
       context.handle(
@@ -3469,6 +3493,10 @@ class $SettingsRecordsTable extends SettingsRecords
         DriftSqlType.int,
         data['${effectivePrefix}diagnostics_retention_days'],
       )!,
+      useAiClassification: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}use_ai_classification'],
+      )!,
       classificationModel: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}classification_model'],
@@ -3533,6 +3561,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   final bool keepTranscripts;
   final bool cleanCompletedPayloads;
   final int diagnosticsRetentionDays;
+  final bool useAiClassification;
   final String classificationModel;
   final String summaryModel;
   final double autoClassifyThreshold;
@@ -3558,6 +3587,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     required this.keepTranscripts,
     required this.cleanCompletedPayloads,
     required this.diagnosticsRetentionDays,
+    required this.useAiClassification,
     required this.classificationModel,
     required this.summaryModel,
     required this.autoClassifyThreshold,
@@ -3586,6 +3616,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     map['keep_transcripts'] = Variable<bool>(keepTranscripts);
     map['clean_completed_payloads'] = Variable<bool>(cleanCompletedPayloads);
     map['diagnostics_retention_days'] = Variable<int>(diagnosticsRetentionDays);
+    map['use_ai_classification'] = Variable<bool>(useAiClassification);
     map['classification_model'] = Variable<String>(classificationModel);
     map['summary_model'] = Variable<String>(summaryModel);
     map['auto_classify_threshold'] = Variable<double>(autoClassifyThreshold);
@@ -3625,6 +3656,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       keepTranscripts: Value(keepTranscripts),
       cleanCompletedPayloads: Value(cleanCompletedPayloads),
       diagnosticsRetentionDays: Value(diagnosticsRetentionDays),
+      useAiClassification: Value(useAiClassification),
       classificationModel: Value(classificationModel),
       summaryModel: Value(summaryModel),
       autoClassifyThreshold: Value(autoClassifyThreshold),
@@ -3674,6 +3706,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       diagnosticsRetentionDays: serializer.fromJson<int>(
         json['diagnosticsRetentionDays'],
       ),
+      useAiClassification: serializer.fromJson<bool>(
+        json['useAiClassification'],
+      ),
       classificationModel: serializer.fromJson<String>(
         json['classificationModel'],
       ),
@@ -3716,6 +3751,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       'diagnosticsRetentionDays': serializer.toJson<int>(
         diagnosticsRetentionDays,
       ),
+      'useAiClassification': serializer.toJson<bool>(useAiClassification),
       'classificationModel': serializer.toJson<String>(classificationModel),
       'summaryModel': serializer.toJson<String>(summaryModel),
       'autoClassifyThreshold': serializer.toJson<double>(autoClassifyThreshold),
@@ -3748,6 +3784,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     bool? keepTranscripts,
     bool? cleanCompletedPayloads,
     int? diagnosticsRetentionDays,
+    bool? useAiClassification,
     String? classificationModel,
     String? summaryModel,
     double? autoClassifyThreshold,
@@ -3775,6 +3812,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
         cleanCompletedPayloads ?? this.cleanCompletedPayloads,
     diagnosticsRetentionDays:
         diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
+    useAiClassification: useAiClassification ?? this.useAiClassification,
     classificationModel: classificationModel ?? this.classificationModel,
     summaryModel: summaryModel ?? this.summaryModel,
     autoClassifyThreshold: autoClassifyThreshold ?? this.autoClassifyThreshold,
@@ -3832,6 +3870,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       diagnosticsRetentionDays: data.diagnosticsRetentionDays.present
           ? data.diagnosticsRetentionDays.value
           : this.diagnosticsRetentionDays,
+      useAiClassification: data.useAiClassification.present
+          ? data.useAiClassification.value
+          : this.useAiClassification,
       classificationModel: data.classificationModel.present
           ? data.classificationModel.value
           : this.classificationModel,
@@ -3882,6 +3923,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           ..write('keepTranscripts: $keepTranscripts, ')
           ..write('cleanCompletedPayloads: $cleanCompletedPayloads, ')
           ..write('diagnosticsRetentionDays: $diagnosticsRetentionDays, ')
+          ..write('useAiClassification: $useAiClassification, ')
           ..write('classificationModel: $classificationModel, ')
           ..write('summaryModel: $summaryModel, ')
           ..write('autoClassifyThreshold: $autoClassifyThreshold, ')
@@ -3912,6 +3954,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     keepTranscripts,
     cleanCompletedPayloads,
     diagnosticsRetentionDays,
+    useAiClassification,
     classificationModel,
     summaryModel,
     autoClassifyThreshold,
@@ -3941,6 +3984,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           other.keepTranscripts == this.keepTranscripts &&
           other.cleanCompletedPayloads == this.cleanCompletedPayloads &&
           other.diagnosticsRetentionDays == this.diagnosticsRetentionDays &&
+          other.useAiClassification == this.useAiClassification &&
           other.classificationModel == this.classificationModel &&
           other.summaryModel == this.summaryModel &&
           other.autoClassifyThreshold == this.autoClassifyThreshold &&
@@ -3969,6 +4013,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   final Value<bool> keepTranscripts;
   final Value<bool> cleanCompletedPayloads;
   final Value<int> diagnosticsRetentionDays;
+  final Value<bool> useAiClassification;
   final Value<String> classificationModel;
   final Value<String> summaryModel;
   final Value<double> autoClassifyThreshold;
@@ -3994,6 +4039,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     this.keepTranscripts = const Value.absent(),
     this.cleanCompletedPayloads = const Value.absent(),
     this.diagnosticsRetentionDays = const Value.absent(),
+    this.useAiClassification = const Value.absent(),
     this.classificationModel = const Value.absent(),
     this.summaryModel = const Value.absent(),
     this.autoClassifyThreshold = const Value.absent(),
@@ -4020,6 +4066,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     required bool keepTranscripts,
     required bool cleanCompletedPayloads,
     required int diagnosticsRetentionDays,
+    this.useAiClassification = const Value.absent(),
     required String classificationModel,
     required String summaryModel,
     required double autoClassifyThreshold,
@@ -4063,6 +4110,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Expression<bool>? keepTranscripts,
     Expression<bool>? cleanCompletedPayloads,
     Expression<int>? diagnosticsRetentionDays,
+    Expression<bool>? useAiClassification,
     Expression<String>? classificationModel,
     Expression<String>? summaryModel,
     Expression<double>? autoClassifyThreshold,
@@ -4093,6 +4141,8 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
         'clean_completed_payloads': cleanCompletedPayloads,
       if (diagnosticsRetentionDays != null)
         'diagnostics_retention_days': diagnosticsRetentionDays,
+      if (useAiClassification != null)
+        'use_ai_classification': useAiClassification,
       if (classificationModel != null)
         'classification_model': classificationModel,
       if (summaryModel != null) 'summary_model': summaryModel,
@@ -4126,6 +4176,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Value<bool>? keepTranscripts,
     Value<bool>? cleanCompletedPayloads,
     Value<int>? diagnosticsRetentionDays,
+    Value<bool>? useAiClassification,
     Value<String>? classificationModel,
     Value<String>? summaryModel,
     Value<double>? autoClassifyThreshold,
@@ -4154,6 +4205,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
           cleanCompletedPayloads ?? this.cleanCompletedPayloads,
       diagnosticsRetentionDays:
           diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
+      useAiClassification: useAiClassification ?? this.useAiClassification,
       classificationModel: classificationModel ?? this.classificationModel,
       summaryModel: summaryModel ?? this.summaryModel,
       autoClassifyThreshold:
@@ -4222,6 +4274,9 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
         diagnosticsRetentionDays.value,
       );
     }
+    if (useAiClassification.present) {
+      map['use_ai_classification'] = Variable<bool>(useAiClassification.value);
+    }
     if (classificationModel.present) {
       map['classification_model'] = Variable<String>(classificationModel.value);
     }
@@ -4280,6 +4335,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
           ..write('keepTranscripts: $keepTranscripts, ')
           ..write('cleanCompletedPayloads: $cleanCompletedPayloads, ')
           ..write('diagnosticsRetentionDays: $diagnosticsRetentionDays, ')
+          ..write('useAiClassification: $useAiClassification, ')
           ..write('classificationModel: $classificationModel, ')
           ..write('summaryModel: $summaryModel, ')
           ..write('autoClassifyThreshold: $autoClassifyThreshold, ')
@@ -7633,6 +7689,7 @@ typedef $$SettingsRecordsTableCreateCompanionBuilder =
       required bool keepTranscripts,
       required bool cleanCompletedPayloads,
       required int diagnosticsRetentionDays,
+      Value<bool> useAiClassification,
       required String classificationModel,
       required String summaryModel,
       required double autoClassifyThreshold,
@@ -7660,6 +7717,7 @@ typedef $$SettingsRecordsTableUpdateCompanionBuilder =
       Value<bool> keepTranscripts,
       Value<bool> cleanCompletedPayloads,
       Value<int> diagnosticsRetentionDays,
+      Value<bool> useAiClassification,
       Value<String> classificationModel,
       Value<String> summaryModel,
       Value<double> autoClassifyThreshold,
@@ -7748,6 +7806,11 @@ class $$SettingsRecordsTableFilterComposer
 
   ColumnFilters<int> get diagnosticsRetentionDays => $composableBuilder(
     column: $table.diagnosticsRetentionDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get useAiClassification => $composableBuilder(
+    column: $table.useAiClassification,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7881,6 +7944,11 @@ class $$SettingsRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get useAiClassification => $composableBuilder(
+    column: $table.useAiClassification,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get classificationModel => $composableBuilder(
     column: $table.classificationModel,
     builder: (column) => ColumnOrderings(column),
@@ -8009,6 +8077,11 @@ class $$SettingsRecordsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get useAiClassification => $composableBuilder(
+    column: $table.useAiClassification,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get classificationModel => $composableBuilder(
     column: $table.classificationModel,
     builder: (column) => column,
@@ -8111,6 +8184,7 @@ class $$SettingsRecordsTableTableManager
                 Value<bool> keepTranscripts = const Value.absent(),
                 Value<bool> cleanCompletedPayloads = const Value.absent(),
                 Value<int> diagnosticsRetentionDays = const Value.absent(),
+                Value<bool> useAiClassification = const Value.absent(),
                 Value<String> classificationModel = const Value.absent(),
                 Value<String> summaryModel = const Value.absent(),
                 Value<double> autoClassifyThreshold = const Value.absent(),
@@ -8138,6 +8212,7 @@ class $$SettingsRecordsTableTableManager
                 keepTranscripts: keepTranscripts,
                 cleanCompletedPayloads: cleanCompletedPayloads,
                 diagnosticsRetentionDays: diagnosticsRetentionDays,
+                useAiClassification: useAiClassification,
                 classificationModel: classificationModel,
                 summaryModel: summaryModel,
                 autoClassifyThreshold: autoClassifyThreshold,
@@ -8165,6 +8240,7 @@ class $$SettingsRecordsTableTableManager
                 required bool keepTranscripts,
                 required bool cleanCompletedPayloads,
                 required int diagnosticsRetentionDays,
+                Value<bool> useAiClassification = const Value.absent(),
                 required String classificationModel,
                 required String summaryModel,
                 required double autoClassifyThreshold,
@@ -8192,6 +8268,7 @@ class $$SettingsRecordsTableTableManager
                 keepTranscripts: keepTranscripts,
                 cleanCompletedPayloads: cleanCompletedPayloads,
                 diagnosticsRetentionDays: diagnosticsRetentionDays,
+                useAiClassification: useAiClassification,
                 classificationModel: classificationModel,
                 summaryModel: summaryModel,
                 autoClassifyThreshold: autoClassifyThreshold,

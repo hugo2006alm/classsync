@@ -247,6 +247,10 @@ final jobTimelineProvider =
       (ref, id) => ref.watch(databaseProvider).watchJobEvents(id),
     );
 
+final modelRetryPromptProvider = StateProvider<ModelRetryPrompt?>(
+  (ref) => null,
+);
+
 final syncCoordinatorProvider = Provider(
   (ref) => SyncCoordinator(
     database: ref.watch(databaseProvider),
@@ -256,6 +260,9 @@ final syncCoordinatorProvider = Provider(
     notion: ref.watch(notionClientProvider),
     relay: ref.watch(relayClientProvider),
     notifier: ref.watch(notificationServiceProvider),
+    onModelRetrySuggested: (prompt) {
+      ref.read(modelRetryPromptProvider.notifier).state = prompt;
+    },
   ),
 );
 

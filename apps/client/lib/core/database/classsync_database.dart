@@ -99,6 +99,8 @@ class SettingsRecords extends Table {
   BoolColumn get keepTranscripts => boolean()();
   BoolColumn get cleanCompletedPayloads => boolean()();
   IntColumn get diagnosticsRetentionDays => integer()();
+  BoolColumn get useAiClassification =>
+      boolean().withDefault(const Constant(true))();
   TextColumn get classificationModel => text()();
   TextColumn get summaryModel => text()();
   RealColumn get autoClassifyThreshold => real()();
@@ -174,7 +176,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -200,6 +202,28 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
       }
       if (from < 6) {
         await migrator.addColumn(settingsRecords, settingsRecords.displayName);
+      }
+      if (from < 7) {
+        await migrator.addColumn(
+          settingsRecords,
+          settingsRecords.useAiClassification,
+        );
+        await customStatement(
+          "UPDATE settings_records SET classification_model = "
+          "'gemini-3.1-flash-lite' WHERE classification_model = "
+          "'gemini-3.8-flash'",
+        );
+        final hasSyncJobs = await customSelect(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+          "AND name = 'sync_jobs' LIMIT 1",
+        ).getSingleOrNull();
+        if (hasSyncJobs != null) {
+          await customStatement(
+            "UPDATE sync_jobs SET last_error_type = NULL, "
+            "last_error_message = NULL, next_retry_at = NULL "
+            "WHERE status IN ('success', 'duplicate', 'ignored')",
+          );
+        }
       }
     },
   );
@@ -243,6 +267,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         keepTranscripts: settings.keepTranscripts,
         cleanCompletedPayloads: settings.cleanCompletedPayloads,
         diagnosticsRetentionDays: settings.diagnosticsRetentionDays,
+        useAiClassification: Value(settings.useAiClassification),
         classificationModel: settings.classificationModel,
         summaryModel: settings.summaryModel,
         autoClassifyThreshold: settings.autoClassifyThreshold,
@@ -553,6 +578,12 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
       return;
     }
     if (!isNew && !remote.updatedAt.isAfter(local.updatedAt)) return;
+    final previousStatus = local.status;
+    final clearRemoteError = const {
+      SyncJobStatus.success,
+      SyncJobStatus.duplicate,
+      SyncJobStatus.ignored,
+    }.contains(remote.status);
     await (update(syncJobs)..where((row) => row.id.equals(local!.id))).write(
       SyncJobsCompanion(
         meetingTitle: Value(remote.title),
@@ -568,8 +599,10 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         notionUrl: Value(remote.notionUrl),
         attemptCount: Value(remote.attemptCount),
         nextRetryAt: Value(remote.nextRetryAt),
-        lastErrorType: Value(remote.lastErrorType),
-        lastErrorMessage: Value(remote.lastErrorMessage),
+        lastErrorType: Value(clearRemoteError ? null : remote.lastErrorType),
+        lastErrorMessage: Value(
+          clearRemoteError ? null : remote.lastErrorMessage,
+        ),
         startedAt: Value(remote.startedAt),
         updatedAt: Value(remote.updatedAt),
         completedAt: Value(remote.completedAt),
@@ -577,6 +610,13 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         leaseExpiresAt: const Value(null),
       ),
     );
+    if (remote.status != previousStatus) {
+      await addJobEvent(
+        local.id,
+        remote.status,
+        'Status synced from another device: ${_remoteStatusLabel(remote.status)}',
+      );
+    }
   });
 
   Future<List<SyncJob>> claimRunnableJobs({
@@ -721,6 +761,9 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         startedAt: status.isProcessing ? Value(now) : const Value.absent(),
         updatedAt: Value(now),
         completedAt: terminal ? Value(now) : const Value.absent(),
+        nextRetryAt: const Value(null),
+        lastErrorType: const Value(null),
+        lastErrorMessage: const Value(null),
         leaseOwner: status.isProcessing || status == SyncJobStatus.queued
             ? const Value.absent()
             : const Value(null),
@@ -754,12 +797,31 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         ),
       );
 
-  Future<void> saveManualSubject(String id, AcademicSubject subject) async {
+  Future<void> prepareManualSubject(String id, AcademicSubject subject) async {
+    final current = await readJob(id);
+    if (current == null) return;
+    final subjectChanged = current.subjectId != subject.notionId;
     await (update(syncJobs)..where((row) => row.id.equals(id))).write(
       SyncJobsCompanion(
         subjectId: Value(subject.notionId),
         subjectName: Value(subject.name),
+        classificationConfidence: const Value(null),
+        classificationCandidatesJson: const Value(null),
+        summaryTitle: subjectChanged ? const Value(null) : const Value.absent(),
+        summaryJson: subjectChanged ? const Value(null) : const Value.absent(),
+        summaryPartialsJson: subjectChanged
+            ? const Value(null)
+            : const Value.absent(),
+        reprocessMode: subjectChanged && current.notionPageId != null
+            ? const Value('replace')
+            : const Value.absent(),
         status: Value(SyncJobStatus.queued.wireName),
+        nextRetryAt: const Value(null),
+        lastErrorType: const Value(null),
+        lastErrorMessage: const Value(null),
+        completedAt: const Value(null),
+        leaseOwner: const Value(null),
+        leaseExpiresAt: const Value(null),
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
@@ -1088,6 +1150,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     keepTranscripts: row.keepTranscripts,
     cleanCompletedPayloads: row.cleanCompletedPayloads,
     diagnosticsRetentionDays: row.diagnosticsRetentionDays,
+    useAiClassification: row.useAiClassification,
     classificationModel: row.classificationModel,
     summaryModel: row.summaryModel,
     autoClassifyThreshold: row.autoClassifyThreshold,
@@ -1103,6 +1166,16 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     relayBaseUrl: row.relayBaseUrl,
   );
 }
+
+String _remoteStatusLabel(SyncJobStatus status) => switch (status) {
+  SyncJobStatus.success => 'published to Notion',
+  SyncJobStatus.duplicate => 'already published',
+  SyncJobStatus.needsReview => 'class confirmation needed',
+  SyncJobStatus.failedRetryable => 'retry scheduled',
+  SyncJobStatus.failedTerminal => 'failed',
+  SyncJobStatus.ignored => 'ignored',
+  _ => status.wireName.replaceAll('_', ' '),
+};
 
 extension _LetExtension<T> on T {
   R let<R>(R Function(T value) callback) => callback(this);

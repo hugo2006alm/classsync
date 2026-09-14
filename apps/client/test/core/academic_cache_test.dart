@@ -184,6 +184,72 @@ CREATE TABLE settings_records (
       await legacy.close();
     },
   );
+
+  test(
+    'schema v6 retains settings and adds AI classification preference',
+    () async {
+      final legacy = ClassSyncDatabase(
+        NativeDatabase.memory(
+          setup: (raw) {
+            raw.execute('PRAGMA user_version = 6');
+            raw.execute('''
+CREATE TABLE settings_records (
+  id INTEGER NOT NULL DEFAULT 1 PRIMARY KEY,
+  display_name TEXT NOT NULL DEFAULT '',
+  setup_complete INTEGER NOT NULL,
+  automatic_sync INTEGER NOT NULL,
+  launch_with_windows INTEGER NOT NULL,
+  sync_on_launch INTEGER NOT NULL,
+  background_mobile_sync INTEGER NOT NULL,
+  notifications_enabled INTEGER NOT NULL DEFAULT 1,
+  polling_minutes INTEGER NOT NULL,
+  overlap_hours INTEGER NOT NULL,
+  worker_count INTEGER NOT NULL,
+  keep_transcripts INTEGER NOT NULL,
+  clean_completed_payloads INTEGER NOT NULL,
+  diagnostics_retention_days INTEGER NOT NULL,
+  classification_model TEXT NOT NULL,
+  summary_model TEXT NOT NULL,
+  auto_classify_threshold REAL NOT NULL,
+  review_threshold REAL NOT NULL,
+  summary_language TEXT NOT NULL,
+  summary_detail TEXT NOT NULL,
+  notion_metadata_enabled INTEGER NOT NULL,
+  notion_subjects_data_source_id TEXT,
+  notion_summaries_data_source_id TEXT,
+  relay_base_url TEXT
+)
+''');
+            raw.execute('''
+INSERT INTO settings_records (
+  id, display_name, setup_complete, automatic_sync, launch_with_windows,
+  sync_on_launch, background_mobile_sync, notifications_enabled,
+  polling_minutes, overlap_hours, worker_count, keep_transcripts,
+  clean_completed_payloads, diagnostics_retention_days, classification_model,
+  summary_model, auto_classify_threshold, review_threshold, summary_language,
+  summary_detail, notion_metadata_enabled, notion_subjects_data_source_id,
+  notion_summaries_data_source_id, relay_base_url
+) VALUES (
+  1, 'Hugo', 1, 1, 1, 1, 1, 1, 45, 72, 1, 0, 1, 21,
+  'gemini-3.8-flash', 'gemini-3.8-flash', 0.85, 0.60,
+  'Português (Portugal)', 'detailed', 1, 'subjects', 'summaries',
+  'https://relay.test'
+)
+''');
+          },
+        ),
+      );
+
+      await legacy.initialize();
+      final settings = await legacy.readSettings();
+      expect(settings.displayName, 'Hugo');
+      expect(settings.pollingMinutes, 45);
+      expect(settings.useAiClassification, isTrue);
+      expect(settings.classificationModel, 'gemini-3.1-flash-lite');
+      expect(settings.summaryModel, 'gemini-3.8-flash');
+      await legacy.close();
+    },
+  );
 }
 
 AcademicRecord _evaluation({required String room}) {
