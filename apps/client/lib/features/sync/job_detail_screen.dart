@@ -38,6 +38,7 @@ class JobDetailScreen extends ConsumerWidget {
             ),
           );
         }
+        final effectiveTimeline = _effectiveTimeline(job, timeline);
         return PageFrame(
           title: job.title,
           subtitle: [
@@ -52,17 +53,17 @@ class JobDetailScreen extends ConsumerWidget {
                   'Fireflies',
           ].join(' · '),
           actions: [
+            if (job.notionUrl case final url?)
+              FilledButton.icon(
+                onPressed: () => _openUrl(context, url, trustedNotionHosts),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('Open summary in Notion'),
+              ),
             if (job.firefliesUrl case final url?)
               OutlinedButton.icon(
                 onPressed: () => _openUrl(context, url, const {'fireflies.ai'}),
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: const Text('Fireflies'),
-              ),
-            if (job.notionUrl case final url?)
-              OutlinedButton.icon(
-                onPressed: () => _openUrl(context, url, trustedNotionHosts),
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('Notion'),
               ),
             if (job.status == SyncJobStatus.failedRetryable ||
                 job.status == SyncJobStatus.failedTerminal ||
@@ -98,7 +99,7 @@ class JobDetailScreen extends ConsumerWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final detail = _JobContent(job: job, subjects: subjects);
-              final events = _Timeline(events: timeline);
+              final events = _Timeline(events: effectiveTimeline);
               if (constraints.maxWidth < 900) {
                 return Column(
                   children: [detail, const SizedBox(height: 20), events],
@@ -118,6 +119,32 @@ class JobDetailScreen extends ConsumerWidget {
       },
     );
   }
+}
+
+List<JobTimelineEvent> _effectiveTimeline(
+  SyncJob job,
+  List<JobTimelineEvent> local,
+) {
+  if (!job.status.isTerminal ||
+      local.any((event) => event.stage == job.status.wireName)) {
+    return local;
+  }
+  return [
+    ...local,
+    JobTimelineEvent(
+      id: -1,
+      jobId: job.id,
+      stage: job.status.wireName,
+      message: switch (job.status) {
+        SyncJobStatus.success => 'Summary completed on another device',
+        SyncJobStatus.duplicate => 'Summary already completed for this account',
+        SyncJobStatus.ignored => 'Lecture ignored on another device',
+        SyncJobStatus.failedTerminal => 'Processing failed on another device',
+        _ => 'Status synced from another device',
+      },
+      createdAt: job.completedAt ?? job.updatedAt,
+    ),
+  ];
 }
 
 Future<void> _openUrl(
@@ -146,6 +173,11 @@ class _JobContent extends ConsumerWidget {
         ? null
         : LectureTranscript.fromStoredJson(job.transcriptJson!).plainText;
     final candidates = _candidates(job.classificationCandidatesJson);
+    final remoteOnly =
+        summary == null &&
+        transcriptText == null &&
+        (job.status == SyncJobStatus.success ||
+            job.status == SyncJobStatus.duplicate);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -211,6 +243,40 @@ class _JobContent extends ConsumerWidget {
             ),
           ),
         ),
+        if (remoteOnly && job.notionUrl != null) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job.summaryTitle ?? 'Summary ready',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'This device only syncs lecture status and metadata. The canonical summary is in Notion.',
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _openUrl(
+                        context,
+                        job.notionUrl!,
+                        trustedNotionHosts,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('Open summary in Notion'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (job.status == SyncJobStatus.needsReview) ...[
           const SizedBox(height: 20),
           Text('Confirm class', style: Theme.of(context).textTheme.titleLarge),
@@ -256,6 +322,15 @@ class _JobContent extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 20),
+        if (remoteOnly) ...[
+          _DetailSection(
+            title: 'Summary',
+            icon: Icons.auto_stories_rounded,
+            initiallyExpanded: false,
+            child: _MissingSummary(job: job),
+          ),
+          const SizedBox(height: 12),
+        ],
         _DetailSection(
           title: 'Transcript',
           icon: Icons.mic_none_rounded,
@@ -291,15 +366,17 @@ class _JobContent extends ConsumerWidget {
                       .toList(),
                 ),
         ),
-        const SizedBox(height: 12),
-        _DetailSection(
-          title: 'Summary',
-          icon: Icons.auto_stories_rounded,
-          initiallyExpanded: summary != null,
-          child: summary == null
-              ? _MissingSummary(job: job)
-              : _SummaryPreview(summary: summary),
-        ),
+        if (!remoteOnly) ...[
+          const SizedBox(height: 12),
+          _DetailSection(
+            title: 'Summary',
+            icon: Icons.auto_stories_rounded,
+            initiallyExpanded: summary != null,
+            child: summary == null
+                ? _MissingSummary(job: job)
+                : _SummaryPreview(summary: summary),
+          ),
+        ],
         const SizedBox(height: 12),
         _DetailSection(
           title: 'Diagnostics',
@@ -418,8 +495,17 @@ class _MissingSummary extends StatelessWidget {
             const SizedBox(height: 6),
           ],
           const Text(
-            'Summary completed. Full content is available in Notion and is not copied between devices.',
+            'Summary completed. Full content lives in Notion; ClassSync does not copy summary content between devices.',
           ),
+          if (job.notionUrl != null) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () =>
+                  _openUrl(context, job.notionUrl!, trustedNotionHosts),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Open summary in Notion'),
+            ),
+          ],
         ],
       );
     }

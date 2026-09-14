@@ -68,13 +68,13 @@ class _SettingsBody extends StatelessWidget {
             category: _SettingsCategory.connections,
             icon: Icons.link_rounded,
             title: 'Connections',
-            subtitle: 'Fireflies sources, Gemini, Notion, Portal, and Moodle',
+            subtitle: 'Fireflies, Gemini, Notion, and Moodle + ISEP',
           ),
           (
             category: _SettingsCategory.deviceSync,
             icon: Icons.devices_rounded,
             title: 'Account & device sync',
-            subtitle: 'Private keys and lecture status across your devices',
+            subtitle: 'Account recovery, setup controls, and relay',
           ),
           (
             category: _SettingsCategory.automation,
@@ -248,19 +248,6 @@ class _SettingsDetailBody extends ConsumerWidget {
                   SizedBox(
                     width: width,
                     child: _AcademicIntegrationTile(
-                      name: 'ISEP Portal',
-                      icon: Icons.account_balance_outlined,
-                      source: _AcademicSource.portal,
-                      onConfigure: () =>
-                          showAcademicConnectionsDialog(context, ref),
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _AcademicIntegrationTile(
-                      name: 'Moodle ISEP',
-                      icon: Icons.school_outlined,
-                      source: _AcademicSource.moodle,
                       onConfigure: () =>
                           showAcademicConnectionsDialog(context, ref),
                     ),
@@ -293,6 +280,57 @@ class _SettingsDetailBody extends ConsumerWidget {
           title: 'Your devices',
           description: 'One account per person. Join only devices you own.',
           child: DeviceSyncSettings(settings: settings),
+        ),
+        const SizedBox(height: 28),
+        _SettingsSection(
+          title: 'Setup & relay',
+          description:
+              'Everything from first-run setup remains editable without creating a new account.',
+          child: Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.link_rounded),
+                  title: const Text('Manage integrations'),
+                  subtitle: const Text(
+                    'Fireflies sources, Gemini, Notion credentials, and Moodle + ISEP.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const _SettingsCategoryPage(
+                        category: _SettingsCategory.connections,
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.account_tree_outlined),
+                  title: const Text('Notion workspace mapping'),
+                  subtitle: const Text('Review the databases selected during setup.'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const _SettingsCategoryPage(
+                        category: _SettingsCategory.notion,
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.dns_outlined),
+                  title: const Text('Custom relay'),
+                  subtitle: Text(
+                    settings.relayBaseUrl ?? AppSettings.productionRelayBaseUrl,
+                  ),
+                  trailing: const Icon(Icons.edit_outlined),
+                  onTap: () => _configureRelay(context, ref, settings),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
       if (category == _SettingsCategory.automation) ...[
@@ -403,9 +441,7 @@ class _SettingsDetailBody extends ConsumerWidget {
                 const Divider(),
                 ListTile(
                   title: const Text('Concurrent lecture jobs'),
-                  subtitle: const Text(
-                    'Keep this conservative for API limits.',
-                  ),
+                  subtitle: const Text('Keep this conservative for API limits.'),
                   trailing: DropdownButton<int>(
                     value: settings.workerCount,
                     items: const [1, 2]
@@ -447,7 +483,8 @@ class _SettingsDetailBody extends ConsumerWidget {
                       settings.copyWith(useAiClassification: value),
                     ),
                   ),
-                  const Divider(),
+                  const Divider(height: 1),
+                  const SizedBox(height: 18),
                   _GeminiModelDropdown(
                     fieldKey: ValueKey(
                       'classification-model:${settings.classificationModel}',
@@ -461,13 +498,9 @@ class _SettingsDetailBody extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
-                    key: ValueKey(
-                      'summary-language:${settings.summaryLanguage}',
-                    ),
+                    key: ValueKey('summary-language:${settings.summaryLanguage}'),
                     initialValue: settings.summaryLanguage,
-                    decoration: const InputDecoration(
-                      labelText: 'Summary language',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Summary language'),
                     onFieldSubmitted: (value) => _save(
                       ref,
                       settings.copyWith(summaryLanguage: value.trim()),
@@ -475,9 +508,7 @@ class _SettingsDetailBody extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   _GeminiModelDropdown(
-                    fieldKey: ValueKey(
-                      'summary-model:${settings.summaryModel}',
-                    ),
+                    fieldKey: ValueKey('summary-model:${settings.summaryModel}'),
                     label: 'Summary model',
                     currentModel: settings.summaryModel,
                     onChanged: (value) =>
@@ -650,9 +681,9 @@ class _NotionWorkspaceSettings extends ConsumerWidget {
           const Divider(height: 1),
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
-            title: Text('Mappings stay on this device'),
+            title: Text('Mappings are account-synced'),
             subtitle: Text(
-              'To use another Notion workspace, configure its token and data sources on that device.',
+              'Recovery restores the selected databases together with the Notion credential.',
             ),
           ),
         ],
@@ -820,53 +851,46 @@ class _IntegrationTile extends ConsumerWidget {
   }
 }
 
-enum _AcademicSource { portal, moodle }
-
 class _AcademicIntegrationTile extends ConsumerWidget {
-  const _AcademicIntegrationTile({
-    required this.name,
-    required this.icon,
-    required this.source,
-    required this.onConfigure,
-  });
-
-  final String name;
-  final IconData icon;
-  final _AcademicSource source;
+  const _AcademicIntegrationTile({required this.onConfigure});
   final VoidCallback onConfigure;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(academicConnectionStateProvider);
-    final configured = value.valueOrNull == null
-        ? null
-        : switch (source) {
-            _AcademicSource.portal => value.valueOrNull!.portalConfigured,
-            _AcademicSource.moodle => value.valueOrNull!.moodleConfigured,
-          };
+    final state = value.valueOrNull;
     final scheme = Theme.of(context).colorScheme;
-    final label = configured == null
+    final label = state == null
         ? 'Checking secure storage…'
-        : configured
-        ? 'Connected'
+        : state.portalConfigured && state.moodleConfigured
+        ? 'Portal + Moodle connected'
+        : state.portalConfigured
+        ? 'Portal connected · Moodle optional'
+        : state.moodleConfigured
+        ? 'Moodle connected · Portal not configured'
         : 'Not configured';
-    final color = configured == true
+    final configured = state != null &&
+        (state.portalConfigured || state.moodleConfigured);
+    final color = state == null
+        ? scheme.onSurfaceVariant
+        : configured
         ? scheme.primary
-        : configured == false
-        ? scheme.error
-        : scheme.onSurfaceVariant;
+        : scheme.error;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            CircleAvatar(child: Icon(icon)),
+            const CircleAvatar(child: Icon(Icons.school_outlined)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    'Moodle + ISEP',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                   Text(label, style: TextStyle(color: color)),
                 ],
               ),
@@ -874,7 +898,7 @@ class _AcademicIntegrationTile extends ConsumerWidget {
             IconButton(
               onPressed: onConfigure,
               icon: const Icon(Icons.edit_outlined),
-              tooltip: 'Configure $name',
+              tooltip: 'Configure Moodle + ISEP',
             ),
           ],
         ),
@@ -921,10 +945,7 @@ class _FirefliesConnectionsTile extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Fireflies',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('Fireflies', style: Theme.of(context).textTheme.titleMedium),
                   Text(status, style: TextStyle(color: color)),
                   Text(
                     detail,
@@ -1019,10 +1040,7 @@ class _GeminiModelDropdown extends StatelessWidget {
           },
         ),
         const SizedBox(height: 6),
-        Text(
-          selected.description,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text(selected.description, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }
@@ -1171,11 +1189,7 @@ Future<void> _manageFirefliesConnections(
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (
-                      var index = 0;
-                      index < connections.length;
-                      index++
-                    ) ...[
+                    for (var index = 0; index < connections.length; index++) ...[
                       if (index > 0) const Divider(height: 1),
                       ListTile(
                         leading: const CircleAvatar(
@@ -1199,14 +1213,13 @@ Future<void> _manageFirefliesConnections(
                               onPressed: busy
                                   ? null
                                   : () async {
-                                      final updated =
-                                          await _editFirefliesConnection(
-                                            dialogContext,
-                                            ref,
-                                            existing: connections[index],
-                                            allConnections: connections,
-                                            webhook: webhook,
-                                          );
+                                      final updated = await _editFirefliesConnection(
+                                        dialogContext,
+                                        ref,
+                                        existing: connections[index],
+                                        allConnections: connections,
+                                        webhook: webhook,
+                                      );
                                       if (updated != null) {
                                         setState(() {
                                           busy = true;
@@ -1214,10 +1227,7 @@ Future<void> _manageFirefliesConnections(
                                           connections[index] = updated;
                                         });
                                         try {
-                                          await _saveFirefliesSources(
-                                            ref,
-                                            connections,
-                                          );
+                                          await _saveFirefliesSources(ref, connections);
                                         } catch (failure) {
                                           error = failure.toString();
                                         } finally {
@@ -1232,18 +1242,13 @@ Future<void> _manageFirefliesConnections(
                               onPressed: busy
                                   ? null
                                   : () async {
-                                      final removed = connections.removeAt(
-                                        index,
-                                      );
+                                      final removed = connections.removeAt(index);
                                       setState(() {
                                         busy = true;
                                         error = null;
                                       });
                                       try {
-                                        await _saveFirefliesSources(
-                                          ref,
-                                          connections,
-                                        );
+                                        await _saveFirefliesSources(ref, connections);
                                       } catch (failure) {
                                         connections.insert(index, removed);
                                         error = failure.toString();
@@ -1337,7 +1342,6 @@ Future<AccountWebhookConfig?> _loadAccountWebhook(WidgetRef ref) async {
         .read(accountSyncClientProvider)
         .webhookConfig(baseUrl: settings.relayBaseUrl!, account: account);
   } catch (_) {
-    // Polling remains operational while relay status is unavailable.
     return null;
   }
 }
@@ -1608,9 +1612,7 @@ Future<void> _configureSecret(
                         await ref
                             .read(deviceSyncServiceProvider)
                             .pushConfiguration();
-                      } catch (_) {
-                        // Saved locally; device sync retries later.
-                      }
+                      } catch (_) {}
                       ref.invalidate(credentialConfiguredProvider(key));
                       if (context.mounted) Navigator.pop(context);
                     } catch (failure) {
@@ -1639,7 +1641,9 @@ Future<void> _configureRelay(
   WidgetRef ref,
   AppSettings settings,
 ) async {
-  final urlController = TextEditingController(text: settings.relayBaseUrl);
+  final urlController = TextEditingController(
+    text: settings.relayBaseUrl ?? AppSettings.productionRelayBaseUrl,
+  );
   String? error;
   await showDialog<void>(
     context: context,
@@ -1657,7 +1661,7 @@ Future<void> _configureRelay(
               ),
               const SizedBox(height: 12),
               const Text(
-                'For development, staging, or self-hosting. Existing account credentials authenticate this device; no bootstrap token is stored here.',
+                'For development, staging, or self-hosting. Existing account credentials authenticate this device; no registration token is needed when moving an existing account.',
               ),
               if (error != null) ...[
                 const SizedBox(height: 10),
