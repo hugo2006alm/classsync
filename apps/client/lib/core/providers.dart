@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../domain/academic/academic_models.dart';
 import '../domain/academic/academic_hub_models.dart';
@@ -22,6 +23,13 @@ import 'integrations/relay/account_sync_client.dart';
 import 'notifications/classsync_notification_service.dart';
 import 'security/secure_credential_store.dart';
 import 'sync/device_sync_service.dart';
+
+extension AsyncValueCompatibility<T> on AsyncValue<T> {
+  T? get valueOrNull => switch (this) {
+    AsyncData<T>(:final value) => value,
+    _ => null,
+  };
+}
 
 final databaseProvider = Provider<ClassSyncDatabase>(
   (ref) => throw StateError('databaseProvider must be overridden at bootstrap'),
