@@ -40,6 +40,53 @@ void main() {
     );
   });
 
+  test('discovers open registration without a credential', () async {
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          expect(options.path, 'https://relay.test/registration');
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: const {'mode': 'open', 'protocolVersion': 3},
+            ),
+          );
+        },
+      ),
+    );
+
+    final policy = await AccountSyncClient(
+      dio: dio,
+    ).registrationPolicy(baseUrl: 'https://relay.test');
+
+    expect(policy.mode, AccountRegistrationMode.open);
+    expect(policy.needsCredential, isFalse);
+  });
+
+  test('older relay registration discovery fails closed to token mode', () async {
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.reject(
+          DioException(
+            requestOptions: options,
+            response: Response<void>(requestOptions: options, statusCode: 404),
+            type: DioExceptionType.badResponse,
+          ),
+        ),
+      ),
+    );
+
+    final policy = await AccountSyncClient(
+      dio: dio,
+    ).registrationPolicy(baseUrl: 'https://legacy-relay.test');
+
+    expect(policy.mode, AccountRegistrationMode.token);
+    expect(policy.needsCredential, isTrue);
+  });
+
   test(
     'joining persists every account field on a serialized secure store',
     () async {
@@ -88,20 +135,56 @@ void main() {
     expect(await store.read(CredentialKey.notionToken), 'notion-key');
   });
 
-  test('account creation consumes and removes bootstrap credential', () async {
+  test('open account creation sends no bearer bootstrap credential', () async {
     final dio = Dio();
     dio.interceptors.add(
       InterceptorsWrapper(
-        onRequest: (options, handler) => handler.resolve(
-          Response<Map<String, dynamic>>(
-            requestOptions: options,
-            statusCode: 201,
-            data: const {
-              'accountId': '12345678-1234-1234-1234-123456789012',
-              'authSecret': 'abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG',
-            },
-          ),
-        ),
+        onRequest: (options, handler) {
+          expect(options.headers['authorization'], isNull);
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 201,
+              data: const {
+                'accountId': '12345678-1234-1234-1234-123456789012',
+                'authSecret': 'abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG',
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final store = _SerializedCredentialStore();
+
+    await AccountSyncClient(dio: dio).createAccount(
+      baseUrl: 'https://relay.test',
+      store: store,
+    );
+
+    expect(await store.read(CredentialKey.syncAccountId), isNotNull);
+    expect(await store.read(CredentialKey.syncDeviceId), isNotNull);
+  });
+
+  test('legacy setup credential remains compatible and is removed', () async {
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          expect(
+            options.headers['authorization'],
+            'Bearer bootstrap-token-that-is-not-account-auth',
+          );
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 201,
+              data: const {
+                'accountId': '12345678-1234-1234-1234-123456789012',
+                'authSecret': 'abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG',
+              },
+            ),
+          );
+        },
       ),
     );
     final store = _SerializedCredentialStore();
