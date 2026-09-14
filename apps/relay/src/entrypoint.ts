@@ -10,8 +10,6 @@ function registrationMode(env: Env): RegistrationMode {
   if (configured === "open" || configured === "invite" || configured === "token") {
     return configured;
   }
-  // Existing self-hosted relays did not have a mode. Preserve their old
-  // fail-closed behaviour rather than accidentally making them public.
   return "token";
 }
 
@@ -84,7 +82,7 @@ async function createInvite(request: Request, env: Env): Promise<Response> {
     if (new TextEncoder().encode(raw).byteLength > 4096) {
       return json({ error: "payload_too_large" }, 413);
     }
-    if (raw.trim().isNotEmpty) {
+    if (raw.trim().length > 0) {
       try {
         const value = JSON.parse(raw) as Record<string, unknown>;
         if (value.expiresInHours !== undefined) {
