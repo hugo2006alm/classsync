@@ -12,6 +12,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  CLASSSYNC_SITE_URL: ${{ vars.CLASSSYNC_SITE_URL || 'https://hugo2006alm.github.io/classsync-site' }}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -73,9 +76,9 @@ jobs:
       - working-directory: apps/client
         run: flutter pub get
       - working-directory: apps/client
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - working-directory: apps/client
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - run: |
           cp apps/client/build/app/outputs/flutter-apk/app-release.apk ClassSync-Android.apk
           cp apps/client/build/app/outputs/bundle/release/app-release.aab ClassSync-Android.aab
@@ -98,7 +101,7 @@ jobs:
       - working-directory: apps/client
         run: flutter pub get
       - working-directory: apps/client
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define=CLASSSYNC_SITE_URL="${{ env.CLASSSYNC_SITE_URL }}"
       - name: Prepare Windows signing
         id: windows_signing
         shell: pwsh
