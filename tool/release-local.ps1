@@ -479,7 +479,7 @@ Refusing to create release artifacts.
         Write-Host ""
         Write-Host "Release published successfully: $tag"
 
-        gh release view $tag --web:$false
+        gh release view $tag
         Assert-LastExitCode 'GitHub release verification'
     }
 
