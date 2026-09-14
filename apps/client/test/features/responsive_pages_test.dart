@@ -310,7 +310,7 @@ void main() {
 
     await tester.tap(find.text('Connections'));
     await tester.pumpAndSettle();
-    expect(find.text('Checking secure storage…'), findsNWidgets(5));
+    expect(find.text('Checking secure storage…'), findsNWidgets(4));
     credentials.complete(CredentialKey.firefliesApiKey, false);
     credentials.complete(CredentialKey.geminiApiKey, true);
     credentials.complete(CredentialKey.notionToken, true);
@@ -319,7 +319,7 @@ void main() {
     credentials.complete(CredentialKey.moodleToken, true);
     await tester.pumpAndSettle();
 
-    expect(find.text('Connected'), findsNWidgets(4));
+    expect(find.text('Connected'), findsNWidgets(2));
     expect(find.text('Not configured'), findsOneWidget);
     expect(find.text('ClassSync Relay'), findsNothing);
     expect(find.textContaining('Device API token'), findsNothing);
