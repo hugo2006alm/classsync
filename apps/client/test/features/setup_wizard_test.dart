@@ -96,11 +96,11 @@ void main() {
     await tester.pumpWidget(_testApp());
 
     expect(find.text('SETUP SYLLABUS'), findsOneWidget);
-    expect(find.text('Have these four things ready'), findsOneWidget);
+    expect(find.text('Have these three things ready'), findsOneWidget);
     expect(find.text('Academic'), findsOneWidget);
     expect(
       find.text(
-        'Firebase, Cloudflare, and the production relay URL are already configured in this build.',
+        'The hosted ClassSync relay creates accounts without a setup token. A custom relay may require an invite or registration token.',
       ),
       findsOneWidget,
     );
