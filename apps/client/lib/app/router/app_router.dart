@@ -13,9 +13,11 @@ import '../../features/sync/sync_screen.dart';
 import '../shell/adaptive_app_shell.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>(
   (ref) => GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/overview',
     routes: [
       ShellRoute(

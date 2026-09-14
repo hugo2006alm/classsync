@@ -65,12 +65,13 @@ class JobDetailScreen extends ConsumerWidget {
                 label: const Text('Notion'),
               ),
             if (job.status == SyncJobStatus.failedRetryable ||
-                job.status == SyncJobStatus.failedTerminal)
+                job.status == SyncJobStatus.failedTerminal ||
+                _isStaleProcessing(job))
               FilledButton.icon(
                 onPressed: () =>
                     ref.read(syncCoordinatorProvider).retryJob(job.id),
                 icon: const Icon(Icons.replay_rounded),
-                label: const Text('Retry'),
+                label: Text(_isStaleProcessing(job) ? 'Recover' : 'Retry'),
               ),
             if (job.notionPageId != null)
               PopupMenuButton<_ReprocessAction>(
@@ -141,6 +142,9 @@ class _JobContent extends ConsumerWidget {
     final summary = job.summaryJson == null
         ? null
         : LectureSummary.decode(job.summaryJson!);
+    final transcriptText = job.transcriptJson == null
+        ? null
+        : LectureTranscript.fromStoredJson(job.transcriptJson!).plainText;
     final candidates = _candidates(job.classificationCandidatesJson);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,20 +159,35 @@ class _JobContent extends ConsumerWidget {
                   children: [
                     StatusBadge(job.status),
                     const Spacer(),
-                    if (job.classificationConfidence != null)
+                    if (job.classificationConfidence != null &&
+                        candidates.isNotEmpty)
                       Text(
-                        '${(job.classificationConfidence! * 100).round()}% heuristic',
+                        '${(job.classificationConfidence! * 100).round()}% AI confidence',
                       ),
                   ],
                 ),
-                if (job.subjectName != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    job.subjectName!,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ],
-                if (job.lastErrorMessage != null) ...[
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        job.subjectName ?? 'No class selected',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    if (subjects.isNotEmpty && !job.status.isProcessing)
+                      TextButton.icon(
+                        onPressed: () =>
+                            _chooseSubject(context, ref, job, subjects),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: Text(
+                          job.subjectId == null ? 'Choose class' : 'Change',
+                        ),
+                      ),
+                  ],
+                ),
+                if (_showsCurrentError(job)) ...[
                   const SizedBox(height: 16),
                   DecoratedBox(
                     decoration: BoxDecoration(
@@ -204,16 +223,14 @@ class _JobContent extends ConsumerWidget {
                   child: SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonal(
-                      onPressed: () {
+                      onPressed: () async {
                         final subject = subjects
                             .where(
                               (item) => item.notionId == candidate.subjectId,
                             )
                             .firstOrNull;
                         if (subject != null) {
-                          ref
-                              .read(syncCoordinatorProvider)
-                              .confirmSubject(job.id, subject);
+                          await _applySubject(context, ref, job, subject);
                         }
                       },
                       child: Padding(
@@ -229,27 +246,37 @@ class _JobContent extends ConsumerWidget {
                   ),
                 ),
               ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _chooseSubject(context, ref, job, subjects),
+              icon: const Icon(Icons.list_alt_rounded),
+              label: const Text('Choose another class'),
+            ),
+          ),
         ],
         const SizedBox(height: 20),
         _DetailSection(
           title: 'Transcript',
           icon: Icons.mic_none_rounded,
-          child: job.transcriptJson == null
-              ? const Text('Transcript payload not retained locally.')
-              : Text(
-                  LectureTranscript.fromStoredJson(
-                    job.transcriptJson!,
-                  ).plainText,
-                  maxLines: 18,
-                  overflow: TextOverflow.fade,
+          action: transcriptText == null
+              ? null
+              : IconButton(
+                  onPressed: () =>
+                      _showFullTranscript(context, job.title, transcriptText),
+                  tooltip: 'Open full transcript',
+                  icon: const Icon(Icons.open_in_full_rounded),
                 ),
+          child: transcriptText == null
+              ? Text(_missingTranscriptMessage(job))
+              : Text(transcriptText, maxLines: 18, overflow: TextOverflow.fade),
         ),
         const SizedBox(height: 12),
         _DetailSection(
           title: 'Classification',
           icon: Icons.route_rounded,
           child: candidates.isEmpty
-              ? const Text('Classification has not run yet.')
+              ? Text(_classificationMessage(job))
               : Column(
                   children: candidates
                       .map(
@@ -270,7 +297,7 @@ class _JobContent extends ConsumerWidget {
           icon: Icons.auto_stories_rounded,
           initiallyExpanded: summary != null,
           child: summary == null
-              ? const Text('Summary has not been generated yet.')
+              ? _MissingSummary(job: job)
               : _SummaryPreview(summary: summary),
         ),
         const SizedBox(height: 12),
@@ -294,17 +321,24 @@ class _DetailSection extends StatelessWidget {
     required this.icon,
     required this.child,
     this.initiallyExpanded = false,
+    this.action,
   });
   final String title;
   final IconData icon;
   final Widget child;
   final bool initiallyExpanded;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => Card(
     child: ExpansionTile(
       leading: Icon(icon),
-      title: Text(title),
+      title: Row(
+        children: [
+          Expanded(child: Text(title)),
+          ?action,
+        ],
+      ),
       initiallyExpanded: initiallyExpanded,
       childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [Align(alignment: Alignment.centerLeft, child: child)],
@@ -365,6 +399,188 @@ class _SummaryPreview extends StatelessWidget {
       ],
     ],
   );
+}
+
+class _MissingSummary extends StatelessWidget {
+  const _MissingSummary({required this.job});
+  final SyncJob job;
+
+  @override
+  Widget build(BuildContext context) {
+    if (job.summaryTitle != null ||
+        job.status == SyncJobStatus.success ||
+        job.status == SyncJobStatus.duplicate) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (job.summaryTitle case final title?) ...[
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+          ],
+          const Text(
+            'Summary completed. Full content is available in Notion and is not copied between devices.',
+          ),
+        ],
+      );
+    }
+    return const Text('Summary has not been generated yet.');
+  }
+}
+
+bool _showsCurrentError(SyncJob job) =>
+    job.lastErrorMessage != null &&
+    (job.status == SyncJobStatus.failedRetryable ||
+        job.status == SyncJobStatus.failedTerminal);
+
+bool _isStaleProcessing(SyncJob job) {
+  if (!job.status.isProcessing) return false;
+  final now = DateTime.now().toUtc();
+  if (job.leaseExpiresAt case final expires?) return !expires.isAfter(now);
+  final started = job.startedAt;
+  return started != null &&
+      now.difference(started.toUtc()) >= const Duration(minutes: 30);
+}
+
+String _missingTranscriptMessage(SyncJob job) =>
+    job.status == SyncJobStatus.success || job.status == SyncJobStatus.duplicate
+    ? 'Transcript content is not stored on this device. Open Fireflies for the canonical transcript.'
+    : 'Transcript payload is not retained locally.';
+
+String _classificationMessage(SyncJob job) {
+  if (job.subjectName != null) {
+    return 'Selected class: ${job.subjectName}. Detailed classification evidence is not stored on this device.';
+  }
+  if (job.status == SyncJobStatus.success ||
+      job.status == SyncJobStatus.duplicate) {
+    return 'Classification completed on another device, but its selected class metadata is not available locally.';
+  }
+  return 'Classification has not run yet.';
+}
+
+Future<void> _showFullTranscript(
+  BuildContext context,
+  String title,
+  String transcript,
+) => showDialog<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (context) => Dialog.fullscreen(
+    child: Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Close transcript',
+          icon: const Icon(Icons.close_rounded),
+        ),
+        title: Text(title),
+      ),
+      body: SelectionArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Text(transcript),
+          ),
+        ),
+      ),
+    ),
+  ),
+);
+
+Future<void> _chooseSubject(
+  BuildContext context,
+  WidgetRef ref,
+  SyncJob job,
+  List<AcademicSubject> subjects,
+) async {
+  if (subjects.isEmpty) return;
+  var selectedId = subjects.any((subject) => subject.notionId == job.subjectId)
+      ? job.subjectId!
+      : subjects.first.notionId;
+  final selected = await showDialog<AcademicSubject>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        title: Text(job.subjectId == null ? 'Choose class' : 'Change class'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: selectedId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Active class'),
+                items: subjects
+                    .map(
+                      (subject) => DropdownMenuItem(
+                        value: subject.notionId,
+                        child: Text(
+                          subject.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => selectedId = value);
+                  }
+                },
+              ),
+              if (job.notionPageId != null) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'Changing the class regenerates the summary and updates the existing Notion page without creating a duplicate.',
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed:
+                selectedId == job.subjectId &&
+                    (job.status == SyncJobStatus.success ||
+                        job.status == SyncJobStatus.duplicate)
+                ? null
+                : () => Navigator.pop(
+                    context,
+                    subjects.firstWhere(
+                      (subject) => subject.notionId == selectedId,
+                    ),
+                  ),
+            child: const Text('Use class'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (selected != null && context.mounted) {
+    await _applySubject(context, ref, job, selected);
+  }
+}
+
+Future<void> _applySubject(
+  BuildContext context,
+  WidgetRef ref,
+  SyncJob job,
+  AcademicSubject subject,
+) async {
+  try {
+    await ref.read(syncCoordinatorProvider).confirmSubject(job.id, subject);
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update class: $error')));
+    }
+  }
 }
 
 List<Widget> _summaryGroup(

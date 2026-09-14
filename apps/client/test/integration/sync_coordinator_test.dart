@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/integrations/fireflies/fireflies_client.dart';
 import 'package:classsync/core/integrations/gemini/gemini_client.dart';
@@ -174,6 +176,55 @@ void main() {
     },
   );
 
+  test('AI-disabled classification waits for a manual class choice', () async {
+    await database.saveSettings(
+      (await database.readSettings()).copyWith(useAiClassification: false),
+    );
+
+    await coordinator.run(SyncReason.manual);
+
+    final job = (await database.readJobs()).single;
+    expect(job.status, SyncJobStatus.needsReview);
+    expect(job.subjectId, isNull);
+    expect(job.summaryJson, isNull);
+    expect(gemini.classificationCalls, 0);
+    final classification = ClassificationResult.fromJson(
+      jsonDecode(job.classificationCandidatesJson!) as Map<String, dynamic>,
+    );
+    expect(classification.candidates.single.subjectId, notion.subject.notionId);
+  });
+
+  test(
+    'third Gemini failure suggests a model but keeps normal retry',
+    () async {
+      gemini.failClassification = true;
+      ModelRetryPrompt? prompt;
+      coordinator = SyncCoordinator(
+        database: database,
+        credentials: _FakeCredentials(),
+        fireflies: fireflies,
+        gemini: gemini,
+        notion: notion,
+        relay: relay,
+        notifier: notifier,
+        onModelRetrySuggested: (value) => prompt = value,
+      );
+
+      await coordinator.run(SyncReason.manual);
+      var job = (await database.readJobs()).single;
+      await coordinator.retryJob(job.id);
+      await coordinator.retryJob(job.id);
+
+      job = (await database.readJob(job.id))!;
+      expect(job.status, SyncJobStatus.failedRetryable);
+      expect(job.attemptCount, 3);
+      expect(job.nextRetryAt, isNotNull);
+      expect(prompt?.operation, GeminiOperation.classification);
+      expect(prompt?.currentModel, AppSettings.defaults.classificationModel);
+      expect(prompt?.retryScheduled, isTrue);
+    },
+  );
+
   test('existing Fireflies ID prevents a second Notion page', () async {
     notion.existing = const NotionPageRef(
       id: 'existing-page',
@@ -225,6 +276,30 @@ void main() {
       expect(notion.contentCalls, 2);
     },
   );
+
+  test('changing an AI subject replaces the existing Notion summary', () async {
+    await coordinator.run(SyncReason.manual);
+    var job = (await database.readJobs()).single;
+    final corrected = AcademicSubject(
+      notionId: 'subject-corrected',
+      name: 'Lógica',
+      year: '3º Ano',
+      semester: '1º Semestre',
+      status: 'In progress',
+      lastSyncedAt: DateTime.utc(2026, 9, 5),
+    );
+    await database.replaceSubjects([notion.subject, corrected]);
+
+    await coordinator.confirmSubject(job.id, corrected);
+
+    job = (await database.readJob(job.id))!;
+    expect(job.status, SyncJobStatus.success);
+    expect(job.subjectId, corrected.notionId);
+    expect(job.classificationConfidence, isNull);
+    expect(gemini.summaryCalls, 2);
+    expect(notion.createCalls, 1);
+    expect(notion.replaceCalls, 1);
+  });
 
   test('relay and polling discovery merge to one durable job', () async {
     relay.events = [
@@ -477,7 +552,9 @@ class _FakeFireflies extends FirefliesClient {
 }
 
 class _FakeGemini extends GeminiClient {
+  var classificationCalls = 0;
   var summaryCalls = 0;
+  var failClassification = false;
   ClassificationResult result = const ClassificationResult(
     decision: ClassificationDecision.match,
     subjectId: 'subject-ai',
@@ -500,7 +577,18 @@ class _FakeGemini extends GeminiClient {
     required LectureTranscript transcript,
     required List<AcademicSubject> subjects,
     TimetableContext? timetableContext,
-  }) async => result;
+  }) async {
+    classificationCalls += 1;
+    if (failClassification) {
+      throw const IntegrationException(
+        integration: 'Gemini',
+        code: 'timeout',
+        userMessage: 'Gemini is temporarily unavailable.',
+        retryable: true,
+      );
+    }
+    return result;
+  }
 
   @override
   Future<LectureSummary> summarize({
@@ -568,6 +656,7 @@ class _FakeNotion extends NotionClient {
   NotionPageRef? existing;
   var createCalls = 0;
   var contentCalls = 0;
+  var replaceCalls = 0;
   var failNextContentAppend = false;
   var failQuery = false;
   Future<void> Function()? beforeContent;
@@ -645,6 +734,7 @@ class _FakeNotion extends NotionClient {
     required bool includeMetadata,
   }) async {
     contentCalls += 1;
+    replaceCalls += 1;
   }
 }
 

@@ -7,7 +7,8 @@
 3. Refresh Notion subjects when available; cached active subjects remain usable.
 4. Atomically claim runnable or stale-processing row with SQLite lease.
 5. Fetch/reuse transcript, then acquire D1 cross-device processing claim.
-6. Classify or apply exact local correction.
+6. Classify, apply an exact local correction, or pause for manual class choice
+   when AI identification is disabled.
 7. Generate lecture-faithful structured notes in the teacher's order,
    persisting partial checkpoints. Teacher emphasis, important side details,
    Q&A, tasks, deadlines, examples, formulas, code, and uncertainties remain
@@ -17,4 +18,18 @@
    preserve all user/template blocks.
 10. Complete D1 claim with Notion page ID and finish local job.
 
-Retryable failures use exponential backoff with jitter and `Retry-After`. Configuration failures stop until settings change.
+Retryable failures use exponential backoff with jitter and `Retry-After`.
+Repeated foreground Gemini failures may offer a user-selected model without
+canceling that schedule. Configuration failures stop until settings change.
+
+The job detail screen permits choosing or changing any currently active Notion
+subject. Changing a completed job invalidates its derived summary, refetches the
+canonical Fireflies transcript when needed, and replaces the ClassSync-owned
+content and relation on the same Notion page. User-authored blocks remain
+untouched.
+
+Device sync carries bounded job status metadata, subject, summary title, and
+Notion page identity—not transcripts, classification evidence, or summary
+content. A receiving device records a local “status synced from another device”
+timeline event and labels missing content accordingly. Terminal remote status
+also clears obsolete local retry errors.

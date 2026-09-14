@@ -1,5 +1,67 @@
 enum SummaryDetail { concise, balanced, detailed }
 
+class GeminiModelOption {
+  const GeminiModelOption({
+    required this.id,
+    required this.label,
+    required this.description,
+  });
+
+  final String id;
+  final String label;
+  final String description;
+}
+
+const geminiTextModels = <GeminiModelOption>[
+  GeminiModelOption(
+    id: 'gemini-3.8-flash',
+    label: 'Gemini 3.8 Flash',
+    description: 'Best Flash quality; recommended for detailed summaries.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-3.7-flash',
+    label: 'Gemini 3.7 Flash',
+    description: 'Previous high-quality Flash model.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-3.6-flash',
+    label: 'Gemini 3.6 Flash',
+    description: 'Balanced speed and capability.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    description: 'Fast general-purpose model.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-3.5-flash-lite',
+    label: 'Gemini 3.5 Flash-Lite',
+    description: 'Lower-cost lightweight model.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-3.1-flash-lite',
+    label: 'Gemini 3.1 Flash-Lite',
+    description: 'Fast, low-cost model recommended for class identification.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    description: 'Stable compatibility fallback.',
+  ),
+  GeminiModelOption(
+    id: 'gemini-2.5-flash-lite',
+    label: 'Gemini 2.5 Flash-Lite',
+    description: 'Lowest-cost stable compatibility fallback.',
+  ),
+];
+
+String geminiModelLabel(String id) =>
+    geminiTextModels
+        .where((model) => model.id == id)
+        .map((model) => model.label)
+        .firstOrNull ??
+    id;
+
 const _unsetSetting = Object();
 
 class AppSettings {
@@ -24,6 +86,7 @@ class AppSettings {
     required this.keepTranscripts,
     required this.cleanCompletedPayloads,
     required this.diagnosticsRetentionDays,
+    required this.useAiClassification,
     required this.classificationModel,
     required this.summaryModel,
     required this.autoClassifyThreshold,
@@ -50,7 +113,8 @@ class AppSettings {
     keepTranscripts: false,
     cleanCompletedPayloads: true,
     diagnosticsRetentionDays: 14,
-    classificationModel: 'gemini-3.8-flash',
+    useAiClassification: true,
+    classificationModel: 'gemini-3.1-flash-lite',
     summaryModel: 'gemini-3.8-flash',
     autoClassifyThreshold: 0.85,
     reviewThreshold: 0.60,
@@ -73,6 +137,7 @@ class AppSettings {
   final bool keepTranscripts;
   final bool cleanCompletedPayloads;
   final int diagnosticsRetentionDays;
+  final bool useAiClassification;
   final String classificationModel;
   final String summaryModel;
   final double autoClassifyThreshold;
@@ -98,6 +163,7 @@ class AppSettings {
     bool? keepTranscripts,
     bool? cleanCompletedPayloads,
     int? diagnosticsRetentionDays,
+    bool? useAiClassification,
     String? classificationModel,
     String? summaryModel,
     double? autoClassifyThreshold,
@@ -124,6 +190,7 @@ class AppSettings {
         cleanCompletedPayloads ?? this.cleanCompletedPayloads,
     diagnosticsRetentionDays:
         diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
+    useAiClassification: useAiClassification ?? this.useAiClassification,
     classificationModel: classificationModel ?? this.classificationModel,
     summaryModel: summaryModel ?? this.summaryModel,
     autoClassifyThreshold: autoClassifyThreshold ?? this.autoClassifyThreshold,
@@ -185,4 +252,8 @@ class AppSettings {
       throw const FormatException('Both Notion data sources are required.');
     }
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

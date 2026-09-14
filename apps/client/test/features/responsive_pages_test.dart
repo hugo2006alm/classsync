@@ -16,6 +16,7 @@ import 'package:classsync/features/academic/academic_screen.dart';
 import 'package:classsync/features/overview/overview_screen.dart';
 import 'package:classsync/features/library/library_screen.dart';
 import 'package:classsync/features/settings/settings_screen.dart';
+import 'package:classsync/features/sync/job_detail_screen.dart';
 import 'package:classsync/features/sync/sync_screen.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -229,9 +230,7 @@ void main() {
     await _disposeApp(tester);
   });
 
-  testWidgets('equal Gemini model values have unique settings field keys', (
-    tester,
-  ) async {
+  testWidgets('Gemini choices use two named model dropdowns', (tester) async {
     _usePhoneViewport(tester);
 
     await tester.pumpWidget(_app(database, const SettingsScreen()));
@@ -240,6 +239,60 @@ void main() {
     await tester.tap(find.text('AI & summaries'));
     await tester.pumpAndSettle();
     expect(find.text('AI'), findsOneWidget);
+    expect(find.text('Identify classes with AI automatically'), findsOneWidget);
+    expect(
+      find.byKey(
+        ValueKey(
+          'classification-model:${AppSettings.defaults.classificationModel}',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        ValueKey('summary-model:${AppSettings.defaults.summaryModel}'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('phone transcript opens in a full-screen dialog', (tester) async {
+    _usePhoneViewport(tester);
+    await database.discoverJob(
+      id: 'transcript-job',
+      firefliesId: 'meeting-transcript',
+      title: 'Full lecture',
+      meetingDate: DateTime.utc(2026, 9, 14),
+    );
+    await database.saveTranscript(
+      'transcript-job',
+      LectureTranscript(
+        firefliesId: 'meeting-transcript',
+        title: 'Full lecture',
+        date: DateTime.utc(2026, 9, 14),
+        sentences: const [
+          TranscriptSentence(text: 'The complete transcript is visible here.'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      _app(database, const JobDetailScreen(jobId: 'transcript-job')),
+    );
+    await tester.pumpAndSettle();
+    final maximize = find.byTooltip('Open full transcript');
+    await tester.ensureVisible(maximize);
+    await tester.tap(maximize);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(
+      find.textContaining('complete transcript is visible'),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Close transcript'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

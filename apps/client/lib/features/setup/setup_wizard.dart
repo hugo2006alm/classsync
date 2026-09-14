@@ -38,7 +38,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     text: AppSettings.productionRelayBaseUrl,
   );
   final _relayTokenController = TextEditingController();
-  final _modelController = TextEditingController(text: 'gemini-3.8-flash');
+  final _modelController = TextEditingController(
+    text: AppSettings.defaults.summaryModel,
+  );
   final _accountCodeController = TextEditingController();
   final _accountNameController = TextEditingController();
   final _primaryFirefliesId = const Uuid().v4();
@@ -352,13 +354,29 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
             ),
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
-              TextField(
-                controller: _modelController,
+              DropdownButtonFormField<String>(
+                key: const ValueKey('setup-gemini-model'),
+                initialValue: _modelController.text,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Gemini model',
+                  labelText: 'Summary model',
                   helperText:
-                      'ClassSync falls back automatically when this model is unavailable.',
+                      'ClassSync uses a faster Flash-Lite model for class identification.',
                 ),
+                items: _setupGeminiModels(_modelController.text)
+                    .map(
+                      (option) => DropdownMenuItem(
+                        value: option.id,
+                        child: Text(
+                          option.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: (value) {
+                  if (value != null) _modelController.text = value;
+                },
               ),
             ],
           ),
@@ -1112,7 +1130,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       notificationsEnabled: _notifications,
       classificationModel: _joinedExistingAccount
           ? restored.classificationModel
-          : _modelController.text.trim(),
+          : AppSettings.defaults.classificationModel,
       summaryModel: _joinedExistingAccount
           ? restored.summaryModel
           : _modelController.text.trim(),
@@ -1701,6 +1719,20 @@ class _ReadyRow extends StatelessWidget {
       ),
     ],
   );
+}
+
+List<GeminiModelOption> _setupGeminiModels(String currentModel) {
+  if (geminiTextModels.any((option) => option.id == currentModel)) {
+    return geminiTextModels;
+  }
+  return [
+    GeminiModelOption(
+      id: currentModel,
+      label: '$currentModel (restored)',
+      description: 'Model restored from this account.',
+    ),
+    ...geminiTextModels,
+  ];
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

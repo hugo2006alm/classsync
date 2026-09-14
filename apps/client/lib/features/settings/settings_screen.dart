@@ -436,18 +436,27 @@ class _SettingsDetailBody extends ConsumerWidget {
               padding: const EdgeInsets.all(18),
               child: Column(
                 children: [
-                  TextFormField(
-                    key: ValueKey(
+                  _SettingSwitch(
+                    title: 'Identify classes with AI automatically',
+                    subtitle: settings.useAiClassification
+                        ? 'Uses the lightweight model below, then asks for review when uncertain.'
+                        : 'Always asks you to choose a class unless a saved correction matches.',
+                    value: settings.useAiClassification,
+                    onChanged: (value) => _save(
+                      ref,
+                      settings.copyWith(useAiClassification: value),
+                    ),
+                  ),
+                  const Divider(),
+                  _GeminiModelDropdown(
+                    fieldKey: ValueKey(
                       'classification-model:${settings.classificationModel}',
                     ),
-                    initialValue: settings.classificationModel,
-                    decoration: const InputDecoration(
-                      labelText: 'Classification model',
-                      helperText: 'Falls back automatically if unavailable.',
-                    ),
-                    onFieldSubmitted: (value) => _save(
+                    label: 'Class identification model',
+                    currentModel: settings.classificationModel,
+                    onChanged: (value) => _save(
                       ref,
-                      settings.copyWith(classificationModel: value.trim()),
+                      settings.copyWith(classificationModel: value),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -465,17 +474,14 @@ class _SettingsDetailBody extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    key: ValueKey('summary-model:${settings.summaryModel}'),
-                    initialValue: settings.summaryModel,
-                    decoration: const InputDecoration(
-                      labelText: 'Summary model',
-                      helperText: 'Uses the next supported model if necessary.',
+                  _GeminiModelDropdown(
+                    fieldKey: ValueKey(
+                      'summary-model:${settings.summaryModel}',
                     ),
-                    onFieldSubmitted: (value) => _save(
-                      ref,
-                      settings.copyWith(summaryModel: value.trim()),
-                    ),
+                    label: 'Summary model',
+                    currentModel: settings.summaryModel,
+                    onChanged: (value) =>
+                        _save(ref, settings.copyWith(summaryModel: value)),
                   ),
                   const SizedBox(height: 18),
                   _ThresholdSlider(
@@ -960,6 +966,66 @@ class _SettingSwitch extends StatelessWidget {
     value: value,
     onChanged: onChanged,
   );
+}
+
+class _GeminiModelDropdown extends StatelessWidget {
+  const _GeminiModelDropdown({
+    required this.fieldKey,
+    required this.label,
+    required this.currentModel,
+    required this.onChanged,
+  });
+
+  final Key fieldKey;
+  final String label;
+  final String currentModel;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final known = geminiTextModels.any((model) => model.id == currentModel);
+    final options = [
+      if (!known)
+        GeminiModelOption(
+          id: currentModel,
+          label: 'Legacy model ($currentModel)',
+          description:
+              'Saved by an older ClassSync version. Choose a supported model.',
+        ),
+      ...geminiTextModels,
+    ];
+    final selected = options.firstWhere((model) => model.id == currentModel);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          key: fieldKey,
+          initialValue: currentModel,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: label,
+            helperText: 'Falls back automatically when a model is unavailable.',
+          ),
+          items: options
+              .map(
+                (model) => DropdownMenuItem(
+                  value: model.id,
+                  child: Text(model.label, overflow: TextOverflow.ellipsis),
+                ),
+              )
+              .toList(),
+          onChanged: (value) {
+            if (value != null && value != currentModel) onChanged(value);
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          selected.description,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
 }
 
 class _ThresholdSlider extends StatelessWidget {
@@ -1660,7 +1726,7 @@ Future<void> _exportDiagnostics(
     'version': info.version,
     'platform': Platform.operatingSystem,
     'generatedAt': DateTime.now().toUtc().toIso8601String(),
-    'database': {'status': 'ready', 'schemaVersion': 6},
+    'database': {'status': 'ready', 'schemaVersion': 7},
     'queueEntries': jobs.length,
     'pollingMinutes': settings.pollingMinutes,
     'overlapHours': settings.overlapHours,

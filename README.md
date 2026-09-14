@@ -14,11 +14,15 @@ them with Gemini, and publishes structured study notes to Notion.
   transcript import, and per-job timelines.
 - Multiple named Fireflies GraphQL connections with independent pagination,
   stable Fireflies account identity, plus signed Webhooks V2 ingestion.
-- Gemini structured classification and long-transcript summarization.
+- Optional Gemini class identification with a lightweight default model,
+  manual class choice/correction, named model dropdowns, and long-transcript
+  summarization.
 - Notion schema validation, subject filtering, D1-backed global processing
   claims, and retry-safe ClassSync-owned page sections.
 - Controlled regenerate, reclassify, and republish actions update the existing
   Notion page instead of creating a duplicate.
+- Job details expose the complete transcript in a full-screen reader on mobile
+  and distinguish locally retained content from status synced by another device.
 - Minimal Cloudflare Worker + D1 relay storing IDs and timestamps only.
 - Private per-person account namespaces with AES-256-GCM device sync for keys,
   shared preferences, and bounded lecture status metadata.
@@ -208,8 +212,11 @@ existing installation:
 - Automatic cleanup can remove completed transcript payloads while retaining
   audit metadata.
 - Relay loss falls back to overlap-window Fireflies polling.
-- Ambiguous classes stop in **Needs review**; terminal and retryable failures are
-  distinct.
+- Ambiguous or manual-only classifications stop in **Needs review**. A selected
+  class can be changed later without creating a second Notion page.
+- Terminal and retryable failures are distinct. Successful transitions clear
+  obsolete errors; repeated Gemini failures can offer a named alternative model
+  while the durable retry schedule remains active.
 - Generated Notion content lives in revision-marked ClassSync-owned toggles.
   Retries reconcile markers; regeneration never deletes user/template blocks.
 - Transcript and summary checkpoints are plaintext inside OS-protected app data.

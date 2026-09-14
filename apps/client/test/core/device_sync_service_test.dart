@@ -145,7 +145,7 @@ void main() {
     },
   );
 
-  test('pushes all account-scoped credentials in schema v3 config', () async {
+  test('pushes all account-scoped credentials in schema v4 config', () async {
     await database.saveSettings(
       AppSettings.defaults.copyWith(displayName: 'Hugo'),
     );
@@ -174,7 +174,8 @@ void main() {
     await service.pushConfiguration();
 
     final config = client.writes['config']!;
-    expect(config['schemaVersion'], 3);
+    expect(config['schemaVersion'], 4);
+    expect((config['settings'] as Map)['useAiClassification'], isTrue);
     expect((config['settings'] as Map)['displayName'], 'Hugo');
     final savedCredentials = config['credentials'] as Map;
     expect(savedCredentials['firefliesConnections'], hasLength(2));
@@ -191,9 +192,10 @@ void main() {
       await credentials.write(CredentialKey.syncDeviceId, 'new-device');
       final client = _SnapshotAccountClient(
         remoteConfiguration: {
-          'schemaVersion': 3,
+          'schemaVersion': 4,
           'settings': {
             'displayName': 'Restored',
+            'useAiClassification': false,
             'notionSubjectsDataSourceId': 'subjects',
             'notionSummariesDataSourceId': 'summaries',
           },
@@ -237,6 +239,7 @@ void main() {
       );
       expect(await credentials.read(CredentialKey.syncDeviceId), 'new-device');
       expect(await credentials.read(CredentialKey.relayDeviceToken), isNull);
+      expect((await database.readSettings()).useAiClassification, isFalse);
     },
   );
 

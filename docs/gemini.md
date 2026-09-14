@@ -2,7 +2,18 @@
 
 ClassSync calls the Gemini `generateContent` REST API with `responseMimeType: application/json` and explicit JSON schemas.
 
-Default model is `gemini-3.8-flash` as of September 2026. Model names remain user-configurable because availability and retirement change.
+Class identification defaults to the lower-cost `gemini-3.1-flash-lite` model;
+structured summary generation defaults to `gemini-3.8-flash` as of September
+2026. Settings and first-run setup present supported models by product name in
+dropdowns rather than requiring raw model IDs. Legacy saved IDs remain visible
+until the user selects a supported model.
+
+Automatic AI identification is account-configurable. When disabled, ClassSync
+still applies an exact saved correction for a matching lecture title; otherwise
+it pauses at **Needs review** with the active Notion subjects for manual choice.
+Manual choices are persisted as local corrections. A user may also change an
+AI-selected class after publication: ClassSync regenerates subject-dependent
+content and replaces only its owned Notion section on the existing page.
 
 ClassSync validates a key with the model catalogue instead of spending a
 `generateContent` request. If the configured model is retired, unavailable, or
@@ -10,6 +21,11 @@ temporarily overloaded, ClassSync tries the next supported stable Flash model
 sequentially and remembers the first model that works for the rest of the app
 session. It makes at most three generation attempts for one operation and only
 one fallback for transient availability errors.
+
+After repeated Gemini failures (attempt 3, attempt 6, and the final attempt), an
+open foreground app offers a named model dropdown. Accepting switches the model
+for that operation and retries immediately. Declining, or having no foreground
+app, leaves exponential backoff unchanged.
 
 Authentication failures, timeouts, and HTTP 429 quota responses never trigger
 model hopping. Quota responses honor the server's retry delay with a minimum

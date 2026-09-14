@@ -2,6 +2,15 @@ import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'AI class identification uses the lightweight stable model by default',
+    () {
+      expect(AppSettings.defaults.useAiClassification, isTrue);
+      expect(AppSettings.defaults.classificationModel, 'gemini-3.1-flash-lite');
+      expect(geminiModelLabel('gemini-3.1-flash-lite'), contains('Flash-Lite'));
+    },
+  );
+
   test('production relay is available without manual URL entry', () {
     expect(
       AppSettings.defaults.relayBaseUrl,

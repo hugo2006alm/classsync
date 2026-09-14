@@ -64,6 +64,26 @@ enum SyncReason {
 
 enum ClassificationDecision { match, uncertain, notALecture }
 
+enum GeminiOperation { classification, summary }
+
+class ModelRetryPrompt {
+  const ModelRetryPrompt({
+    required this.jobId,
+    required this.operation,
+    required this.currentModel,
+    required this.attemptCount,
+    required this.message,
+    required this.retryScheduled,
+  });
+
+  final String jobId;
+  final GeminiOperation operation;
+  final String currentModel;
+  final int attemptCount;
+  final String message;
+  final bool retryScheduled;
+}
+
 class ClassificationCandidate {
   const ClassificationCandidate({
     required this.subjectId,
