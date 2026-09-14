@@ -83,8 +83,6 @@ class AccountSyncClient {
       };
       return AccountRegistrationPolicy(mode);
     } on DioException catch (error) {
-      // Older relays had no discovery endpoint and always required the
-      // DEVICE_API_TOKEN. Keep them compatible and fail closed.
       if (error.response?.statusCode == 404) {
         return const AccountRegistrationPolicy(AccountRegistrationMode.token);
       }
@@ -100,7 +98,6 @@ class AccountSyncClient {
       store.read(CredentialKey.syncDeviceId),
     ]);
     if (values.any((value) => value == null || value.isEmpty)) return null;
-    // Account credentials replace legacy bootstrap and enrolled-device secrets.
     await store.delete(CredentialKey.relayDeviceToken);
     await store.delete(CredentialKey.relayDeviceCredential);
     return SyncAccount(
@@ -114,6 +111,7 @@ class AccountSyncClient {
   Future<SyncAccount> createAccount({
     required String baseUrl,
     String? registrationCredential,
+    String? setupToken,
     required SecureCredentialStore store,
   }) async {
     final owner = await store.read(CredentialKey.syncLocalOwnerId);
@@ -123,7 +121,7 @@ class AccountSyncClient {
       );
     }
     try {
-      final credential = registrationCredential?.trim();
+      final credential = (registrationCredential ?? setupToken)?.trim();
       final response = await _dio.post<Map<String, dynamic>>(
         '${_base(baseUrl)}/accounts',
         options: Options(
