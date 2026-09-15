@@ -226,6 +226,18 @@ List<_RecentSummary> _recentSummaries(
 
 void _openRecentSummary(BuildContext context, _RecentSummary summary) {
   if (summary.job case final job?) {
+    if (job.notionPageId case final pageId?) {
+      context.go(
+        Uri(
+          path: '/library/${Uri.encodeComponent(pageId)}',
+          queryParameters: {
+            'title': job.summaryTitle ?? job.title,
+            if (job.notionUrl != null) 'url': job.notionUrl!,
+          },
+        ).toString(),
+      );
+      return;
+    }
     context.go('/sync/${job.id}');
     return;
   }
