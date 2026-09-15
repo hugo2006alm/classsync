@@ -6,13 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('summary language override metadata', () {
     test('keeps the override separate from resumable summary content', () {
-      final stored = summaryPartialsWithLanguage(
-        const [
-          {'title': 'Part one', 'content': 'Notes'},
-          {'title': 'Part two', 'content': 'More notes'},
-        ],
-        'English',
-      );
+      final stored = summaryPartialsWithLanguage(const [
+        {'title': 'Part one', 'content': 'Notes'},
+        {'title': 'Part two', 'content': 'More notes'},
+      ], 'English');
 
       expect(summaryLanguageOverrideFromPartials(stored), 'English');
       expect(summaryContentPartials(stored), const [
@@ -22,12 +19,9 @@ void main() {
     });
 
     test('blank override restores the app default without losing content', () {
-      final stored = summaryPartialsWithLanguage(
-        const [
-          {'title': 'Part one'},
-        ],
-        '   ',
-      );
+      final stored = summaryPartialsWithLanguage(const [
+        {'title': 'Part one'},
+      ], '   ');
 
       expect(summaryLanguageOverrideFromPartials(stored), isNull);
       expect(summaryContentPartials(stored), const [
