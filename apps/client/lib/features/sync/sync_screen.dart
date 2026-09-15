@@ -370,10 +370,8 @@ class _JobRow extends ConsumerWidget {
                   helperText:
                       'Leave blank to use the app default: $defaultLanguage',
                 ),
-                onSubmitted: (value) => Navigator.pop(
-                  dialogContext,
-                  value.trim(),
-                ),
+                onSubmitted: (value) =>
+                    Navigator.pop(dialogContext, value.trim()),
               ),
               if (job.summaryJson != null || job.notionPageId != null) ...[
                 const SizedBox(height: 14),
@@ -394,10 +392,8 @@ class _JobRow extends ConsumerWidget {
             child: const Text('Use default'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              controller.text.trim(),
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
             child: const Text('Save'),
           ),
         ],
@@ -421,9 +417,9 @@ class _JobRow extends ConsumerWidget {
       );
     } on IntegrationException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.userMessage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
     }
   }
 
@@ -451,14 +447,14 @@ class _JobRow extends ConsumerWidget {
     try {
       await ref.read(syncCoordinatorProvider).discardJob(job.id);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transcript discarded.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transcript discarded.')));
     } on IntegrationException catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.userMessage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
     }
   }
 }
