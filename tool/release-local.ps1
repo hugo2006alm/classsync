@@ -91,8 +91,9 @@ Pull/push the repository before publishing.
 "@
         }
 
-        $commitMessage = git log -1 --pretty=%B
+        $commitMessageLines = git log -1 --pretty=%B
         Assert-LastExitCode 'Read release commit message'
+        $commitMessage = $commitMessageLines -join "`n"
 
         if ($commitMessage -notmatch '\[(skip ci|ci skip)\]') {
             throw 'The release commit must contain [skip ci] so the tag push cannot start GitHub Actions.'
