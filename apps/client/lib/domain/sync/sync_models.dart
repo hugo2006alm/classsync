@@ -1,4 +1,38 @@
+import 'dart:convert';
+
 import '../academic/academic_models.dart';
+
+const _summaryLanguageOverrideKey = '_classsync_summary_language';
+
+String? summaryLanguageOverrideFromPartials(
+  Iterable<Map<String, dynamic>> partials,
+) {
+  for (final partial in partials) {
+    final value = partial[_summaryLanguageOverrideKey];
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> summaryContentPartials(
+  Iterable<Map<String, dynamic>> partials,
+) => partials
+    .where((partial) => !partial.containsKey(_summaryLanguageOverrideKey))
+    .map((partial) => Map<String, dynamic>.from(partial))
+    .toList();
+
+List<Map<String, dynamic>> summaryPartialsWithLanguage(
+  Iterable<Map<String, dynamic>> partials,
+  String? language,
+) {
+  final content = summaryContentPartials(partials);
+  final normalized = language?.trim();
+  if (normalized == null || normalized.isEmpty) return content;
+  return [
+    {_summaryLanguageOverrideKey: normalized},
+    ...content,
+  ];
+}
 
 enum SyncJobStatus {
   discovered,
@@ -229,6 +263,20 @@ class SyncJob {
   final String? leaseOwner;
   final DateTime? leaseExpiresAt;
   final String? summaryPartialsJson;
+
+  String? get summaryLanguageOverride {
+    final encoded = summaryPartialsJson;
+    if (encoded == null || encoded.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List<dynamic>) return null;
+      return summaryLanguageOverrideFromPartials(
+        decoded.whereType<Map<String, dynamic>>(),
+      );
+    } on FormatException {
+      return null;
+    }
+  }
 }
 
 class JobTimelineEvent {

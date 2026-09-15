@@ -293,6 +293,90 @@ class SyncCoordinator {
 
   Future<void> republishJob(String jobId) => _reprocess(jobId, 'republish');
 
+  Future<void> setSummaryLanguage(String jobId, String? language) async {
+    final job = await _database.readJob(jobId);
+    if (job == null) return;
+    final normalized = language?.trim();
+    final override = normalized == null || normalized.isEmpty
+        ? null
+        : normalized;
+    if (job.summaryLanguageOverride == override) return;
+
+    final shouldRegenerate =
+        job.summaryJson != null ||
+        job.summaryTitle != null ||
+        job.notionPageId != null;
+    final wasPublished = job.notionPageId != null;
+    if (shouldRegenerate &&
+        job.sourceType == 'manual' &&
+        job.transcriptJson == null) {
+      throw const IntegrationException(
+        integration: 'ClassSync',
+        code: 'manual_transcript_removed',
+        userMessage:
+            'This manual transcript is no longer stored. Import it again to change its summary language.',
+        retryable: false,
+      );
+    }
+
+    final prepared = await _prepareIfIdle(jobId, () async {
+      if (shouldRegenerate) {
+        await _database.prepareReprocess(jobId, 'regenerate');
+      }
+      await _database.saveSummaryPartials(
+        jobId,
+        summaryPartialsWithLanguage(const [], override),
+      );
+    });
+    if (!prepared) {
+      throw const IntegrationException(
+        integration: 'ClassSync',
+        code: 'job_busy',
+        userMessage:
+            'This transcript is being processed right now. Try changing the language when the current step finishes.',
+        retryable: true,
+      );
+    }
+    if (shouldRegenerate) {
+      await _claimAndProcess(jobId, forcePublish: wasPublished);
+    }
+  }
+
+  Future<void> discardJob(String jobId) async {
+    final job = await _database.readJob(jobId);
+    if (job == null) return;
+    if (job.notionPageId != null ||
+        job.status == SyncJobStatus.success ||
+        job.status == SyncJobStatus.duplicate) {
+      throw const IntegrationException(
+        integration: 'ClassSync',
+        code: 'published_job',
+        userMessage:
+            'This transcript already has a published summary. Open it in Library instead of discarding the sync record.',
+        retryable: false,
+      );
+    }
+    final prepared = await _prepareIfIdle(jobId, () async {
+      await _database.setJobStatus(
+        jobId,
+        SyncJobStatus.ignored,
+        'Transcript discarded by user',
+        terminal: true,
+      );
+      await _database.clearTranscriptPayload(jobId);
+      await _database.saveSummaryPartials(jobId, const []);
+    });
+    if (!prepared) {
+      throw const IntegrationException(
+        integration: 'ClassSync',
+        code: 'job_busy',
+        userMessage:
+            'This transcript is being processed right now. Try discarding it when the current step finishes.',
+        retryable: true,
+      );
+    }
+  }
+
   Future<void> _reprocess(String jobId, String mode) async {
     final job = await _database.readJob(jobId);
     if (job == null) return;
@@ -305,10 +389,18 @@ class SyncCoordinator {
         retryable: false,
       );
     }
-    if (!await _prepareIfIdle(
-      jobId,
-      () => _database.prepareReprocess(jobId, mode),
-    )) {
+    final languageOverride = summaryLanguageOverrideFromPartials(
+      await _database.readSummaryPartials(jobId),
+    );
+    if (!await _prepareIfIdle(jobId, () async {
+      await _database.prepareReprocess(jobId, mode);
+      if (languageOverride != null) {
+        await _database.saveSummaryPartials(
+          jobId,
+          summaryPartialsWithLanguage(const [], languageOverride),
+        );
+      }
+    })) {
       return;
     }
     await _claimAndProcess(jobId, forcePublish: mode != 'reclassify');
@@ -490,6 +582,13 @@ class SyncCoordinator {
 
       job = await _database.readJob(jobId);
       if (job == null) return false;
+      final storedSummaryPartials = await _database.readSummaryPartials(jobId);
+      final summaryLanguageOverride = summaryLanguageOverrideFromPartials(
+        storedSummaryPartials,
+      );
+      final summarySettings = summaryLanguageOverride == null
+          ? settings
+          : settings.copyWith(summaryLanguage: summaryLanguageOverride);
       LectureSummary summary;
       if (job.summaryJson case final encoded?) {
         summary = LectureSummary.decode(encoded);
@@ -506,7 +605,7 @@ class SyncCoordinator {
           model: settings.summaryModel,
           transcript: transcript,
           subject: subject,
-          settings: settings,
+          settings: summarySettings,
           courseContext: (await _database.readAcademicRecords())
               .where(
                 (record) =>
@@ -516,14 +615,23 @@ class SyncCoordinator {
               )
               .take(8)
               .toList(),
-          completedPartials: await _database.readSummaryPartials(jobId),
+          completedPartials: summaryContentPartials(storedSummaryPartials),
           onCheckpoint: (partials) async {
-            await _database.saveSummaryPartials(jobId, partials);
+            await _database.saveSummaryPartials(
+              jobId,
+              summaryPartialsWithLanguage(partials, summaryLanguageOverride),
+            );
             await _renewLease(jobId);
             await _renewRemoteClaim(job!, settings, relaySession);
           },
         );
         await _database.saveSummary(jobId, summary);
+        if (summaryLanguageOverride != null) {
+          await _database.saveSummaryPartials(
+            jobId,
+            summaryPartialsWithLanguage(const [], summaryLanguageOverride),
+          );
+        }
       }
       await _saveLectureTasks(job, subject, summary);
 

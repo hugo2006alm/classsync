@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/providers.dart';
 import '../../core/integrations/integration_exception.dart';
+import '../../core/providers.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
 
-enum _JobFilter { all, pending, processing, review, completed, failed, ignored }
+enum _JobFilter { all, pending, processing, review, completed, failed }
+
+enum _JobAction { language, discard }
 
 class SyncScreen extends ConsumerStatefulWidget {
   const SyncScreen({super.key});
@@ -57,7 +59,10 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
           message: error.toString(),
         ),
         data: (jobs) {
-          final filtered = jobs.where(_matchesFilter).toList();
+          final visibleJobs = jobs
+              .where((job) => job.status != SyncJobStatus.ignored)
+              .toList();
+          final filtered = visibleJobs.where(_matchesFilter).toList();
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -96,13 +101,13 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                 ),
               if (filtered.isEmpty)
                 EmptyState(
-                  icon: jobs.isEmpty
+                  icon: visibleJobs.isEmpty
                       ? Icons.inbox_outlined
                       : Icons.filter_alt_off_rounded,
-                  title: jobs.isEmpty
+                  title: visibleJobs.isEmpty
                       ? 'No transcripts discovered yet'
                       : 'No matching jobs',
-                  message: jobs.isEmpty
+                  message: visibleJobs.isEmpty
                       ? 'Sync now checks the relay and Fireflies recovery range.'
                       : 'Choose another status filter.',
                 )
@@ -138,7 +143,6 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
     _JobFilter.failed =>
       job.status == SyncJobStatus.failedRetryable ||
           job.status == SyncJobStatus.failedTerminal,
-    _JobFilter.ignored => job.status == SyncJobStatus.ignored,
   };
 
   Future<void> _showManualImport(BuildContext context) async {
@@ -252,7 +256,7 @@ class _JobRow extends ConsumerWidget {
                   ?.name ??
               'Fireflies';
     return InkWell(
-      onTap: () => context.go('/sync/${job.id}'),
+      onTap: () => _openJob(context, job),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
         child: Row(
@@ -286,6 +290,8 @@ class _JobRow extends ConsumerWidget {
                         job.meetingDate.toLocal(),
                       ),
                       if (job.subjectName != null) job.subjectName!,
+                      if (job.summaryLanguageOverride case final language?)
+                        'Summary: $language',
                       if (job.classificationConfidence != null)
                         '${(job.classificationConfidence! * 100).round()}% heuristic',
                     ].join(' · '),
@@ -295,7 +301,32 @@ class _JobRow extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
+            PopupMenuButton<_JobAction>(
+              tooltip: 'Transcript actions',
+              onSelected: (action) => _handleAction(context, ref, action),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _JobAction.language,
+                  enabled: !job.status.isProcessing,
+                  child: const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.translate_rounded),
+                    title: Text('Summary language'),
+                  ),
+                ),
+                if (_canDiscard(job))
+                  const PopupMenuItem(
+                    value: _JobAction.discard,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline_rounded),
+                      title: Text('Discard transcript'),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 4),
             StatusBadge(job.status),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right_rounded),
@@ -304,7 +335,157 @@ class _JobRow extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _handleAction(
+    BuildContext context,
+    WidgetRef ref,
+    _JobAction action,
+  ) => switch (action) {
+    _JobAction.language => _chooseLanguage(context, ref),
+    _JobAction.discard => _discard(context, ref),
+  };
+
+  Future<void> _chooseLanguage(BuildContext context, WidgetRef ref) async {
+    final settings = ref.read(settingsProvider).valueOrNull;
+    final defaultLanguage = settings?.summaryLanguage ?? 'app default';
+    final controller = TextEditingController(
+      text: job.summaryLanguageOverride ?? '',
+    );
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Summary language'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Language for this transcript',
+                  hintText: 'e.g. English',
+                  helperText:
+                      'Leave blank to use the app default: $defaultLanguage',
+                ),
+                onSubmitted: (value) => Navigator.pop(
+                  dialogContext,
+                  value.trim(),
+                ),
+              ),
+              if (job.summaryJson != null || job.notionPageId != null) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'This transcript already has a summary. Changing the language will regenerate it and update the published Library entry.',
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, ''),
+            child: const Text('Use default'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              controller.text.trim(),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (selected == null || !context.mounted) return;
+    try {
+      await ref
+          .read(syncCoordinatorProvider)
+          .setSummaryLanguage(job.id, selected.isEmpty ? null : selected);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            selected.isEmpty
+                ? 'This transcript now uses the default summary language.'
+                : 'Summary language set to $selected.',
+          ),
+        ),
+      );
+    } on IntegrationException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.userMessage)),
+      );
+    }
+  }
+
+  Future<void> _discard(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Discard transcript?'),
+        content: Text(
+          '“${job.title}” will be removed from Sync and will not be processed again if Fireflies rediscovers it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref.read(syncCoordinatorProvider).discardJob(job.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transcript discarded.')),
+      );
+    } on IntegrationException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.userMessage)),
+      );
+    }
+  }
 }
+
+bool _canDiscard(SyncJob job) =>
+    !job.status.isProcessing &&
+    job.status != SyncJobStatus.success &&
+    job.status != SyncJobStatus.duplicate &&
+    job.notionPageId == null;
+
+void _openJob(BuildContext context, SyncJob job) {
+  if ((job.status == SyncJobStatus.success ||
+          job.status == SyncJobStatus.duplicate) &&
+      job.notionPageId != null) {
+    context.go(_libraryLocation(job));
+    return;
+  }
+  context.go('/sync/${job.id}');
+}
+
+String _libraryLocation(SyncJob job) => Uri(
+  path: '/library/${Uri.encodeComponent(job.notionPageId!)}',
+  queryParameters: {
+    'title': job.summaryTitle ?? job.title,
+    if (job.notionUrl != null) 'url': job.notionUrl!,
+  },
+).toString();
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
@@ -317,5 +498,4 @@ String _filterLabel(_JobFilter filter) => switch (filter) {
   _JobFilter.review => 'Needs review',
   _JobFilter.completed => 'Completed',
   _JobFilter.failed => 'Failed',
-  _JobFilter.ignored => 'Ignored',
 };
