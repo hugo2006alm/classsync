@@ -397,70 +397,84 @@ class _JobRow extends ConsumerWidget {
     final selected = await showDialog<AcademicSubject>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(job.subjectId == null ? 'Choose class' : 'Change class'),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: selectedId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Active class'),
-                  items: subjects
-                      .map(
-                        (subject) => DropdownMenuItem(
-                          value: subject.notionId,
-                          child: Text(
-                            subject.name,
-                            overflow: TextOverflow.ellipsis,
+        builder: (context, setDialogState) {
+          final reconfirming = selectedId == job.subjectId;
+          return AlertDialog(
+            title: Text(job.subjectId == null ? 'Choose class' : 'Change class'),
+            content: SizedBox(
+              width: 480,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Active class'),
+                    items: subjects
+                        .map(
+                          (subject) => DropdownMenuItem(
+                            value: subject.notionId,
+                            child: Text(
+                              subject.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => selectedId = value);
-                    }
-                  },
-                ),
-                if (job.notionPageId != null) ...[
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Changing the class regenerates the summary, updates the existing Notion page, and refreshes lecture tasks without creating a duplicate.',
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => selectedId = value);
+                      }
+                    },
                   ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: selectedId == job.subjectId
-                  ? null
-                  : () => Navigator.pop(
-                      dialogContext,
-                      subjects.firstWhere(
-                        (subject) => subject.notionId == selectedId,
-                      ),
+                  if (job.notionPageId != null) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      reconfirming
+                          ? 'Using the current class again regenerates the summary with this class as authoritative and updates the existing Notion page.'
+                          : 'Changing the class regenerates the summary, updates the existing Notion page, and refreshes lecture tasks without creating a duplicate.',
                     ),
-              child: const Text('Use class'),
+                  ],
+                ],
+              ),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  subjects.firstWhere(
+                    (subject) => subject.notionId == selectedId,
+                  ),
+                ),
+                child: Text(
+                  reconfirming && job.notionPageId != null
+                      ? 'Regenerate summary'
+                      : 'Use class',
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (selected == null || !context.mounted) return;
+    final reconfirmed = selected.notionId == job.subjectId;
     try {
       await ref.read(syncCoordinatorProvider).confirmSubject(job.id, selected);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Class changed to ${selected.name}.')),
+        SnackBar(
+          content: Text(
+            reconfirmed
+                ? 'Summary regenerated using ${selected.name} as the authoritative class.'
+                : 'Class changed to ${selected.name}.',
+          ),
+        ),
       );
     } on IntegrationException catch (error) {
       if (!context.mounted) return;
