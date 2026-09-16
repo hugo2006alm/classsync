@@ -9,6 +9,7 @@ import '../../core/integrations/relay/relay_client.dart';
 import '../../core/security/secure_credential_store.dart';
 import '../academic/academic_models.dart';
 import '../academic/academic_hub_models.dart';
+import '../settings/app_settings.dart';
 import 'retry_policy.dart';
 import 'sync_coordinator_base.dart' as base;
 import 'sync_models.dart';
@@ -39,7 +40,7 @@ class SyncCoordinator extends base.SyncCoordinator {
          database: database,
          credentials: credentials,
          fireflies: fireflies,
-         gemini: gemini,
+         gemini: _AuthoritativeSummaryGeminiClient(gemini),
          notion: notion,
          relay: relay,
          retryPolicy: retryPolicy,
@@ -135,6 +136,127 @@ class SyncCoordinator extends base.SyncCoordinator {
       source: AcademicSource.manual,
       kind: AcademicRecordKind.lectureTask,
       records: retained,
+    );
+  }
+}
+
+/// The subject selected by ClassSync is authoritative for note generation.
+///
+/// This matters after a user fixes a classification: the transcript itself can
+/// still contain a misleading course label, and a summarizer that faithfully
+/// repeats it can leave the regenerated summary attached to the right Notion
+/// relation while describing the wrong course in prose. The wrapper keeps the
+/// original classifier untouched and strengthens only the summarization input.
+class _AuthoritativeSummaryGeminiClient extends GeminiClient {
+  _AuthoritativeSummaryGeminiClient(this._delegate);
+
+  static const _identityHint =
+      ' [ClassSync authoritative course selection: keep this exact course '
+      'identity for the lecture; if the transcript or meeting metadata names '
+      'another course, do not present that conflicting name as the course this '
+      'lecture belongs to]';
+
+  final GeminiClient _delegate;
+
+  @override
+  Future<ClassificationResult> classify({
+    required String apiKey,
+    required String model,
+    required LectureTranscript transcript,
+    required List<AcademicSubject> subjects,
+    TimetableContext? timetableContext,
+  }) => _delegate.classify(
+    apiKey: apiKey,
+    model: model,
+    transcript: transcript,
+    subjects: subjects,
+    timetableContext: timetableContext,
+  );
+
+  @override
+  Future<LectureSummary> summarizeResumable({
+    required String apiKey,
+    required String model,
+    required LectureTranscript transcript,
+    required AcademicSubject subject,
+    required AppSettings settings,
+    List<Map<String, dynamic>> completedPartials = const [],
+    Future<void> Function(List<Map<String, dynamic>> partials)? onCheckpoint,
+    List<AcademicRecord> courseContext = const [],
+  }) async {
+    final authoritativeSubject = AcademicSubject(
+      notionId: subject.notionId,
+      name: '${subject.name}$_identityHint',
+      year: subject.year,
+      semester: subject.semester,
+      status: subject.status,
+      lastSyncedAt: subject.lastSyncedAt,
+      notionUrl: subject.notionUrl,
+      aliases: subject.aliases,
+      professors: subject.professors,
+      scheduleHints: subject.scheduleHints,
+      summaryCount: subject.summaryCount,
+      latestSummaryTitle: subject.latestSummaryTitle,
+    );
+    final summary = await _delegate.summarizeResumable(
+      apiKey: apiKey,
+      model: model,
+      transcript: transcript,
+      subject: authoritativeSubject,
+      settings: settings,
+      completedPartials: completedPartials,
+      onCheckpoint: onCheckpoint,
+      courseContext: courseContext,
+    );
+    return _cleanSummaryIdentity(summary, subject.name);
+  }
+
+  LectureSummary _cleanSummaryIdentity(
+    LectureSummary summary,
+    String subjectName,
+  ) {
+    String clean(String value) => value
+        .replaceAll('$subjectName$_identityHint', subjectName)
+        .replaceAll(_identityHint, '');
+    List<String> cleanList(List<String> values) =>
+        values.map(clean).toList(growable: false);
+
+    return LectureSummary(
+      title: clean(summary.title),
+      context: clean(summary.context),
+      objectives: cleanList(summary.objectives),
+      sections: summary.sections
+          .map(
+            (section) => LectureSummarySection(
+              title: clean(section.title),
+              content: clean(section.content),
+              keyPoints: cleanList(section.keyPoints),
+              examples: cleanList(section.examples),
+              code: cleanList(section.code),
+              formulas: cleanList(section.formulas),
+            ),
+          )
+          .toList(growable: false),
+      examHints: cleanList(summary.examHints),
+      teacherEmphasis: cleanList(summary.teacherEmphasis),
+      importantDetails: cleanList(summary.importantDetails),
+      questionsAndAnswers: cleanList(summary.questionsAndAnswers),
+      assignmentsAndDeadlines: cleanList(summary.assignmentsAndDeadlines),
+      actionItems: summary.actionItems
+          .map(
+            (item) => LectureActionCandidate(
+              title: clean(item.title),
+              description: clean(item.description),
+              dueAt: item.dueAt,
+              confidence: item.confidence,
+              supportingSegment: clean(item.supportingSegment),
+              timestampSeconds: item.timestampSeconds,
+            ),
+          )
+          .toList(growable: false),
+      uncertainties: cleanList(summary.uncertainties),
+      conclusions: cleanList(summary.conclusions),
+      tags: cleanList(summary.tags),
     );
   }
 }
