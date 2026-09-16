@@ -211,6 +211,12 @@ class NotionClient extends base.NotionClient {
               : payload?['url']?.toString() ?? '',
         _ => spans.map((span) => span.text).join(),
       };
+      final checked = type == 'to_do' && payload != null
+          ? (payload['checked'] as bool?)
+          : null;
+      final language = type == 'code' && payload != null
+          ? payload['language']?.toString()
+          : null;
       if (marker == null && (text.isNotEmpty || type == 'divider')) {
         output.add(
           NotionContentBlock(
@@ -222,8 +228,8 @@ class NotionClient extends base.NotionClient {
                 ? _calloutEmoji(payload ?? const <String, dynamic>{})
                 : null,
             color: payload?['color']?.toString(),
-            checked: type == 'to_do' ? payload?['checked'] as bool? : null,
-            language: type == 'code' ? payload?['language']?.toString() : null,
+            checked: checked,
+            language: language,
           ),
         );
       }
