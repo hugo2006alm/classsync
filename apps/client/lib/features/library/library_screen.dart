@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,11 @@ import '../../core/providers.dart';
 import '../../core/security/trusted_url_launcher.dart';
 import '../../domain/academic/academic_models.dart';
 import '../shared/page_frame.dart';
+
+final Set<String> _trustedNotionContentHosts = {
+  ...trustedNotionHosts,
+  'fireflies.ai',
+};
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -420,28 +426,167 @@ class _NotionBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     if (block.type == 'divider') return const Divider(height: 32);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final headingLevel = switch (block.type) {
       'heading_1' => 1,
       'heading_2' => 2,
       'heading_3' => 3,
       _ => 0,
     };
-    final prefix = switch (block.type) {
-      'bulleted_list_item' => '•  ',
-      'numbered_list_item' => '${block.depth + 1}.  ',
-      'to_do' => '□  ',
-      'callout' => '▸  ',
-      _ => '',
-    };
     final style = switch (headingLevel) {
       1 => theme.textTheme.headlineSmall,
       2 => theme.textTheme.titleLarge,
       3 => theme.textTheme.titleMedium,
-      _ =>
-        block.type == 'code'
-            ? theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace')
-            : theme.textTheme.bodyLarge,
+      _ => theme.textTheme.bodyLarge,
     };
+    final richText = _NotionRichText(
+      fallback: block.text,
+      spans: block.spans,
+      style: style,
+    );
+
+    Widget child;
+    switch (block.type) {
+      case 'callout':
+        child = DecoratedBox(
+          decoration: BoxDecoration(
+            color: _notionBackgroundColor(block.color) ??
+                scheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(block.icon ?? '📌', style: theme.textTheme.titleMedium),
+                const SizedBox(width: 10),
+                Expanded(child: richText),
+              ],
+            ),
+          ),
+        );
+      case 'code':
+        child = DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (block.language case final language?
+                    when language.trim().isNotEmpty &&
+                        language.toLowerCase() != 'plain text') ...[
+                  Text(
+                    language,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _NotionRichText(
+                  fallback: block.text,
+                  spans: block.spans,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      case 'equation':
+        child = Align(
+          alignment: Alignment.center,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SelectableText(
+                block.text,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontFamily: 'monospace',
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ),
+        );
+      case 'quote':
+        child = Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 3, color: scheme.outlineVariant),
+            const SizedBox(width: 12),
+            Expanded(child: richText),
+          ],
+        );
+      case 'to_do':
+        child = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(
+                block.checked == true
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 20,
+                color: scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: richText),
+          ],
+        );
+      case 'bulleted_list_item':
+        child = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(width: 4),
+            Text('•', style: style),
+            const SizedBox(width: 10),
+            Expanded(child: richText),
+          ],
+        );
+      case 'numbered_list_item':
+        child = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${block.depth + 1}.', style: style),
+            const SizedBox(width: 10),
+            Expanded(child: richText),
+          ],
+        );
+      default:
+        child = richText;
+    }
+
+    final background = _notionBackgroundColor(block.color);
+    if (background != null &&
+        block.type != 'callout' &&
+        block.type != 'code' &&
+        block.type != 'equation') {
+      child = DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: child,
+        ),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         12.0 * block.depth,
@@ -449,10 +594,122 @@ class _NotionBlock extends StatelessWidget {
         0,
         5,
       ),
-      child: SelectableText('$prefix${block.text}', style: style),
+      child: child,
     );
   }
 }
+
+class _NotionRichText extends StatefulWidget {
+  const _NotionRichText({
+    required this.fallback,
+    required this.spans,
+    required this.style,
+  });
+
+  final String fallback;
+  final List<NotionRichTextSpan> spans;
+  final TextStyle? style;
+
+  @override
+  State<_NotionRichText> createState() => _NotionRichTextState();
+}
+
+class _NotionRichTextState extends State<_NotionRichText> {
+  final Map<String, TapGestureRecognizer> _recognizers = {};
+
+  @override
+  void dispose() {
+    for (final recognizer in _recognizers.values) {
+      recognizer.dispose();
+    }
+    super.dispose();
+  }
+
+  TapGestureRecognizer _recognizer(String url) => _recognizers.putIfAbsent(
+    url,
+    () => TapGestureRecognizer()
+      ..onTap = () async {
+        final opened = await launchTrustedUrl(
+          url,
+          allowedHosts: _trustedNotionContentHosts,
+        );
+        if (!opened && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open this link safely.')),
+          );
+        }
+      },
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = widget.spans.isEmpty
+        ? [NotionRichTextSpan(text: widget.fallback)]
+        : widget.spans;
+    return SelectableText.rich(
+      TextSpan(
+        style: widget.style,
+        children: [
+          for (final span in spans)
+            TextSpan(
+              text: span.text,
+              style: _inlineStyle(context, widget.style, span),
+              recognizer: span.href == null ? null : _recognizer(span.href!),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+TextStyle _inlineStyle(
+  BuildContext context,
+  TextStyle? base,
+  NotionRichTextSpan span,
+) {
+  final decorations = <TextDecoration>[
+    if (span.underline || span.href != null) TextDecoration.underline,
+    if (span.strikethrough) TextDecoration.lineThrough,
+  ];
+  return (base ?? const TextStyle()).copyWith(
+    fontWeight: span.bold ? FontWeight.w700 : null,
+    fontStyle: span.italic ? FontStyle.italic : null,
+    decoration: decorations.isEmpty
+        ? null
+        : TextDecoration.combine(decorations),
+    fontFamily: span.code ? 'monospace' : null,
+    color: _notionTextColor(span.color),
+    backgroundColor: span.code
+        ? Theme.of(context).colorScheme.surfaceContainerHighest
+        : _notionBackgroundColor(span.color),
+  );
+}
+
+Color? _notionTextColor(String? color) => switch (color) {
+  'gray' => Colors.grey.shade700,
+  'brown' => Colors.brown.shade700,
+  'orange' => Colors.orange.shade800,
+  'yellow' => Colors.amber.shade800,
+  'green' => Colors.green.shade700,
+  'blue' => Colors.blue.shade700,
+  'purple' => Colors.purple.shade700,
+  'pink' => Colors.pink.shade600,
+  'red' => Colors.red.shade700,
+  _ => null,
+};
+
+Color? _notionBackgroundColor(String? color) => switch (color) {
+  'gray_background' => Colors.grey.withValues(alpha: 0.16),
+  'brown_background' => Colors.brown.withValues(alpha: 0.14),
+  'orange_background' => Colors.orange.withValues(alpha: 0.15),
+  'yellow_background' => Colors.amber.withValues(alpha: 0.18),
+  'green_background' => Colors.green.withValues(alpha: 0.14),
+  'blue_background' => Colors.blue.withValues(alpha: 0.14),
+  'purple_background' => Colors.purple.withValues(alpha: 0.14),
+  'pink_background' => Colors.pink.withValues(alpha: 0.14),
+  'red_background' => Colors.red.withValues(alpha: 0.14),
+  _ => null,
+};
 
 class _LibraryError extends StatelessWidget {
   const _LibraryError({required this.message, required this.onRetry});
