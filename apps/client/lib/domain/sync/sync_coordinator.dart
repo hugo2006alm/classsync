@@ -58,8 +58,7 @@ class SyncCoordinator extends base.SyncCoordinator {
   Future<void> confirmSubject(String jobId, AcademicSubject subject) async {
     final before = await _database.readJob(jobId);
     final reconfirmingPublishedSubject =
-        before?.subjectId == subject.notionId &&
-        (before?.summaryJson != null || before?.notionPageId != null);
+        before?.subjectId == subject.notionId && before?.notionPageId != null;
 
     if (reconfirmingPublishedSubject) {
       await _database.learnClassificationCorrection(jobId, subject);
