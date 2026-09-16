@@ -45,7 +45,10 @@ API. A token alone does not authorize access to arbitrary private pages.
 
 `Lista de Cadeiras` is canonical. Only rows where `Status = In progress` are classifier candidates. `Histórico de Resumos` receives `Nome`, `Data`, `Cadeira`, and optionally additive ClassSync properties. Schema changes require explicit confirmation and never rename or remove properties.
 
-Generated blocks live inside revision-marked ClassSync-owned toggles. Append
-checkpoints use those markers instead of total page-child count. Regenerate,
-reclassify, and republish keep the persisted page ID and replace only
-ClassSync-owned content, preserving user notes and template blocks.
+Generated blocks live in revision-marked ClassSync-owned paragraph containers.
+The marker is an invisible link used only as a resumable publication checkpoint;
+the summary children stay visible in Notion instead of being hidden in collapsed
+toggles. Opening or re-publishing a legacy ClassSync page migrates its old toggle
+wrapper to the visible format. Regenerate, reclassify, and republish keep the
+persisted page ID and replace only ClassSync-owned content, preserving user notes
+and template blocks.

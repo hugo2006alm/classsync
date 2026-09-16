@@ -10,7 +10,7 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (label, color, icon) = switch (status) {
-      SyncJobStatus.success => (
+      SyncJobStatus.success || SyncJobStatus.duplicate => (
         'Completed',
         scheme.primary,
         Icons.check_circle_rounded,
@@ -26,11 +26,6 @@ class StatusBadge extends StatelessWidget {
         Icons.error_rounded,
       ),
       SyncJobStatus.ignored => ('Ignored', scheme.outline, Icons.block_rounded),
-      SyncJobStatus.duplicate => (
-        'Duplicate',
-        scheme.secondary,
-        Icons.copy_rounded,
-      ),
       _ when status.isProcessing => (
         'Processing',
         scheme.primary,
