@@ -53,7 +53,18 @@ class SyncCoordinator extends base.SyncCoordinator {
 
   @override
   Future<void> confirmSubject(String jobId, AcademicSubject subject) async {
-    await super.confirmSubject(jobId, subject);
+    final before = await _database.readJob(jobId);
+    final reconfirmingPublishedSubject =
+        before?.subjectId == subject.notionId &&
+        (before?.summaryJson != null || before?.notionPageId != null);
+
+    if (reconfirmingPublishedSubject) {
+      await _database.learnClassificationCorrection(jobId, subject);
+      await super.regenerateSummary(jobId);
+    } else {
+      await super.confirmSubject(jobId, subject);
+    }
+
     final current = await _database.readJob(jobId);
     if (current?.subjectId == subject.notionId) {
       await _retagLectureTasks(jobId, subject);
