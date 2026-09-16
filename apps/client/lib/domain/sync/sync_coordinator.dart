@@ -79,8 +79,7 @@ class SyncCoordinator extends base.SyncCoordinator {
       final now = DateTime.now().toUtc();
       final busy =
           job.status.isProcessing ||
-          (job.leaseOwner != null &&
-              job.leaseExpiresAt?.isAfter(now) == true);
+          (job.leaseOwner != null && job.leaseExpiresAt?.isAfter(now) == true);
       if (busy) {
         throw const IntegrationException(
           integration: 'ClassSync',
@@ -105,10 +104,7 @@ class SyncCoordinator extends base.SyncCoordinator {
     });
   }
 
-  Future<void> _retagLectureTasks(
-    String jobId,
-    AcademicSubject subject,
-  ) async {
+  Future<void> _retagLectureTasks(String jobId, AcademicSubject subject) async {
     final current = await _database.readAcademicRecords(
       source: AcademicSource.manual,
       kind: AcademicRecordKind.lectureTask,

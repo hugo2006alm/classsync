@@ -452,7 +452,11 @@ Map<String, dynamic>? _cloneGeneratedChild(Map<String, dynamic> block) {
   final type = block['type'] as String?;
   if (type == null) return null;
   if (type == 'divider') {
-    return {'object': 'block', 'type': 'divider', 'divider': <String, dynamic>{}};
+    return {
+      'object': 'block',
+      'type': 'divider',
+      'divider': <String, dynamic>{},
+    };
   }
   final payload = block[type] as Map<String, dynamic>?;
   if (payload == null) return null;
@@ -492,10 +496,7 @@ Map<String, dynamic>? _cloneGeneratedChild(Map<String, dynamic> block) {
       'type': 'callout',
       'callout': {
         'rich_text': richText,
-        'icon': {
-          'type': 'emoji',
-          'emoji': _calloutEmoji(payload) ?? '📌',
-        },
+        'icon': {'type': 'emoji', 'emoji': _calloutEmoji(payload) ?? '📌'},
       },
     },
     'code' => {
@@ -543,27 +544,32 @@ String? _firstHref(dynamic richText) {
 
 List<NotionRichTextSpan> _richTextSpans(dynamic richText) {
   if (richText is! List) return const [];
-  return richText.whereType<Map<String, dynamic>>().map((item) {
-    final annotations = item['annotations'] as Map<String, dynamic>? ?? const {};
-    final text = item['text'] as Map<String, dynamic>?;
-    final equation = item['equation'] as Map<String, dynamic>?;
-    final value =
-        item['plain_text']?.toString() ??
-        text?['content']?.toString() ??
-        equation?['expression']?.toString() ??
-        '';
-    final link = text?['link'] as Map<String, dynamic>?;
-    return NotionRichTextSpan(
-      text: value,
-      href: item['href']?.toString() ?? link?['url']?.toString(),
-      bold: annotations['bold'] == true,
-      italic: annotations['italic'] == true,
-      underline: annotations['underline'] == true,
-      strikethrough: annotations['strikethrough'] == true,
-      code: annotations['code'] == true,
-      color: annotations['color']?.toString(),
-    );
-  }).where((span) => span.text.isNotEmpty).toList();
+  return richText
+      .whereType<Map<String, dynamic>>()
+      .map((item) {
+        final annotations =
+            item['annotations'] as Map<String, dynamic>? ?? const {};
+        final text = item['text'] as Map<String, dynamic>?;
+        final equation = item['equation'] as Map<String, dynamic>?;
+        final value =
+            item['plain_text']?.toString() ??
+            text?['content']?.toString() ??
+            equation?['expression']?.toString() ??
+            '';
+        final link = text?['link'] as Map<String, dynamic>?;
+        return NotionRichTextSpan(
+          text: value,
+          href: item['href']?.toString() ?? link?['url']?.toString(),
+          bold: annotations['bold'] == true,
+          italic: annotations['italic'] == true,
+          underline: annotations['underline'] == true,
+          strikethrough: annotations['strikethrough'] == true,
+          code: annotations['code'] == true,
+          color: annotations['color']?.toString(),
+        );
+      })
+      .where((span) => span.text.isNotEmpty)
+      .toList();
 }
 
 String? _richText(dynamic richText) {

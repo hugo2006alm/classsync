@@ -29,10 +29,7 @@ void main() {
                         {
                           'plain_text': 'source',
                           'href': 'https://app.fireflies.ai/view/example',
-                          'annotations': {
-                            'italic': true,
-                            'underline': true,
-                          },
+                          'annotations': {'italic': true, 'underline': true},
                         },
                       ],
                     },
@@ -79,10 +76,9 @@ void main() {
       ),
     );
 
-    final blocks = await NotionClient(dio: dio).readPageContent(
-      token: 'secret',
-      pageId: 'page',
-    );
+    final blocks = await NotionClient(
+      dio: dio,
+    ).readPageContent(token: 'secret', pageId: 'page');
 
     expect(blocks, hasLength(4));
     expect(blocks[0].text, 'Important source');
@@ -90,10 +86,7 @@ void main() {
     expect(blocks[0].spans[0].bold, isTrue);
     expect(blocks[0].spans[1].italic, isTrue);
     expect(blocks[0].spans[1].underline, isTrue);
-    expect(
-      blocks[0].spans[1].href,
-      'https://app.fireflies.ai/view/example',
-    );
+    expect(blocks[0].spans[1].href, 'https://app.fireflies.ai/view/example');
     expect(blocks[1].icon, '💡');
     expect(blocks[1].color, 'yellow_background');
     expect(blocks[2].language, 'dart');
