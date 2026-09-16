@@ -5,13 +5,14 @@ import 'package:intl/intl.dart';
 
 import '../../core/integrations/integration_exception.dart';
 import '../../core/providers.dart';
+import '../../domain/academic/academic_models.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
 
 enum _JobFilter { all, pending, processing, review, completed, failed }
 
-enum _JobAction { language, discard }
+enum _JobAction { openSummary, changeSubject, language, discard }
 
 class SyncScreen extends ConsumerStatefulWidget {
   const SyncScreen({super.key});
@@ -248,6 +249,9 @@ class _JobRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final connections =
         ref.watch(firefliesConnectionsProvider).valueOrNull ?? const [];
+    final subjects =
+        ref.watch(activeSubjectsProvider).valueOrNull ??
+        const <AcademicSubject>[];
     final sourceName = job.sourceType == 'manual'
         ? 'Manual import'
         : connections
@@ -302,10 +306,37 @@ class _JobRow extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
+            if (job.notionPageId != null) ...[
+              IconButton.filledTonal(
+                tooltip: 'Read summary in Library',
+                onPressed: () => context.go(_libraryLocation(job)),
+                icon: const Icon(Icons.auto_stories_rounded),
+              ),
+              const SizedBox(width: 4),
+            ],
             PopupMenuButton<_JobAction>(
               tooltip: 'Transcript actions',
-              onSelected: (action) => _handleAction(context, ref, action),
+              onSelected: (action) =>
+                  _handleAction(context, ref, subjects, action),
               itemBuilder: (context) => [
+                if (job.notionPageId != null)
+                  const PopupMenuItem(
+                    value: _JobAction.openSummary,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.auto_stories_rounded),
+                      title: Text('Read summary'),
+                    ),
+                  ),
+                if (!job.status.isProcessing && subjects.isNotEmpty)
+                  const PopupMenuItem(
+                    value: _JobAction.changeSubject,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Change class'),
+                    ),
+                  ),
                 PopupMenuItem(
                   value: _JobAction.language,
                   enabled: !job.status.isProcessing,
@@ -339,11 +370,110 @@ class _JobRow extends ConsumerWidget {
   Future<void> _handleAction(
     BuildContext context,
     WidgetRef ref,
+    List<AcademicSubject> subjects,
     _JobAction action,
-  ) => switch (action) {
-    _JobAction.language => _chooseLanguage(context, ref),
-    _JobAction.discard => _discard(context, ref),
-  };
+  ) async {
+    switch (action) {
+      case _JobAction.openSummary:
+        if (job.notionPageId != null) context.go(_libraryLocation(job));
+      case _JobAction.changeSubject:
+        await _chooseSubject(context, ref, subjects);
+      case _JobAction.language:
+        await _chooseLanguage(context, ref);
+      case _JobAction.discard:
+        await _discard(context, ref);
+    }
+  }
+
+  Future<void> _chooseSubject(
+    BuildContext context,
+    WidgetRef ref,
+    List<AcademicSubject> subjects,
+  ) async {
+    if (subjects.isEmpty) return;
+    var selectedId = subjects.any((subject) => subject.notionId == job.subjectId)
+        ? job.subjectId!
+        : subjects.first.notionId;
+    final selected = await showDialog<AcademicSubject>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(job.subjectId == null ? 'Choose class' : 'Change class'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Active class'),
+                  items: subjects
+                      .map(
+                        (subject) => DropdownMenuItem(
+                          value: subject.notionId,
+                          child: Text(
+                            subject.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => selectedId = value);
+                    }
+                  },
+                ),
+                if (job.notionPageId != null) ...[
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Changing the class regenerates the summary, updates the existing Notion page, and refreshes lecture tasks without creating a duplicate.',
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selectedId == job.subjectId
+                  ? null
+                  : () => Navigator.pop(
+                      dialogContext,
+                      subjects.firstWhere(
+                        (subject) => subject.notionId == selectedId,
+                      ),
+                    ),
+              child: const Text('Use class'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !context.mounted) return;
+    try {
+      await ref.read(syncCoordinatorProvider).confirmSubject(job.id, selected);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Class changed to ${selected.name}.')),
+      );
+    } on IntegrationException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update class: $error')),
+      );
+    }
+  }
 
   Future<void> _chooseLanguage(BuildContext context, WidgetRef ref) async {
     final settings = ref.read(settingsProvider).valueOrNull;
@@ -429,7 +559,9 @@ class _JobRow extends ConsumerWidget {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Discard transcript?'),
         content: Text(
-          '“${job.title}” will be removed from Sync and will not be processed again if Fireflies rediscovers it.',
+          job.notionPageId == null
+              ? '“${job.title}” will be removed from Sync and will not be processed again if Fireflies rediscovers it.'
+              : '“${job.title}” will be removed from Sync. Its published summary stays in Library/Notion, and lecture tasks derived from this transcript are removed.',
         ),
         actions: [
           TextButton(
@@ -459,19 +591,9 @@ class _JobRow extends ConsumerWidget {
   }
 }
 
-bool _canDiscard(SyncJob job) =>
-    !job.status.isProcessing &&
-    job.status != SyncJobStatus.success &&
-    job.status != SyncJobStatus.duplicate &&
-    job.notionPageId == null;
+bool _canDiscard(SyncJob job) => !job.status.isProcessing;
 
 void _openJob(BuildContext context, SyncJob job) {
-  if ((job.status == SyncJobStatus.success ||
-          job.status == SyncJobStatus.duplicate) &&
-      job.notionPageId != null) {
-    context.go(_libraryLocation(job));
-    return;
-  }
   context.go('/sync/${job.id}');
 }
 

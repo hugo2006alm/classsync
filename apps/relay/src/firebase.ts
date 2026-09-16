@@ -115,16 +115,16 @@ async function sendToDevice(
       body: JSON.stringify({
         message: {
           token: device.push_token,
-          notification: {
-            title: "ClassSync",
-            body: "Nova aula pronta para sincronizar.",
-          },
           data: {
             eventId: event.id,
             firefliesTranscriptId: event.transcriptId,
             eventType: event.eventType,
+            wakeReason: "transcript_ready",
           },
-          android: { priority: "high" },
+          android: {
+            priority: "high",
+            ttl: "900s",
+          },
         },
       }),
     },
