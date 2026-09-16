@@ -391,7 +391,8 @@ class _JobRow extends ConsumerWidget {
     List<AcademicSubject> subjects,
   ) async {
     if (subjects.isEmpty) return;
-    var selectedId = subjects.any((subject) => subject.notionId == job.subjectId)
+    var selectedId =
+        subjects.any((subject) => subject.notionId == job.subjectId)
         ? job.subjectId!
         : subjects.first.notionId;
     final selected = await showDialog<AcademicSubject>(
@@ -400,7 +401,9 @@ class _JobRow extends ConsumerWidget {
         builder: (context, setDialogState) {
           final reconfirming = selectedId == job.subjectId;
           return AlertDialog(
-            title: Text(job.subjectId == null ? 'Choose class' : 'Change class'),
+            title: Text(
+              job.subjectId == null ? 'Choose class' : 'Change class',
+            ),
             content: SizedBox(
               width: 480,
               child: Column(
@@ -410,7 +413,9 @@ class _JobRow extends ConsumerWidget {
                   DropdownButtonFormField<String>(
                     initialValue: selectedId,
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Active class'),
+                    decoration: const InputDecoration(
+                      labelText: 'Active class',
+                    ),
                     items: subjects
                         .map(
                           (subject) => DropdownMenuItem(
@@ -483,9 +488,9 @@ class _JobRow extends ConsumerWidget {
       ).showSnackBar(SnackBar(content: Text(error.userMessage)));
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update class: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update class: $error')));
     }
   }
 

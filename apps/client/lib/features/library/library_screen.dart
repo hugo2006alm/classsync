@@ -450,7 +450,8 @@ class _NotionBlock extends StatelessWidget {
       case 'callout':
         child = DecoratedBox(
           decoration: BoxDecoration(
-            color: _notionBackgroundColor(block.color) ??
+            color:
+                _notionBackgroundColor(block.color) ??
                 scheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(12),
           ),
