@@ -5,13 +5,50 @@ import '../integration_exception.dart';
 import 'notion_client_base.dart' as base;
 
 export 'notion_client_base.dart'
-    show
-        NotionContentBlock,
-        NotionDataSource,
-        NotionPageRef,
-        NotionSummaryRecord;
+    show NotionDataSource, NotionPageRef, NotionSummaryRecord;
 
 const _notionMarkerHost = 'classsync.invalid';
+
+class NotionRichTextSpan {
+  const NotionRichTextSpan({
+    required this.text,
+    this.href,
+    this.bold = false,
+    this.italic = false,
+    this.underline = false,
+    this.strikethrough = false,
+    this.code = false,
+    this.color,
+  });
+
+  final String text;
+  final String? href;
+  final bool bold;
+  final bool italic;
+  final bool underline;
+  final bool strikethrough;
+  final bool code;
+  final String? color;
+}
+
+class NotionContentBlock extends base.NotionContentBlock {
+  const NotionContentBlock({
+    required super.type,
+    required super.text,
+    required super.depth,
+    this.spans = const [],
+    this.icon,
+    this.color,
+    this.checked,
+    this.language,
+  });
+
+  final List<NotionRichTextSpan> spans;
+  final String? icon;
+  final String? color;
+  final bool? checked;
+  final String? language;
+}
 
 /// Compatibility layer around the original Notion adapter.
 ///
@@ -39,13 +76,13 @@ class NotionClient extends base.NotionClient {
   );
 
   @override
-  Future<List<base.NotionContentBlock>> readPageContent({
+  Future<List<NotionContentBlock>> readPageContent({
     required String token,
     required String pageId,
   }) async {
     try {
       await _migrateLegacySummaryContent(token: token, pageId: pageId);
-      final output = <base.NotionContentBlock>[];
+      final output = <NotionContentBlock>[];
       await _readContentLevel(
         token: token,
         blockId: pageId,
@@ -156,7 +193,7 @@ class NotionClient extends base.NotionClient {
     required String token,
     required String blockId,
     required int depth,
-    required List<base.NotionContentBlock> output,
+    required List<NotionContentBlock> output,
   }) async {
     if (depth > 5 || output.length >= 800) return;
     final children = await _children(token: token, blockId: blockId);
@@ -165,12 +202,29 @@ class NotionClient extends base.NotionClient {
       final type = block['type'] as String? ?? 'unsupported';
       final payload = block[type] as Map<String, dynamic>?;
       final marker = _ownedMarker(block);
-      final text = type == 'equation'
-          ? (payload?['expression']?.toString() ?? '')
-          : (_richText(payload?['rich_text']) ?? '');
+      final spans = _richTextSpans(payload?['rich_text']);
+      final text = switch (type) {
+        'equation' => payload?['expression']?.toString() ?? '',
+        'bookmark' =>
+          spans.isNotEmpty
+              ? spans.map((span) => span.text).join()
+              : payload?['url']?.toString() ?? '',
+        _ => spans.map((span) => span.text).join(),
+      };
       if (marker == null && (text.isNotEmpty || type == 'divider')) {
         output.add(
-          base.NotionContentBlock(type: type, text: text, depth: depth),
+          NotionContentBlock(
+            type: type,
+            text: text,
+            depth: depth,
+            spans: spans,
+            icon: type == 'callout'
+                ? _calloutEmoji(payload ?? const <String, dynamic>{})
+                : null,
+            color: payload?['color']?.toString(),
+            checked: type == 'to_do' ? payload?['checked'] as bool? : null,
+            language: type == 'code' ? payload?['language']?.toString() : null,
+          ),
         );
       }
       if (block['has_children'] == true && block['id'] is String) {
@@ -481,17 +535,35 @@ String? _firstHref(dynamic richText) {
   return null;
 }
 
+List<NotionRichTextSpan> _richTextSpans(dynamic richText) {
+  if (richText is! List) return const [];
+  return richText.whereType<Map<String, dynamic>>().map((item) {
+    final annotations = item['annotations'] as Map<String, dynamic>? ?? const {};
+    final text = item['text'] as Map<String, dynamic>?;
+    final equation = item['equation'] as Map<String, dynamic>?;
+    final value =
+        item['plain_text']?.toString() ??
+        text?['content']?.toString() ??
+        equation?['expression']?.toString() ??
+        '';
+    final link = text?['link'] as Map<String, dynamic>?;
+    return NotionRichTextSpan(
+      text: value,
+      href: item['href']?.toString() ?? link?['url']?.toString(),
+      bold: annotations['bold'] == true,
+      italic: annotations['italic'] == true,
+      underline: annotations['underline'] == true,
+      strikethrough: annotations['strikethrough'] == true,
+      code: annotations['code'] == true,
+      color: annotations['color']?.toString(),
+    );
+  }).where((span) => span.text.isNotEmpty).toList();
+}
+
 String? _richText(dynamic richText) {
-  if (richText is! List) return null;
-  final value = richText
-      .whereType<Map<String, dynamic>>()
-      .map(
-        (item) =>
-            item['plain_text']?.toString() ??
-            ((item['text'] as Map?)?['content']?.toString() ?? ''),
-      )
-      .join();
-  return value.isEmpty ? null : value;
+  final spans = _richTextSpans(richText);
+  if (spans.isEmpty) return null;
+  return spans.map((span) => span.text).join();
 }
 
 String _contentRevision(
