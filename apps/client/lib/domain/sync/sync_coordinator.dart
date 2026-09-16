@@ -24,6 +24,9 @@ export 'sync_coordinator_base.dart' show SyncRunResult;
 /// summary. This layer makes reconciled jobs editable and keeps derived tasks
 /// aligned with user actions.
 class SyncCoordinator extends base.SyncCoordinator {
+  // Explicit forwarding is intentional because Gemini is wrapped before being
+  // passed to the base coordinator and this layer keeps its own database handle.
+  // ignore: use_super_parameters
   SyncCoordinator({
     required ClassSyncDatabase database,
     required SecureCredentialStore credentials,
