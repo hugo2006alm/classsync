@@ -1200,6 +1200,9 @@ Map<String, dynamic> _preserveLocalAcademicFields(
   }
   if (old?['status'] != null && incoming.containsKey('sourceLectureId')) {
     result['status'] = old!['status'];
+    if (old['statusUpdatedAt'] != null) {
+      result['statusUpdatedAt'] = old['statusUpdatedAt'];
+    }
   }
   if (old?['userEdited'] == true && incoming.containsKey('sourceLectureId')) {
     for (final key in const ['title', 'description', 'dueAt']) {
@@ -1223,6 +1226,7 @@ List<String> _changedAcademicFields(
     'overdueReminderConfigured',
     'provenance',
     'status',
+    'statusUpdatedAt',
     'userEdited',
     'read',
   };

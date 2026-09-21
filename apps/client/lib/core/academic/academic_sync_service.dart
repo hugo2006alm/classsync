@@ -34,17 +34,20 @@ class AcademicSyncService implements AcademicHubActions {
     required PortalAdapter portal,
     required MoodleClient moodle,
     required ClassSyncNotificationService notifications,
+    Future<void> Function()? synchronizeTasks,
   }) : _database = database,
        _credentials = credentials,
        _portal = portal,
        _moodle = moodle,
-       _notifications = notifications;
+       _notifications = notifications,
+       _synchronizeTasks = synchronizeTasks;
 
   final ClassSyncDatabase _database;
   final SecureCredentialStore _credentials;
   final PortalAdapter _portal;
   final MoodleClient _moodle;
   final ClassSyncNotificationService _notifications;
+  final Future<void> Function()? _synchronizeTasks;
 
   @override
   Future<String> readPortalUsername() async =>
@@ -1138,6 +1141,7 @@ class AcademicSyncService implements AcademicHubActions {
     bool clearDueAt = false,
     LectureTaskStatus? status,
   }) async {
+    final now = DateTime.now().toUtc();
     final task = LectureTask.fromJson(record.payload).copyWith(
       title: title,
       description: description,
@@ -1156,6 +1160,9 @@ class AcademicSyncService implements AcademicHubActions {
         startsAt: task.dueAt,
         payload: {
           ...task.toJson(),
+          if (status != null) 'statusUpdatedAt': now.toIso8601String(),
+          if (status == null && record.payload['statusUpdatedAt'] != null)
+            'statusUpdatedAt': record.payload['statusUpdatedAt'],
           'userEdited':
               record.payload['userEdited'] == true ||
               title != null ||
@@ -1163,9 +1170,14 @@ class AcademicSyncService implements AcademicHubActions {
               dueAt != null ||
               clearDueAt,
         },
-        syncedAt: DateTime.now().toUtc(),
+        syncedAt: now,
       ),
     );
+    try {
+      await _synchronizeTasks?.call();
+    } catch (_) {
+      // The local action is durable; normal foreground/background sync retries it.
+    }
   }
 
   @override

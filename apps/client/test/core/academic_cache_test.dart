@@ -85,6 +85,7 @@ void main() {
         'description': 'Edited detail',
         'dueAt': '2026-09-10T00:00:00.000Z',
         'status': 'completed',
+        'statusUpdatedAt': '2026-09-07T12:00:00.000Z',
         'userEdited': true,
       },
       syncedAt: DateTime.utc(2026, 9, 7),
@@ -114,6 +115,7 @@ void main() {
     );
     final task = (await database.readAcademicRecords()).single;
     expect(task.payload['status'], 'completed');
+    expect(task.payload['statusUpdatedAt'], '2026-09-07T12:00:00.000Z');
     expect(task.payload['title'], 'Read chapter 4');
     expect(task.payload['description'], 'Edited detail');
   });

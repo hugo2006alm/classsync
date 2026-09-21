@@ -5,6 +5,7 @@ import '../../domain/settings/app_settings.dart';
 import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../database/classsync_database.dart';
+import '../integrations/integration_exception.dart';
 import '../integrations/relay/account_sync_client.dart';
 import '../security/secure_credential_store.dart';
 
@@ -139,6 +140,20 @@ class DeviceSyncService {
     required SyncAccount account,
     required String baseUrl,
   }) async {
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await _syncJobsOnce(account: account, baseUrl: baseUrl);
+      } on IntegrationException catch (error) {
+        if (error.statusCode != 409 || attempt == 2) rethrow;
+      }
+    }
+    throw StateError('Unreachable device sync retry state.');
+  }
+
+  Future<bool> _syncJobsOnce({
+    required SyncAccount account,
+    required String baseUrl,
+  }) async {
     final snapshot = await _client.readSnapshot(
       baseUrl: baseUrl,
       account: account,
@@ -167,16 +182,19 @@ class DeviceSyncService {
     final mergedTasks = <String, AcademicRecord>{};
     for (final task in [...remoteTasks, ...localTasks]) {
       final current = mergedTasks[task.key];
-      if (current == null || !task.syncedAt.isBefore(current.syncedAt)) {
-        mergedTasks[task.key] = task;
-      }
+      mergedTasks[task.key] = current == null
+          ? task
+          : _mergeTaskRecords(current, task);
     }
     var tasksChanged = false;
     final localTasksByKey = {for (final task in localTasks) task.key: task};
     for (final task in mergedTasks.values) {
       final local = localTasksByKey[task.key];
-      if (local == null || task.syncedAt.isAfter(local.syncedAt)) {
-        await _database.upsertAcademicRecord(_mergeTaskEvidence(local, task));
+      final resolved = _mergeTaskEvidence(local, task);
+      if (local == null ||
+          _canonical(_taskRecordToJson(local)) !=
+              _canonical(_taskRecordToJson(resolved))) {
+        await _database.upsertAcademicRecord(resolved);
         tasksChanged = true;
       }
     }
@@ -519,6 +537,8 @@ class DeviceSyncService {
         // useful account state and travels only inside the encrypted snapshot.
         'supportingSegment': '',
         'userEdited': record.payload['userEdited'] == true,
+        if (record.payload['statusUpdatedAt'] case final String updatedAt)
+          'statusUpdatedAt': updatedAt,
       },
     };
   }
@@ -528,6 +548,7 @@ class DeviceSyncService {
       final payload = value['task'];
       if (payload is! Map<String, dynamic>) return null;
       final task = LectureTask.fromJson(payload);
+      final statusUpdatedAt = payload['statusUpdatedAt'];
       final key = value['key'] as String;
       final externalId = value['externalId'] as String;
       final syncedAt = DateTime.parse(value['syncedAt'] as String).toUtc();
@@ -544,7 +565,10 @@ class DeviceSyncService {
           task.sourceLectureId.length > 500 ||
           task.sourceLectureTitle.length > 500 ||
           (task.subjectId?.length ?? 0) > 500 ||
-          (task.subjectName?.length ?? 0) > 500) {
+          (task.subjectName?.length ?? 0) > 500 ||
+          (statusUpdatedAt != null &&
+              (statusUpdatedAt is! String ||
+                  DateTime.tryParse(statusUpdatedAt) == null))) {
         return null;
       }
       return AcademicRecord(
@@ -558,6 +582,10 @@ class DeviceSyncService {
         payload: {
           ...task.toJson(),
           'userEdited': payload['userEdited'] == true,
+          if (statusUpdatedAt is String)
+            'statusUpdatedAt': DateTime.parse(
+              statusUpdatedAt,
+            ).toUtc().toIso8601String(),
         },
         syncedAt: syncedAt,
       );
@@ -580,6 +608,45 @@ class DeviceSyncService {
       },
     );
   }
+
+  AcademicRecord _mergeTaskRecords(
+    AcademicRecord first,
+    AcademicRecord second,
+  ) {
+    final newest = second.syncedAt.isBefore(first.syncedAt) ? first : second;
+    final firstStatusAt = _taskStatusUpdatedAt(first);
+    final secondStatusAt = _taskStatusUpdatedAt(second);
+    final statusSource = switch ((firstStatusAt, secondStatusAt)) {
+      (final DateTime left, final DateTime right) =>
+        right.isBefore(left) ? first : second,
+      (DateTime(), null) => first,
+      (null, DateTime()) => second,
+      (null, null) => newest,
+    };
+    final statusUpdatedAt = _taskStatusUpdatedAt(statusSource);
+    return AcademicRecord(
+      key: newest.key,
+      source: newest.source,
+      kind: newest.kind,
+      externalId: newest.externalId,
+      title: newest.title,
+      subjectId: newest.subjectId,
+      startsAt: newest.startsAt,
+      endsAt: newest.endsAt,
+      payload: {
+        ...newest.payload,
+        'status': statusSource.payload['status'],
+        if (statusUpdatedAt != null)
+          'statusUpdatedAt': statusUpdatedAt.toIso8601String(),
+      },
+      syncedAt: newest.syncedAt,
+      changedFields: newest.changedFields,
+      lastChangedAt: newest.lastChangedAt,
+    );
+  }
+
+  DateTime? _taskStatusUpdatedAt(AcademicRecord record) =>
+      _date(record.payload['statusUpdatedAt']);
 
   DateTime? _date(dynamic value) =>
       value is String ? DateTime.tryParse(value)?.toUtc() : null;
