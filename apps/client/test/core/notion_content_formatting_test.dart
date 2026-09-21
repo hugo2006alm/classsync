@@ -1,8 +1,62 @@
 import 'package:classsync/core/integrations/notion/notion_client.dart';
+import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('summary append retries a transient first-page conflict', () async {
+    var patchCalls = 0;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.notion.com/v1'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.method == 'PATCH') {
+            patchCalls += 1;
+            if (patchCalls == 1) {
+              handler.reject(
+                DioException(
+                  requestOptions: options,
+                  response: Response<void>(
+                    requestOptions: options,
+                    statusCode: 409,
+                  ),
+                ),
+              );
+              return;
+            }
+            handler.resolve(
+              Response<void>(requestOptions: options, statusCode: 200),
+            );
+            return;
+          }
+          handler.resolve(
+            Response<Map<String, dynamic>>(
+              requestOptions: options,
+              statusCode: 200,
+              data: {'has_more': false, 'results': <dynamic>[]},
+            ),
+          );
+        },
+      ),
+    );
+
+    await NotionClient(dio: dio).ensureSummaryContent(
+      token: 'secret',
+      pageId: 'new-page',
+      summary: const LectureSummary(
+        title: 'Lecture',
+        context: 'Context',
+        objectives: [],
+        sections: [],
+        conclusions: [],
+      ),
+      lectureDate: DateTime.utc(2026, 9, 21),
+      firefliesUrl: null,
+    );
+
+    expect(patchCalls, 2);
+  });
+
   test('readPageContent preserves rich Notion formatting metadata', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://api.notion.com/v1'));
     dio.interceptors.add(

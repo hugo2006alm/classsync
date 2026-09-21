@@ -125,20 +125,13 @@ class NotionClient extends base.NotionClient {
 
       for (var index = 0; index < chunks.length; index += 1) {
         if (completed.contains(index)) continue;
-        await _dio.patch<void>(
-          '/blocks/${Uri.encodeComponent(pageId)}/children',
-          data: {
-            'position': {'type': 'end'},
-            'children': [
-              _visibleWrapper(
-                revision: revision,
-                chunk: index,
-                total: chunks.length,
-                children: chunks[index],
-              ),
-            ],
-          },
-          options: _options(token),
+        await _appendSummaryChunk(
+          token: token,
+          pageId: pageId,
+          revision: revision,
+          chunk: index,
+          total: chunks.length,
+          children: chunks[index],
         );
       }
 
@@ -155,6 +148,62 @@ class NotionClient extends base.NotionClient {
     } on DioException catch (error) {
       throw IntegrationException.fromDio('Notion', error);
     }
+  }
+
+  Future<void> _appendSummaryChunk({
+    required String token,
+    required String pageId,
+    required String revision,
+    required int chunk,
+    required int total,
+    required List<Map<String, dynamic>> children,
+  }) async {
+    for (var attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(milliseconds: 350 * attempt));
+        try {
+          final current = await _children(token: token, blockId: pageId);
+          final alreadyWritten = current
+              .map(_ownedMarker)
+              .any(
+                (marker) =>
+                    marker != null &&
+                    !marker.legacy &&
+                    marker.revision == revision &&
+                    marker.chunk == chunk,
+              );
+          if (alreadyWritten) return;
+        } on DioException catch (error) {
+          if (!_isTransientPageWrite(error) || attempt == 2) rethrow;
+          continue;
+        }
+      }
+      try {
+        await _dio.patch<void>(
+          '/blocks/${Uri.encodeComponent(pageId)}/children',
+          data: {
+            'position': {'type': 'end'},
+            'children': [
+              _visibleWrapper(
+                revision: revision,
+                chunk: chunk,
+                total: total,
+                children: children,
+              ),
+            ],
+          },
+          options: _options(token),
+        );
+        return;
+      } on DioException catch (error) {
+        if (!_isTransientPageWrite(error) || attempt == 2) rethrow;
+      }
+    }
+  }
+
+  bool _isTransientPageWrite(DioException error) {
+    final status = error.response?.statusCode;
+    return status == null || status == 404 || status == 409 || status >= 500;
   }
 
   @override

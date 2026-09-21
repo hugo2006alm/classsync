@@ -138,6 +138,30 @@ void main() {
     },
   );
 
+  test('TP and PL allowance uses a rounded-down one-third limit', () {
+    const available = AbsenceSummary(
+      id: 'available',
+      subjectName: 'Programming',
+      absences: 3,
+      tpPlAbsences: 3,
+      tpPlPlannedClasses: 40,
+      sourceUrl: 'https://portal.isep.ipp.pt/',
+    );
+    const exceeded = AbsenceSummary(
+      id: 'exceeded',
+      subjectName: 'Databases',
+      absences: 4,
+      tpPlAbsences: 4,
+      tpPlPlannedClasses: 9,
+      sourceUrl: 'https://portal.isep.ipp.pt/',
+    );
+
+    expect(available.allowedTpPlAbsences, 13);
+    expect(available.remainingTpPlAbsences, 10);
+    expect(exceeded.remainingTpPlAbsences, 0);
+    expect(exceeded.exceededTpPlAbsences, 1);
+  });
+
   group('grade calculator', () {
     test('calculates remaining weighted grade at rounding boundary', () {
       final result = GradeCalculator.calculate(

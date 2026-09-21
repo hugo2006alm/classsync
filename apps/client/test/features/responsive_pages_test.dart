@@ -226,6 +226,8 @@ void main() {
       subjectId: 'subject-1',
       absences: 3,
       totalPlannedClasses: 40,
+      tpPlAbsences: 3,
+      tpPlPlannedClasses: 40,
       sourceUrl:
           'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
     );
@@ -262,6 +264,12 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('3 of 40 planned classes'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'You can still miss 10 TP + PL classes (one-third limit).',
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

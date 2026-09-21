@@ -1157,6 +1157,7 @@ class AcademicSyncService implements AcademicHubActions {
         payload: {
           ...task.toJson(),
           'userEdited':
+              record.payload['userEdited'] == true ||
               title != null ||
               description != null ||
               dueAt != null ||

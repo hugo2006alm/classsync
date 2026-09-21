@@ -32,6 +32,14 @@ summary title, and the Notion link. It does not copy transcript text,
 classification evidence, or generated summary content. The receiving device
 therefore shows that the job completed elsewhere and directs the user to
 Fireflies or Notion instead of claiming those local payloads were never created.
+Lecture tasks do synchronize inside the encrypted account snapshot, excluding
+their supporting transcript segment.
+
+## A new Notion page fails on its first content append
+
+ClassSync rechecks its generated-content marker and retries short-lived Notion
+404, 409, network, and server failures inline. A persisted page remains the
+checkpoint, so a later job retry never creates a second summary page.
 
 ## Windows plugin build fails with symlink error
 

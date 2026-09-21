@@ -29,6 +29,16 @@ Full transcripts, prompts, generated summaries, and Notion page content remain
 off the relay. Platform behavior such as Windows launch-at-login, Android
 background execution, notifications, and local retention is not synchronized.
 
+## Lecture task synchronization clarification
+
+Lecture tasks are user-facing account state rather than device settings. The
+jobs snapshot schema v2 therefore synchronizes a bounded set of task titles,
+descriptions, due dates, subject references, and completion/dismissal state.
+Task payloads remain opaque AES-256-GCM ciphertext in D1. Supporting transcript
+segments are deliberately excluded, so transcript evidence stays local even
+when the task is available on every paired device. Conflicts use the newest
+task update timestamp, matching bounded job-metadata merge behavior.
+
 ## Trade-offs
 
 - No paid identity provider is required and Windows/Android share one flow.
