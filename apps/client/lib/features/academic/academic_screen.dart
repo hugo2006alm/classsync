@@ -399,9 +399,9 @@ class _TasksSection extends ConsumerWidget {
         .where((record) => record.kind == AcademicRecordKind.lectureTask)
         .toList();
     taskRecords.sort((a, b) {
-      final status = (a.payload['status'] as String? ?? '').compareTo(
-        b.payload['status'] as String? ?? '',
-      );
+      final status = _taskStatusPriority(
+        a.payload['status'],
+      ).compareTo(_taskStatusPriority(b.payload['status']));
       if (status != 0) return status;
       return (a.startsAt ?? DateTime(9999)).compareTo(
         b.startsAt ?? DateTime(9999),
@@ -443,6 +443,13 @@ class _TasksSection extends ConsumerWidget {
     );
   }
 }
+
+int _taskStatusPriority(Object? status) => switch (status) {
+  'pending' => 0,
+  'completed' => 1,
+  'dismissed' => 2,
+  _ => 0,
+};
 
 class _TaskTile extends ConsumerWidget {
   const _TaskTile({required this.record});

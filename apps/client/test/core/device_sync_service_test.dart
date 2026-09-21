@@ -1,4 +1,5 @@
 import 'package:classsync/core/database/classsync_database.dart';
+import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/core/integrations/relay/account_sync_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/core/sync/device_sync_service.dart';
@@ -356,6 +357,156 @@ void main() {
     );
     expect(result.jobsChanged, isTrue);
   });
+
+  test(
+    'explicit task state beats a fresher regenerated pending record',
+    () async {
+      const taskId = 'shared-task';
+      final completed = LectureTask(
+        id: taskId,
+        title: 'Shared task',
+        description: 'Complete on mobile.',
+        sourceLectureId: 'lecture-shared',
+        sourceLectureTitle: 'Shared lecture',
+        confidence: LectureActionConfidence.certain,
+        supportingSegment: 'Local evidence',
+        status: LectureTaskStatus.completed,
+      );
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.manual,
+            AcademicRecordKind.lectureTask,
+            taskId,
+          ),
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: taskId,
+          title: completed.title,
+          payload: {
+            ...completed.toJson(),
+            'statusUpdatedAt': '2026-09-21T10:00:00.000Z',
+          },
+          syncedAt: DateTime.utc(2026, 9, 21, 10),
+        ),
+      );
+      final pending = completed.copyWith(status: LectureTaskStatus.pending);
+      final client = _SnapshotAccountClient(
+        remoteJobs: {
+          'schemaVersion': 2,
+          'jobs': const [],
+          'tasks': [
+            {
+              'key': 'manual:lectureTask:$taskId',
+              'externalId': taskId,
+              'title': pending.title,
+              'syncedAt': '2026-09-21T11:00:00.000Z',
+              'task': {...pending.toJson(), 'supportingSegment': ''},
+            },
+          ],
+        },
+      );
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+
+      await service.synchronize();
+
+      final saved = LectureTask.fromJson(
+        (await database.readAcademicRecord(
+          'manual:lectureTask:$taskId',
+        ))!.payload,
+      );
+      expect(saved.status, LectureTaskStatus.completed);
+      final uploaded = client.writes['jobs']!['tasks'] as List<dynamic>;
+      final task = uploaded.single as Map<String, dynamic>;
+      expect((task['task'] as Map<String, dynamic>)['status'], 'completed');
+    },
+  );
+
+  test(
+    'remote task action updates a fresher locally regenerated record',
+    () async {
+      const taskId = 'remote-action-task';
+      final localPending = LectureTask(
+        id: taskId,
+        title: 'Remote action task',
+        description: 'Regenerated on desktop.',
+        sourceLectureId: 'lecture-shared',
+        sourceLectureTitle: 'Shared lecture',
+        confidence: LectureActionConfidence.certain,
+        supportingSegment: 'Desktop evidence',
+        status: LectureTaskStatus.pending,
+      );
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.manual,
+            AcademicRecordKind.lectureTask,
+            taskId,
+          ),
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: taskId,
+          title: localPending.title,
+          payload: localPending.toJson(),
+          syncedAt: DateTime.utc(2026, 9, 21, 12),
+        ),
+      );
+      final remoteCompleted = localPending.copyWith(
+        status: LectureTaskStatus.completed,
+      );
+      final client = _SnapshotAccountClient(
+        remoteJobs: {
+          'schemaVersion': 2,
+          'jobs': const [],
+          'tasks': [
+            {
+              'key': 'manual:lectureTask:$taskId',
+              'externalId': taskId,
+              'title': remoteCompleted.title,
+              'syncedAt': '2026-09-21T10:00:00.000Z',
+              'task': {
+                ...remoteCompleted.toJson(),
+                'supportingSegment': '',
+                'statusUpdatedAt': '2026-09-21T10:00:00.000Z',
+              },
+            },
+          ],
+        },
+      );
+      final service = DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      );
+
+      await service.synchronize();
+
+      final saved = LectureTask.fromJson(
+        (await database.readAcademicRecord(
+          'manual:lectureTask:$taskId',
+        ))!.payload,
+      );
+      expect(saved.status, LectureTaskStatus.completed);
+    },
+  );
+
+  test('device sync retries snapshot write conflicts', () async {
+    final client = _SnapshotAccountClient(writeConflicts: 1);
+    final service = DeviceSyncService(
+      database: database,
+      credentials: credentials,
+      client: client,
+    );
+
+    await service.synchronize();
+
+    expect(client.writeAttempts['jobs'], 2);
+    expect(client.writes['jobs'], isNotNull);
+  });
 }
 
 class _MemoryCredentialStore extends SecureCredentialStore {
@@ -374,11 +525,18 @@ class _MemoryCredentialStore extends SecureCredentialStore {
 }
 
 class _SnapshotAccountClient extends AccountSyncClient {
-  _SnapshotAccountClient({this.remoteConfiguration, this.remoteJobs});
+  _SnapshotAccountClient({
+    this.remoteConfiguration,
+    this.remoteJobs,
+    this.writeConflicts = 0,
+  });
 
   final Map<String, dynamic>? remoteConfiguration;
   final Map<String, dynamic>? remoteJobs;
+  int writeConflicts;
+  int _jobsRevision = 1;
   final writes = <String, Map<String, dynamic>>{};
+  final writeAttempts = <String, int>{};
   static const account = SyncAccount(
     id: '12345678-1234-1234-1234-123456789012',
     authSecret: 'abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG',
@@ -404,8 +562,8 @@ class _SnapshotAccountClient extends AccountSyncClient {
       );
     }
     if (scope == 'jobs' && remoteJobs != null) {
-      return const EncryptedSnapshot(
-        revision: 1,
+      return EncryptedSnapshot(
+        revision: _jobsRevision,
         ciphertext: 'jobs',
         nonce: 'nonce',
       );
@@ -427,6 +585,18 @@ class _SnapshotAccountClient extends AccountSyncClient {
     required int baseRevision,
     required Map<String, dynamic> payload,
   }) async {
+    writeAttempts[scope] = (writeAttempts[scope] ?? 0) + 1;
+    if (scope == 'jobs' && writeConflicts > 0) {
+      writeConflicts -= 1;
+      _jobsRevision += 1;
+      throw const IntegrationException(
+        integration: 'Device sync',
+        code: 'revision_conflict',
+        userMessage: 'The snapshot changed on another device.',
+        retryable: true,
+        statusCode: 409,
+      );
+    }
     writes[scope] = payload;
     return baseRevision + 1;
   }

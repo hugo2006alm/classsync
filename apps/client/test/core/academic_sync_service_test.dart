@@ -121,6 +121,55 @@ void main() {
     },
   );
 
+  test('task state changes are timestamped and sync immediately', () async {
+    var syncCalls = 0;
+    service = AcademicSyncService(
+      database: database,
+      credentials: credentials,
+      portal: portal,
+      moodle: moodle,
+      notifications: notifications,
+      synchronizeTasks: () async => syncCalls += 1,
+    );
+    final task = LectureTask(
+      id: 'task-sync',
+      title: 'Sync me',
+      description: '',
+      sourceLectureId: 'lecture-sync',
+      sourceLectureTitle: 'Lecture',
+      confidence: LectureActionConfidence.certain,
+      supportingSegment: '',
+      status: LectureTaskStatus.pending,
+    );
+    final record = AcademicRecord(
+      key: AcademicRecord.keyFor(
+        AcademicSource.manual,
+        AcademicRecordKind.lectureTask,
+        task.id,
+      ),
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+      externalId: task.id,
+      title: task.title,
+      payload: task.toJson(),
+      syncedAt: DateTime.utc(2026, 9, 21),
+    );
+    await database.upsertAcademicRecord(record);
+
+    await service.updateLectureTask(
+      record,
+      status: LectureTaskStatus.dismissed,
+    );
+
+    final saved = await database.readAcademicRecord(record.key);
+    expect(saved!.payload['status'], 'dismissed');
+    expect(
+      DateTime.tryParse(saved.payload['statusUpdatedAt'] as String),
+      isNotNull,
+    );
+    expect(syncCalls, 1);
+  });
+
   test(
     'cleans screenshot-shaped cached noise even after v1 cleanup and offline',
     () async {

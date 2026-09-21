@@ -106,6 +106,7 @@ final academicSyncServiceProvider = Provider((ref) {
     portal: ref.watch(portalClientProvider),
     moodle: ref.watch(moodleClientProvider),
     notifications: ref.watch(notificationServiceProvider),
+    synchronizeTasks: () => ref.read(deviceSyncServiceProvider).synchronize(),
   );
   ref.onDispose(service.dispose);
   return service;

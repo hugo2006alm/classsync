@@ -327,6 +327,67 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('active tasks appear before completed and dismissed history', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    final dueAt = DateTime.utc(2026, 9, 30);
+    for (final entry in const [
+      ('dismissed-task', 'Dismissed task', LectureTaskStatus.dismissed),
+      ('completed-task', 'Completed task', LectureTaskStatus.completed),
+      ('pending-task', 'Pending task', LectureTaskStatus.pending),
+    ]) {
+      final task = LectureTask(
+        id: entry.$1,
+        title: entry.$2,
+        description: 'Ordering test.',
+        sourceLectureId: 'lecture-ordering',
+        sourceLectureTitle: 'Ordering lecture',
+        subjectId: _subject.notionId,
+        subjectName: _subject.name,
+        dueAt: dueAt,
+        confidence: LectureActionConfidence.certain,
+        supportingSegment: 'Ordering evidence.',
+        status: entry.$3,
+      );
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: AcademicRecord.keyFor(
+            AcademicSource.manual,
+            AcademicRecordKind.lectureTask,
+            task.id,
+          ),
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: task.id,
+          title: task.title,
+          subjectId: task.subjectId,
+          startsAt: task.dueAt,
+          payload: task.toJson(),
+          syncedAt: DateTime.utc(2026, 9, 21),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(initialSection: 1),
+        subjects: [_subject],
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final pendingY = tester.getTopLeft(find.text('Pending task')).dy;
+    final completedY = tester.getTopLeft(find.text('Completed task')).dy;
+    final dismissedY = tester.getTopLeft(find.text('Dismissed task')).dy;
+    expect(pendingY, lessThan(completedY));
+    expect(completedY, lessThan(dismissedY));
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
   testWidgets('phone sync header gives title and actions their own rows', (
     tester,
   ) async {
