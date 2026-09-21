@@ -12,12 +12,16 @@ import '../../core/security/secure_credential_store.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../firebase_options.dart';
 import 'background_sync.dart';
+import 'mobile_background_policy.dart';
 
 @pragma('vm:entry-point')
 Future<void> classSyncFirebaseBackgroundHandler(RemoteMessage message) async {
   DartPluginRegistrant.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
-  await enqueueMobileSyncFromPush();
+  await enqueueMobileSyncFromPush(
+    eventId: message.data['eventId'],
+    messageId: message.messageId,
+  );
 }
 
 class FirebasePushService {
@@ -98,7 +102,12 @@ class FirebasePushService {
       credentials: _credentials,
     );
 
-    if (!settings.notificationsEnabled) {
+    final keepPushToken = needsMobilePushToken(
+      automaticSync: settings.automaticSync,
+      backgroundMobileSync: settings.backgroundMobileSync,
+      notificationsEnabled: settings.notificationsEnabled,
+    );
+    if (!keepPushToken) {
       final token =
           _registeredToken ?? await FirebaseMessaging.instance.getToken();
       if (token != null) {
@@ -113,11 +122,6 @@ class FirebasePushService {
       return;
     }
 
-    await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: false,
-    );
     final token =
         _registeredToken ?? await FirebaseMessaging.instance.getToken();
     if (token == null) return;

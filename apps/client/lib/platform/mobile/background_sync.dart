@@ -8,9 +8,9 @@ import '../../core/database/classsync_database.dart';
 import '../../core/providers.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/sync/sync_models.dart';
+import 'mobile_background_policy.dart';
 
 const _taskName = 'classsync.periodicSync';
-const _pushTaskName = 'classsync.pushSync';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -28,13 +28,26 @@ void callbackDispatcher() {
           !settings.backgroundMobileSync) {
         return true;
       }
+      if (settings.notificationsEnabled) {
+        await container.read(notificationServiceProvider).initialize();
+      }
+      try {
+        await container.read(deviceSyncServiceProvider).synchronize();
+      } catch (_) {
+        // Account sync is an accelerator; the durable lecture queue remains local-first.
+      }
       await container
           .read(syncCoordinatorProvider)
           .run(
-            task == _pushTaskName
+            task == mobilePushTaskName
                 ? SyncReason.firefliesWebhook
                 : SyncReason.mobileBackground,
           );
+      try {
+        await container.read(deviceSyncServiceProvider).synchronize();
+      } catch (_) {
+        // A later foreground or background run retries account synchronization.
+      }
       return true;
     } catch (_) {
       return false;
@@ -45,15 +58,24 @@ void callbackDispatcher() {
   });
 }
 
-Future<void> enqueueMobileSyncFromPush() async {
+Future<void> enqueueMobileSyncFromPush({
+  String? eventId,
+  String? messageId,
+}) async {
   if (!Platform.isAndroid) return;
   await Workmanager().registerOneOffTask(
-    _pushTaskName,
-    _pushTaskName,
+    mobilePushUniqueWorkName(eventId: eventId, messageId: messageId),
+    mobilePushTaskName,
+    inputData: {
+      if (eventId?.isNotEmpty == true) 'eventId': eventId!,
+      if (messageId?.isNotEmpty == true) 'messageId': messageId!,
+    },
     constraints: Constraints(networkType: NetworkType.connected),
     existingWorkPolicy: ExistingWorkPolicy.keep,
     backoffPolicy: BackoffPolicy.exponential,
     backoffPolicyDelay: const Duration(minutes: 10),
+    expedited: true,
+    outOfQuotaPolicy: OutOfQuotaPolicy.runAsNonExpeditedWorkRequest,
   );
 }
 

@@ -1153,7 +1153,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           : _summariesId,
       relayBaseUrl: _relayUrlController.text.trim(),
     );
-    if (_notifications) {
+    if (_notifications || _backgroundMobile) {
       await notificationService.requestPermissions();
     }
     await configureMobileBackgroundSync(settings);

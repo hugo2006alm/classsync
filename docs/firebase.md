@@ -11,9 +11,10 @@ FlutterFire generated:
 - `apps/client/android/app/google-services.json`
 - `apps/client/firebase.json`
 
-The client requests notification permission, registers its FCM token with the
-authenticated ClassSync relay, refreshes registration when Firebase rotates the
-token, and unregisters it when notifications are disabled.
+The client requests notification permission when visible alerts or background
+mobile sync are enabled. It registers its FCM token with the authenticated
+ClassSync relay whenever either capability needs it, refreshes registration
+when Firebase rotates the token, and unregisters it only when both are off.
 
 ## Relay credentials
 
@@ -34,8 +35,9 @@ token and calls FCM HTTP v1. Never commit the service-account JSON.
 
 - Foreground message: starts shared sync engine.
 - Notification tap: starts sync and opens ClassSync.
-- Background delivery: quickly enqueues unique WorkManager job; worker claims and
-  resumes durable pipeline.
+- Background delivery: quickly enqueues expedited WorkManager work keyed by the
+  relay event; the worker initializes headless plugins, synchronizes account
+  state, then claims and resumes the durable pipeline.
 - WorkManager plus Fireflies overlap polling remains recovery.
 
 Android may defer background work. Force-stopping ClassSync prevents delivery

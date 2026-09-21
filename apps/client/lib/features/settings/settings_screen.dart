@@ -371,12 +371,20 @@ class _SettingsDetailBody extends ConsumerWidget {
                 if (Theme.of(context).platform == TargetPlatform.android) ...[
                   _SettingSwitch(
                     title: 'Background mobile sync',
-                    subtitle: 'Best-effort Android processing via WorkManager.',
+                    subtitle:
+                        'Realtime FCM wake-ups plus WorkManager recovery. Android may ask for notification permission.',
                     value: settings.backgroundMobileSync,
-                    onChanged: (value) => _save(
-                      ref,
-                      settings.copyWith(backgroundMobileSync: value),
-                    ),
+                    onChanged: (value) async {
+                      if (value) {
+                        await ref
+                            .read(notificationServiceProvider)
+                            .requestPermissions();
+                      }
+                      await _save(
+                        ref,
+                        settings.copyWith(backgroundMobileSync: value),
+                      );
+                    },
                   ),
                   const Divider(),
                 ],
