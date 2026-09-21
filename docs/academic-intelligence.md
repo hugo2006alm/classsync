@@ -13,8 +13,23 @@ confidence, supporting transcript segment, optional timestamp, and an ISO date
 only when the teacher supplied enough date information. Ambiguous or undated
 items are marked for review. Normalized title/date identities deduplicate a
 lecture, while completion, dismissal, and user edits are preserved when the
-same lecture is processed again. Confirmed deadlines also appear in the
-Academic evaluation agenda.
+same lecture is processed again. Task deadlines remain in Tasks. Evaluations
+are reserved for graded assessments such as tests, exams, presentations, and
+projects that directly contribute to a subject grade.
+
+## Absences and school calendar
+
+Absence data is read-only Portal data and remains separate from timetable
+exceptions. When the Portal does not expose a complete denominator, ClassSync
+matches the UC edition to the official timetable and counts every planned
+class in the active teaching period, including future classes through its end.
+The UI labels whether the ratio is measured in sessions or hours and does not
+invent a percentage when a reliable full-period denominator is unavailable.
+
+The school calendar is also read-only and is presented as an operational
+timeline of teaching periods, breaks, exams, and other official date ranges.
+Both sources retain their trusted Portal URL and stay in the local academic
+cache; neither is sent through the relay.
 
 ## Course context and official lesson summaries
 

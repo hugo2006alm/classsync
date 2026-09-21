@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
@@ -69,7 +70,7 @@ Future<void> main() async {
             caseSensitive: false,
           ).hasMatch(body.replaceAll(RegExp(r'<script[\s\S]*?</script>'), '')),
           if (RegExp(
-            r'(?:horario|estudante|pagamentos|propinas|areadetrabalho)',
+            r'(?:horario|estudante|calendario_escolar|pagamentos|propinas|areadetrabalho)',
           ).hasMatch(path.toLowerCase()))
             'safeStructure': _safeStructure(structureBody),
           if (path.endsWith('/getPartialGradesEvent'))
@@ -78,6 +79,10 @@ Future<void> main() async {
             'safeGradeParse': _safeGradeParse(structureBody, historical: true),
           if (path.endsWith('/mudar_semana'))
             'safeTimetableParse': _safeTimetableParse(structureBody),
+          if (path.endsWith('/educacao/ver_calendario_escolar.aspx'))
+            'safeSchoolCalendarParse': _safeSchoolCalendarParse(structureBody),
+          if (path.endsWith('/GetStudentAttendance'))
+            'safeAttendanceShape': _safeAttendanceShape(body),
         });
         response.data = ResponseBody.fromBytes(
           bytes,
@@ -167,6 +172,19 @@ Future<void> main() async {
           if (dueDates.isNotEmpty)
             'lastDueDate': dueDates.last.toIso8601String().split('T').first,
         };
+      });
+      features['absences'] = await _probeFeature(() async {
+        final values = await client.getAbsences();
+        return {
+          'records': values.length,
+          'withFullTermTotal': values
+              .where((item) => item.totalPlannedClasses != null)
+              .length,
+        };
+      });
+      features['schoolCalendar'] = await _probeFeature(() async {
+        final values = await client.getSchoolCalendar();
+        return {'records': values.length};
       });
     }
     stdout.write(
@@ -274,6 +292,59 @@ Map<String, Object> _safeGradeParse(String html, {bool historical = false}) {
   }
 }
 
+Map<String, Object> _safeSchoolCalendarParse(String html) {
+  Map<String, Object> parse(IsepPortalParser parser) {
+    try {
+      final values = parser.parseSchoolCalendar(
+        html,
+        sourceUrl:
+            'https://portal.isep.ipp.pt/intranet/educacao/ver_calendario_escolar.aspx',
+      );
+      return {'status': 'ok', 'records': values.length};
+    } on IntegrationException catch (error) {
+      return {'status': error.code};
+    } catch (_) {
+      return {'status': 'parse_error'};
+    }
+  }
+
+  return {
+    'base': parse(const IsepPortalParser()),
+    'strict': parse(const StrictIsepPortalParser()),
+  };
+}
+
+Map<String, Object> _safeAttendanceShape(String body) {
+  try {
+    final envelope = jsonDecode(body);
+    final payload = jsonDecode((envelope as Map)['d'] as String) as Map;
+    final attendance = payload['faltas'] as Map?;
+    final periods = attendance?['PeriodosLetivos'] as List? ?? const [];
+    final period = periods.whereType<Map>().firstOrNull;
+    final subjects = period?['UCs'] as List? ?? const [];
+    final subject = subjects.whereType<Map>().firstOrNull;
+    final types = subject?['TiposAula'] as List? ?? const [];
+    final type = types.whereType<Map>().firstOrNull;
+    final summary = type?['ResumoFaltas'] as Map?;
+    return {
+      'rootKeys': payload.keys.map((key) => key.toString()).toList(),
+      'attendanceKeys':
+          attendance?.keys.map((key) => key.toString()).toList() ?? const [],
+      'periodKeys':
+          period?.keys.map((key) => key.toString()).toList() ?? const [],
+      'subjectKeys':
+          subject?.keys.map((key) => key.toString()).toList() ?? const [],
+      'typeKeys': type?.keys.map((key) => key.toString()).toList() ?? const [],
+      'summaryKeys':
+          summary?.keys.map((key) => key.toString()).toList() ?? const [],
+      'periods': periods.length,
+      'subjects': subjects.length,
+    };
+  } catch (_) {
+    return const {'status': 'invalid'};
+  }
+}
+
 Map<String, Object> _safeStructure(String html) {
   final document = html_parser.parse(html);
   const allowedLabels = [
@@ -337,6 +408,13 @@ Map<String, Object> _safeStructure(String html) {
     'referência',
     'referencia',
     'pagamento',
+    'falta',
+    'faltas',
+    'assiduidade',
+    'aulas previstas',
+    'atividade',
+    'calendário escolar',
+    'calendario escolar',
   ];
   return {
     'scriptIds': document
@@ -375,6 +453,21 @@ Map<String, Object> _safeStructure(String html) {
         'id': table.id,
         'class': table.className,
         'rowCount': rows.length,
+        if (rows.isNotEmpty)
+          'safeHeaders': rows.first.children
+              .where((item) => item.localName == 'th' || item.localName == 'td')
+              .map((cell) => cell.text.replaceAll(RegExp(r'\s+'), ' ').trim())
+              .map((text) {
+                final normalized = _normalize(text);
+                return text.length <= 50 &&
+                        !RegExp(r'\d').hasMatch(text) &&
+                        RegExp(
+                          r'atividade|descricao|designacao|evento|periodo|^data|^inicio|^fim|^faltas?$|^unidade curricular$|^disciplina$|^sigla$|aulas previstas',
+                        ).hasMatch(normalized)
+                    ? text
+                    : '<text>';
+              })
+              .toList(),
         'rows': rows.take(20).map((row) {
           final cells = row.children
               .where((item) => item.localName == 'th' || item.localName == 'td')
@@ -458,6 +551,9 @@ Map<String, Object> _safeStructure(String html) {
               'finance',
               'pagamento',
               'propina',
+              'falta',
+              'faltas',
+              'assiduidade',
             ].where(normalized.contains).toList(),
           };
         })
@@ -900,18 +996,51 @@ List<Map<String, Object>> _scriptShapes(Document document) {
     'getDisciplines',
     'getUserDebits',
     'getPartialGrades',
+    'getFaltas',
+    'TabelaFaltas',
+    'TabelaFaltasHoras',
+    'TabelaFaltasNumero',
   ];
   final result = <Map<String, Object>>[];
   for (final script in document.querySelectorAll('script:not([src])')) {
     final source = script.text;
     for (final name in names) {
-      final index = source.indexOf(name);
+      final index =
+          RegExp(
+            'function\\s+$name\\s*\\(',
+            caseSensitive: false,
+          ).firstMatch(source)?.start ??
+          -1;
       if (index < 0) continue;
-      final end = (index + 2200).clamp(0, source.length);
+      final end = (index + 6000).clamp(0, source.length);
       final excerpt = source.substring(index, end);
       result.add({
         'name': name,
         'routes': _routePaths(excerpt),
+        'dataKeys': RegExp(r'var\s+dados\s*=\s*([^;]+);', caseSensitive: false)
+            .allMatches(excerpt)
+            .map((match) {
+              final expression = match.group(1)!;
+              return RegExp(r'''([A-Za-z_]\w*)[\\'"\s]*:''')
+                  .allMatches(expression)
+                  .map((key) => key.group(1)!)
+                  .toSet()
+                  .toList();
+            })
+            .where((keys) => keys.isNotEmpty)
+            .take(5)
+            .toList(),
+        'ajaxPaths':
+            RegExp(r'''url\s*:\s*["']([^"']+)["']''', caseSensitive: false)
+                .allMatches(excerpt)
+                .map((match) => match.group(1)!)
+                .where((url) {
+                  return RegExp(
+                    r'^[A-Za-z0-9_./-]+(?:\.aspx)?/[A-Za-z0-9_-]+$',
+                  ).hasMatch(url);
+                })
+                .take(10)
+                .toList(),
         'shape': _safeActionShape(excerpt),
       });
     }
@@ -925,6 +1054,7 @@ List<Map<String, Object>> _functionShapes(String html) {
     'getDisciplines',
     'getUserDebits',
     'getPartialGrades',
+    'getFaltas',
   ];
   final result = <Map<String, Object>>[];
   for (final name in names) {

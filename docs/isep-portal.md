@@ -73,6 +73,10 @@ retained as provenance:
 - enrolment comes from `getDisciplinesEvent`, current grades from
   `getPartialGradesEvent`, and academic history from `getStudentFileEvent` on
   the student record page;
+- absences use the authenticated SERAA `GetStudentYearEditions` and
+  `GetStudentAttendance` JSON methods;
+- the school calendar uses the read-only
+  `/intranet/educacao/ver_calendario_escolar.aspx` page;
 - finance is loaded from the read-only
   `/intranet/propinas/pedidorefmb.aspx` page;
 - evaluation rules: `ficha de unidade curricular`, `FUC`, `método de avaliação`.
@@ -131,9 +135,10 @@ Portal refresh is independent from Fireflies → Gemini → Notion. A Portal
 failure cannot stop lecture discovery, classification, summarization, or
 publication.
 
-Portal stages refresh independently. Timetable, exams, and notices expire after
-30 minutes; grades and finance after 6 hours; enrolment, history, FUC context,
-and summaries after 24 hours. Opening Academic reads the cache and does not
+Portal stages refresh independently. Timetable, exams, notices, and absences
+expire after 30 minutes; grades and finance after 6 hours; enrolment, history,
+FUC context, summaries, and the school calendar after 24 hours. Opening
+Academic reads the cache and does not
 force network work. App startup/resume and periodic sync refresh only expired
 stages. Academic's labeled header Reload forces every configured stage; the
 small wheel beside each page title forces only that page's owning stages. A
@@ -145,6 +150,13 @@ selected week and the following four weeks, preserving each week's official
 classes and exceptions. Navigating to an uncached empty week automatically
 requests that same five-week window. Portal's JavaScript date rollover at month
 boundaries is parsed with bounded JavaScript-compatible semantics.
+
+Attendance summaries are validated against the Portal JSON schema. To show the
+requested full-term percentage rather than a percentage of classes elapsed so
+far, ClassSync matches each UC edition identifier to timetable events and
+counts the complete active teaching interval from the school calendar. If the
+Portal omits that mapping or interval, the UI shows the absence count without a
+misleading percentage.
 
 Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,

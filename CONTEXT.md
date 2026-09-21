@@ -15,7 +15,10 @@ Fireflies completes transcript
 
 Ambiguous classification pauses before publishing and asks for one subject choice. Failures retain durable work and expose a useful recovery action.
 
-V1 is complete only when this pipeline is dependable. Calendar, assessments, tasks, files, grades, and other academic modules are future extensions, not current UI placeholders.
+V1 is complete only when this pipeline is dependable. Academic modules such as
+timetable, tasks, evaluations, grades, absences, and the school calendar remain
+cleanly separated from that pipeline and must not duplicate its business logic.
+New modules belong behind explicit domain boundaries rather than placeholder UI.
 
 ## System boundaries
 

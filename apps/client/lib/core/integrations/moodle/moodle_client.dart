@@ -216,15 +216,23 @@ class MoodleClient {
     for (final forum in newsForums) {
       final forumId = forum['id'];
       if (forumId is! num) continue;
-      final discussions = await _call(
-        token,
-        'mod_forum_get_forum_discussions_paginated',
-        parameters: {
-          'forumid': forumId.toInt(),
-          'sortdirection': 'DESC',
-          'perpage': 20,
-        },
-      );
+      dynamic discussions;
+      try {
+        discussions = await _call(
+          token,
+          'mod_forum_get_forum_discussions_paginated',
+          parameters: {
+            'forumid': forumId.toInt(),
+            'sortdirection': 'DESC',
+            'perpage': 20,
+          },
+        );
+      } on IntegrationException catch (error) {
+        if (error.code == 'invalidtoken') rethrow;
+        // A deleted or inaccessible news forum must not invalidate courses and
+        // assignment deadlines that were already fetched successfully.
+        continue;
+      }
       announcements.addAll(
         decodeAnnouncements(
           discussions,

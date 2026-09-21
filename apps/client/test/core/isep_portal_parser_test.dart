@@ -41,6 +41,7 @@ void main() {
     );
     expect(values, hasLength(1));
     expect(values.single.subjectCode, 'PENGEL');
+    expect(values.single.portalSubjectId, '85433');
     expect(values.single.lessonType, 'PL');
     expect(values.single.className, '1DF');
     expect(values.single.room, 'B301');
