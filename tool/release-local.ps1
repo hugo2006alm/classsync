@@ -32,6 +32,7 @@ $releaseDir = Join-Path $repoRoot "dist\release-$version"
 
 $expectedAndroidCertSha256 =
     'c1b5b4db5e23e2f468dab06262bf149cb03ad3f9562307d7dfc8946092ded30d'
+$siteUrl = 'https://hugo2006alm.github.io/classsync-site'
 
 Push-Location $repoRoot
 
@@ -153,11 +154,17 @@ Pull/push the repository before publishing.
         dart run tool/check_coverage.dart coverage/lcov.info 50
         Assert-LastExitCode 'Coverage threshold'
 
-        flutter build windows --release
+        flutter build windows --release `
+            "--dart-define=CLASSSYNC_SITE_URL=$siteUrl"
         Assert-LastExitCode 'Windows release build'
 
-        flutter build apk --release
+        flutter build apk --release `
+            "--dart-define=CLASSSYNC_SITE_URL=$siteUrl"
         Assert-LastExitCode 'Android release build'
+
+        flutter build appbundle --release `
+            "--dart-define=CLASSSYNC_SITE_URL=$siteUrl"
+        Assert-LastExitCode 'Android App Bundle release build'
     }
     finally {
         Pop-Location
@@ -170,9 +177,16 @@ Pull/push the repository before publishing.
     $androidApk = Join-Path `
         $clientRoot `
         'build\app\outputs\flutter-apk\app-release.apk'
+    $androidBundle = Join-Path `
+        $clientRoot `
+        'build\app\outputs\bundle\release\app-release.aab'
 
     if (-not (Test-Path -LiteralPath $androidApk)) {
         throw "Android APK was not generated: $androidApk"
+    }
+
+    if (-not (Test-Path -LiteralPath $androidBundle)) {
+        throw "Android App Bundle was not generated: $androidBundle"
     }
 
     $apksigner = Get-Command apksigner.bat -ErrorAction SilentlyContinue
@@ -375,6 +389,10 @@ Refusing to create release artifacts.
         (Join-Path $releaseDir 'ClassSync-Android.apk')
 
     Copy-Item `
+        $androidBundle `
+        (Join-Path $releaseDir 'ClassSync-Android.aab')
+
+    Copy-Item `
         $windowsInstaller `
         $releaseDir
 
@@ -448,6 +466,10 @@ Refusing to create release artifacts.
             (Join-Path $releaseDir "ClassSync-Setup-$version.exe") +
             '#ClassSync Windows installer'
 
+        $androidBundleAsset =
+            (Join-Path $releaseDir 'ClassSync-Android.aab') +
+            '#ClassSync Android App Bundle'
+
         $checksumsAsset =
             $checksumFile +
             '#SHA-256 checksums'
@@ -457,6 +479,7 @@ Refusing to create release artifacts.
             'create'
             $tag
             $androidAsset
+            $androidBundleAsset
             $windowsAsset
             $checksumsAsset
             '--title'

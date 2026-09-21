@@ -17,6 +17,10 @@
   instead of being displayed as exam registration data.
 - **More reliable Notion publishing** — transient first-append failures on a
   newly created page retry inline using the existing idempotent content marker.
+- **Reliable Android wake-ups** — transcript-ready pushes now create expedited,
+  per-event background work; background automation retains its FCM token even
+  when visible alerts are disabled, initializes all headless dependencies, and
+  includes the current WorkManager Android 16 handshake fix.
 
 ## Release notes
 
