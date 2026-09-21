@@ -2,6 +2,8 @@ import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/integrations/relay/account_sync_client.dart';
 import 'package:classsync/core/security/secure_credential_store.dart';
 import 'package:classsync/core/sync/device_sync_service.dart';
+import 'package:classsync/domain/academic/academic_hub_models.dart';
+import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
 import 'package:classsync/domain/settings/fireflies_connection.dart';
 import 'package:drift/native.dart';
@@ -272,6 +274,88 @@ void main() {
       expect(await credentials.read(CredentialKey.moodleToken), 'local-moodle');
     },
   );
+
+  test('lecture tasks merge through the encrypted account snapshot', () async {
+    final localTask = LectureTask(
+      id: 'task-local',
+      title: 'Prepare local lab',
+      description: 'Finish the local exercise.',
+      sourceLectureId: 'job-local',
+      sourceLectureTitle: 'Local lecture',
+      confidence: LectureActionConfidence.certain,
+      supportingSegment: 'private transcript evidence',
+      status: LectureTaskStatus.pending,
+    );
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: AcademicRecord.keyFor(
+          AcademicSource.manual,
+          AcademicRecordKind.lectureTask,
+          localTask.id,
+        ),
+        source: AcademicSource.manual,
+        kind: AcademicRecordKind.lectureTask,
+        externalId: localTask.id,
+        title: localTask.title,
+        payload: localTask.toJson(),
+        syncedAt: DateTime.utc(2026, 9, 20),
+      ),
+    );
+    final client = _SnapshotAccountClient(
+      remoteJobs: {
+        'schemaVersion': 2,
+        'jobs': const [],
+        'tasks': [
+          {
+            'key': 'manual:lectureTask:task-remote',
+            'externalId': 'task-remote',
+            'title': 'Prepare remote presentation',
+            'syncedAt': '2026-09-21T10:00:00.000Z',
+            'task': {
+              'id': 'task-remote',
+              'title': 'Prepare remote presentation',
+              'description': 'Create the slides.',
+              'sourceLectureId': 'job-remote',
+              'sourceLectureTitle': 'Remote lecture',
+              'confidence': 'certain',
+              'supportingSegment': '',
+              'status': 'completed',
+              'userEdited': true,
+            },
+          },
+        ],
+      },
+    );
+    final service = DeviceSyncService(
+      database: database,
+      credentials: credentials,
+      client: client,
+    );
+
+    final result = await service.synchronize();
+
+    final tasks = await database.readAcademicRecords(
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+    );
+    expect(tasks, hasLength(2));
+    expect(
+      LectureTask.fromJson(
+        tasks.singleWhere((item) => item.externalId == 'task-remote').payload,
+      ).status,
+      LectureTaskStatus.completed,
+    );
+    final uploaded = client.writes['jobs']!['tasks'] as List<dynamic>;
+    expect(uploaded, hasLength(2));
+    final encodedLocal = uploaded.whereType<Map<String, dynamic>>().singleWhere(
+      (item) => item['externalId'] == 'task-local',
+    );
+    expect(
+      (encodedLocal['task'] as Map<String, dynamic>)['supportingSegment'],
+      isEmpty,
+    );
+    expect(result.jobsChanged, isTrue);
+  });
 }
 
 class _MemoryCredentialStore extends SecureCredentialStore {
@@ -290,9 +374,10 @@ class _MemoryCredentialStore extends SecureCredentialStore {
 }
 
 class _SnapshotAccountClient extends AccountSyncClient {
-  _SnapshotAccountClient({this.remoteConfiguration});
+  _SnapshotAccountClient({this.remoteConfiguration, this.remoteJobs});
 
   final Map<String, dynamic>? remoteConfiguration;
+  final Map<String, dynamic>? remoteJobs;
   final writes = <String, Map<String, dynamic>>{};
   static const account = SyncAccount(
     id: '12345678-1234-1234-1234-123456789012',
@@ -310,15 +395,29 @@ class _SnapshotAccountClient extends AccountSyncClient {
     required String baseUrl,
     required SyncAccount account,
     required String scope,
-  }) async => scope == 'config' && remoteConfiguration != null
-      ? const EncryptedSnapshot(revision: 1, ciphertext: 'data', nonce: 'nonce')
-      : const EncryptedSnapshot(revision: 0);
+  }) async {
+    if (scope == 'config' && remoteConfiguration != null) {
+      return const EncryptedSnapshot(
+        revision: 1,
+        ciphertext: 'config',
+        nonce: 'nonce',
+      );
+    }
+    if (scope == 'jobs' && remoteJobs != null) {
+      return const EncryptedSnapshot(
+        revision: 1,
+        ciphertext: 'jobs',
+        nonce: 'nonce',
+      );
+    }
+    return const EncryptedSnapshot(revision: 0);
+  }
 
   @override
   Future<Map<String, dynamic>> decrypt(
     SyncAccount account,
     EncryptedSnapshot snapshot,
-  ) async => remoteConfiguration!;
+  ) async => snapshot.ciphertext == 'jobs' ? remoteJobs! : remoteConfiguration!;
 
   @override
   Future<int> writeSnapshot({

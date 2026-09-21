@@ -25,11 +25,18 @@ matches the UC edition to the official timetable and counts every planned
 class in the active teaching period, including future classes through its end.
 The UI labels whether the ratio is measured in sessions or hours and does not
 invent a percentage when a reliable full-period denominator is unavailable.
+When Portal identifies TP and PL lesson types, ClassSync also shows how many
+more TP + PL sessions or hours fit inside the one-third absence limit. Session
+allowances round down because a student cannot miss a fraction of a class.
 
 The school calendar is also read-only and is presented as an operational
 timeline of teaching periods, breaks, exams, and other official date ranges.
 Both sources retain their trusted Portal URL and stay in the local academic
 cache; neither is sent through the relay.
+
+Lecture tasks are account state. Their bounded title, description, due date,
+subject, and lifecycle status synchronize inside the account's AES-256-GCM
+snapshot. Supporting transcript evidence remains device-local.
 
 ## Course context and official lesson summaries
 

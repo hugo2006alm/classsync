@@ -803,9 +803,16 @@ class _AbsenceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final percentage = value.percentage;
     final unit = value.measuredInHours ? 'class hours' : 'classes';
+    final remaining = value.remainingTpPlAbsences;
+    final exceeded = value.exceededTpPlAbsences;
     final details = percentage == null
         ? '${_compactNumber(value.absences)} absences · full-term total unavailable'
         : '${_compactNumber(value.absences)} of ${_compactNumber(value.totalPlannedClasses!)} planned $unit · ${percentage.toStringAsFixed(1)}%';
+    final allowance = exceeded != null
+        ? 'TP + PL absence limit exceeded by ${_compactNumber(exceeded)} $unit.'
+        : remaining != null
+        ? 'You can still miss ${_compactNumber(remaining)} TP + PL $unit (one-third limit).'
+        : null;
     return Semantics(
       label: '${value.subjectName}. $details',
       child: Padding(
@@ -830,6 +837,18 @@ class _AbsenceTile extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(details, style: Theme.of(context).textTheme.bodySmall),
+            if (allowance != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                allowance,
+                style: TextStyle(
+                  color: exceeded == null
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             if (percentage != null) ...[
               const SizedBox(height: 10),
               LinearProgressIndicator(

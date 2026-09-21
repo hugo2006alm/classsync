@@ -25,7 +25,7 @@ them with Gemini, and publishes structured study notes to Notion.
   and distinguish locally retained content from status synced by another device.
 - Minimal Cloudflare Worker + D1 relay storing IDs and timestamps only.
 - Private per-person account namespaces with AES-256-GCM device sync for keys,
-  shared preferences, and bounded lecture status metadata.
+  shared preferences, bounded lecture status metadata, and lecture tasks.
 - In-app Notion Library grouped by academic semester, with readable summary
   pages and a direct Open in Notion action.
 - Read-only ISEP Portal integration for enrolment, timetable, official exams,

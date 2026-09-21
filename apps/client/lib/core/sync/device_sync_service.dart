@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
@@ -150,8 +151,34 @@ class DeviceSyncService {
         .whereType<Map<String, dynamic>>()
         .map(_jobFromJson)
         .toList();
+    final remoteTasks = (remotePayload['tasks'] as List<dynamic>? ?? const [])
+        .take(500)
+        .whereType<Map<String, dynamic>>()
+        .map(_taskRecordFromJson)
+        .whereType<AcademicRecord>()
+        .toList();
     for (final job in remoteJobs) {
       await _database.mergeSyncedJob(job);
+    }
+    final localTasks = await _database.readAcademicRecords(
+      source: AcademicSource.manual,
+      kind: AcademicRecordKind.lectureTask,
+    );
+    final mergedTasks = <String, AcademicRecord>{};
+    for (final task in [...remoteTasks, ...localTasks]) {
+      final current = mergedTasks[task.key];
+      if (current == null || !task.syncedAt.isBefore(current.syncedAt)) {
+        mergedTasks[task.key] = task;
+      }
+    }
+    var tasksChanged = false;
+    final localTasksByKey = {for (final task in localTasks) task.key: task};
+    for (final task in mergedTasks.values) {
+      final local = localTasksByKey[task.key];
+      if (local == null || task.syncedAt.isAfter(local.syncedAt)) {
+        await _database.upsertAcademicRecord(_mergeTaskEvidence(local, task));
+        tasksChanged = true;
+      }
     }
     final localJobs = await _database.readJobs();
     final merged = <String, SyncJob>{};
@@ -162,12 +189,18 @@ class DeviceSyncService {
       }
     }
     final payload = {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'jobs':
           (merged.values.toList()
                 ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)))
               .take(500)
               .map(_jobToJson)
+              .toList(),
+      'tasks':
+          (mergedTasks.values.toList()
+                ..sort((a, b) => b.syncedAt.compareTo(a.syncedAt)))
+              .take(500)
+              .map(_taskRecordToJson)
               .toList(),
     };
     final changed = _canonical(payload) != _canonical(remotePayload);
@@ -189,7 +222,7 @@ class DeviceSyncService {
         snapshot.revision.toString(),
       );
     }
-    return remoteJobs.isNotEmpty;
+    return remoteJobs.isNotEmpty || tasksChanged;
   }
 
   Future<Map<String, dynamic>> _configurationPayload() async {
@@ -470,6 +503,83 @@ class DeviceSyncService {
     updatedAt: DateTime.parse(value['updatedAt'] as String).toUtc(),
     completedAt: _date(value['completedAt']),
   );
+
+  Map<String, dynamic> _taskRecordToJson(AcademicRecord record) {
+    final task = LectureTask.fromJson(record.payload);
+    return {
+      'key': record.key,
+      'externalId': record.externalId,
+      'title': record.title,
+      'subjectId': record.subjectId,
+      'startsAt': record.startsAt?.toUtc().toIso8601String(),
+      'syncedAt': record.syncedAt.toUtc().toIso8601String(),
+      'task': {
+        ...task.toJson(),
+        // Transcript evidence remains device-local. The bounded task itself is
+        // useful account state and travels only inside the encrypted snapshot.
+        'supportingSegment': '',
+        'userEdited': record.payload['userEdited'] == true,
+      },
+    };
+  }
+
+  AcademicRecord? _taskRecordFromJson(Map<String, dynamic> value) {
+    try {
+      final payload = value['task'];
+      if (payload is! Map<String, dynamic>) return null;
+      final task = LectureTask.fromJson(payload);
+      final key = value['key'] as String;
+      final externalId = value['externalId'] as String;
+      final syncedAt = DateTime.parse(value['syncedAt'] as String).toUtc();
+      if (key !=
+              AcademicRecord.keyFor(
+                AcademicSource.manual,
+                AcademicRecordKind.lectureTask,
+                externalId,
+              ) ||
+          task.id != externalId ||
+          task.title.trim().isEmpty ||
+          task.title.length > 300 ||
+          task.description.length > 4000 ||
+          task.sourceLectureId.length > 500 ||
+          task.sourceLectureTitle.length > 500 ||
+          (task.subjectId?.length ?? 0) > 500 ||
+          (task.subjectName?.length ?? 0) > 500) {
+        return null;
+      }
+      return AcademicRecord(
+        key: key,
+        source: AcademicSource.manual,
+        kind: AcademicRecordKind.lectureTask,
+        externalId: externalId,
+        title: task.title,
+        subjectId: task.subjectId,
+        startsAt: task.dueAt,
+        payload: {
+          ...task.toJson(),
+          'userEdited': payload['userEdited'] == true,
+        },
+        syncedAt: syncedAt,
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  AcademicRecord _mergeTaskEvidence(
+    AcademicRecord? local,
+    AcademicRecord incoming,
+  ) {
+    final evidence = incoming.payload['supportingSegment'] as String? ?? '';
+    if (evidence.isNotEmpty || local == null) return incoming;
+    return incoming.copyWith(
+      payload: {
+        ...incoming.payload,
+        'supportingSegment':
+            local.payload['supportingSegment'] as String? ?? '',
+      },
+    );
+  }
 
   DateTime? _date(dynamic value) =>
       value is String ? DateTime.tryParse(value)?.toUtc() : null;

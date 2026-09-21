@@ -213,10 +213,16 @@ void main() {
                   'FaltasEmHoras': false,
                   'TiposAula': [
                     {
+                      'Sigla': 'TP',
                       'ResumoFaltas': {'Numero': 2, 'TotalPresencas': 8},
                     },
                     {
+                      'Sigla': 'PL',
                       'ResumoFaltas': {'Numero': 1, 'TotalPresencas': 4},
+                    },
+                    {
+                      'Sigla': 'T',
+                      'ResumoFaltas': {'Numero': 4, 'TotalPresencas': 8},
                     },
                   ],
                 },
@@ -230,7 +236,8 @@ void main() {
       );
 
       expect(values.single.subjectCode, '85433');
-      expect(values.single.absences, 3);
+      expect(values.single.absences, 7);
+      expect(values.single.tpPlAbsences, 3);
       expect(values.single.totalPlannedClasses, isNull);
       expect(values.single.percentage, isNull);
     },

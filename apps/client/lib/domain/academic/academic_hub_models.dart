@@ -160,6 +160,8 @@ class AbsenceSummary {
     this.subjectCode,
     this.subjectId,
     this.totalPlannedClasses,
+    this.tpPlAbsences,
+    this.tpPlPlannedClasses,
     this.excusedAbsences,
     this.academicYear,
     this.measuredInHours = false,
@@ -171,6 +173,8 @@ class AbsenceSummary {
   final String? subjectId;
   final double absences;
   final double? totalPlannedClasses;
+  final double? tpPlAbsences;
+  final double? tpPlPlannedClasses;
   final double? excusedAbsences;
   final String? academicYear;
   final bool measuredInHours;
@@ -181,6 +185,27 @@ class AbsenceSummary {
       ? null
       : absences / totalPlannedClasses! * 100;
 
+  double? get allowedTpPlAbsences {
+    final total = tpPlPlannedClasses;
+    if (total == null || total <= 0) return null;
+    final third = total / 3;
+    return measuredInHours ? third : third.floorToDouble();
+  }
+
+  double? get remainingTpPlAbsences {
+    final allowed = allowedTpPlAbsences;
+    final used = tpPlAbsences;
+    if (allowed == null || used == null) return null;
+    return max(0, allowed - used);
+  }
+
+  double? get exceededTpPlAbsences {
+    final allowed = allowedTpPlAbsences;
+    final used = tpPlAbsences;
+    if (allowed == null || used == null || used <= allowed) return null;
+    return used - allowed;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'subjectName': subjectName,
@@ -188,6 +213,8 @@ class AbsenceSummary {
     'subjectId': subjectId,
     'absences': absences,
     'totalPlannedClasses': totalPlannedClasses,
+    'tpPlAbsences': tpPlAbsences,
+    'tpPlPlannedClasses': tpPlPlannedClasses,
     'excusedAbsences': excusedAbsences,
     'academicYear': academicYear,
     'measuredInHours': measuredInHours,
@@ -201,25 +228,32 @@ class AbsenceSummary {
     subjectId: json['subjectId'] as String?,
     absences: (json['absences'] as num?)?.toDouble() ?? 0,
     totalPlannedClasses: (json['totalPlannedClasses'] as num?)?.toDouble(),
+    tpPlAbsences: (json['tpPlAbsences'] as num?)?.toDouble(),
+    tpPlPlannedClasses: (json['tpPlPlannedClasses'] as num?)?.toDouble(),
     excusedAbsences: (json['excusedAbsences'] as num?)?.toDouble(),
     academicYear: json['academicYear'] as String?,
     measuredInHours: json['measuredInHours'] as bool? ?? false,
     sourceUrl: json['sourceUrl'] as String? ?? '',
   );
 
-  AbsenceSummary copyWith({String? subjectId, double? totalPlannedClasses}) =>
-      AbsenceSummary(
-        id: id,
-        subjectName: subjectName,
-        subjectCode: subjectCode,
-        subjectId: subjectId ?? this.subjectId,
-        absences: absences,
-        totalPlannedClasses: totalPlannedClasses ?? this.totalPlannedClasses,
-        excusedAbsences: excusedAbsences,
-        academicYear: academicYear,
-        measuredInHours: measuredInHours,
-        sourceUrl: sourceUrl,
-      );
+  AbsenceSummary copyWith({
+    String? subjectId,
+    double? totalPlannedClasses,
+    double? tpPlPlannedClasses,
+  }) => AbsenceSummary(
+    id: id,
+    subjectName: subjectName,
+    subjectCode: subjectCode,
+    subjectId: subjectId ?? this.subjectId,
+    absences: absences,
+    totalPlannedClasses: totalPlannedClasses ?? this.totalPlannedClasses,
+    tpPlAbsences: tpPlAbsences,
+    tpPlPlannedClasses: tpPlPlannedClasses ?? this.tpPlPlannedClasses,
+    excusedAbsences: excusedAbsences,
+    academicYear: academicYear,
+    measuredInHours: measuredInHours,
+    sourceUrl: sourceUrl,
+  );
 }
 
 class SchoolCalendarEntry {

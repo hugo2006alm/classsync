@@ -389,7 +389,11 @@ class IsepPortalClient implements PortalAdapter {
       sourceUrl: page.url,
     );
     if (values.isEmpty ||
-        values.every((item) => item.totalPlannedClasses != null)) {
+        values.every(
+          (item) =>
+              item.totalPlannedClasses != null &&
+              (item.tpPlAbsences == null || item.tpPlPlannedClasses != null),
+        )) {
       return values;
     }
     try {
@@ -467,7 +471,7 @@ class IsepPortalClient implements PortalAdapter {
             (name) => _academicNameSimilarity(slotName, name) >= 0.55,
           ),
         );
-      });
+      }).toList();
       final total = item.measuredInHours
           ? matching.fold<double>(
               0,
@@ -475,7 +479,20 @@ class IsepPortalClient implements PortalAdapter {
                   sum + slot.end.difference(slot.start).inMinutes / 60,
             )
           : matching.length.toDouble();
-      return total > 0 ? item.copyWith(totalPlannedClasses: total) : item;
+      final tpPl = matching
+          .where((slot) => _isTpPlLessonType(slot.lessonType))
+          .toList();
+      final tpPlTotal = item.measuredInHours
+          ? tpPl.fold<double>(
+              0,
+              (sum, slot) =>
+                  sum + slot.end.difference(slot.start).inMinutes / 60,
+            )
+          : tpPl.length.toDouble();
+      return item.copyWith(
+        totalPlannedClasses: total > 0 ? total : null,
+        tpPlPlannedClasses: tpPlTotal > 0 ? tpPlTotal : null,
+      );
     }).toList();
   }
 
@@ -1920,6 +1937,7 @@ class IsepPortalParser {
         final name = subject['Name']?.toString().trim() ?? '';
         if (name.isEmpty) continue;
         final measuredInHours = subject['FaltasEmHoras'] == true;
+        final lessonTypes = objects(subject['TiposAula']);
         double absences;
         double? total;
         if (measuredInHours) {
@@ -1934,7 +1952,7 @@ class IsepPortalParser {
           absences = 0;
           var planned = 0.0;
           var hasPlanned = false;
-          for (final type in objects(subject['TiposAula'])) {
+          for (final type in lessonTypes) {
             absences +=
                 numeric(object(type['ResumoFaltas']), const ['Numero']) ?? 0;
             final typeTotal = numeric(type, const [
@@ -1955,6 +1973,48 @@ class IsepPortalParser {
                   'NumeroAulasPrevistas',
                 ]);
         }
+        var tpPlAbsences = 0.0;
+        var tpPlPlanned = 0.0;
+        var hasTpPl = false;
+        var hasTpPlPlanned = false;
+        for (final type in lessonTypes) {
+          final typeLabel =
+              const [
+                    'Sigla',
+                    'Tipo',
+                    'TipoAula',
+                    'Name',
+                    'Descricao',
+                    'Designacao',
+                    'Abreviatura',
+                  ]
+                  .map((key) => type[key]?.toString())
+                  .whereType<String>()
+                  .firstWhere(_isTpPlLessonType, orElse: () => '');
+          if (typeLabel.isEmpty) continue;
+          hasTpPl = true;
+          final summary = object(type['ResumoFaltas']);
+          tpPlAbsences +=
+              numeric(
+                summary,
+                measuredInHours ? const ['Horas'] : const ['Numero'],
+              ) ??
+              0;
+          final planned = numeric(
+            type,
+            measuredInHours
+                ? const ['HorasPrevistas', 'TotalHoras', 'CargaHoraria']
+                : const [
+                    'AulasPrevistas',
+                    'TotalAulas',
+                    'NumeroAulasPrevistas',
+                  ],
+          );
+          if (planned != null) {
+            hasTpPlPlanned = true;
+            tpPlPlanned += planned;
+          }
+        }
         result.add(
           AbsenceSummary(
             id: [
@@ -1966,6 +2026,8 @@ class IsepPortalParser {
             subjectCode: subject['CDE']?.toString(),
             absences: absences,
             totalPlannedClasses: total,
+            tpPlAbsences: hasTpPl ? tpPlAbsences : null,
+            tpPlPlannedClasses: hasTpPlPlanned ? tpPlPlanned : null,
             academicYear: academicYear,
             measuredInHours: measuredInHours,
             sourceUrl: sourceUrl,
@@ -2684,6 +2746,18 @@ class IsepPortalParser {
 
 String _normalize(String value) => SubjectMapper.normalize(value);
 String? _nullable(String value) => value.trim().isEmpty ? null : value.trim();
+
+bool _isTpPlLessonType(String? value) {
+  final normalized = _normalize(value ?? '');
+  final tokens = normalized
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((token) => token.isNotEmpty)
+      .toSet();
+  return tokens.contains('tp') ||
+      tokens.contains('pl') ||
+      normalized.contains('teorico pratica') ||
+      normalized.contains('pratica laboratorial');
+}
 
 extension on String {
   String ifEmpty(String fallback) => trim().isEmpty ? fallback : trim();

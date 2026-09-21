@@ -180,6 +180,9 @@ Future<void> main() async {
           'withFullTermTotal': values
               .where((item) => item.totalPlannedClasses != null)
               .length,
+          'withTpPlAllowance': values
+              .where((item) => item.remainingTpPlAbsences != null)
+              .length,
         };
       });
       features['schoolCalendar'] = await _probeFeature(() async {
@@ -337,6 +340,13 @@ Map<String, Object> _safeAttendanceShape(String body) {
       'typeKeys': type?.keys.map((key) => key.toString()).toList() ?? const [],
       'summaryKeys':
           summary?.keys.map((key) => key.toString()).toList() ?? const [],
+      'recognizedLessonTypes': types
+          .whereType<Map>()
+          .expand((item) => item.values)
+          .map((value) => value.toString().trim().toUpperCase())
+          .where((value) => value == 'TP' || value == 'PL')
+          .toSet()
+          .toList(),
       'periods': periods.length,
       'subjects': subjects.length,
     };
