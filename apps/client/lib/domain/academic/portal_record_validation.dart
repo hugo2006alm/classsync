@@ -7,6 +7,9 @@ bool isPortalInterfaceText(String value) {
   final text = SubjectMapper.normalize(
     value,
   ).replaceFirst(RegExp(r'^exam '), '');
+  final examSeasonHits = RegExp(
+    r'\b(?:epoca|normal|recurso|fora de epoca|especial de setembro|especial)\b',
+  ).allMatches(text).length;
   return raw.contains(r'$(') ||
       raw.contains('menulink') ||
       raw.contains('contentplaceholdermain') ||
@@ -20,6 +23,7 @@ bool isPortalInterfaceText(String value) {
       text == 'pesquisar' ||
       text.startsWith('ano letivo ') ||
       text.contains('cursos departamentos') ||
+      examSeasonHits >= 3 ||
       text.contains('aaaa mm dd');
 }
 

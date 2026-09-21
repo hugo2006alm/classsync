@@ -560,7 +560,9 @@ class AcademicSyncService implements AcademicHubActions {
           );
           saved += records.length;
         } on IntegrationException catch (error) {
-          errors.add(error.userMessage);
+          if (!_isUnavailableOptionalPortalFeature(error)) {
+            errors.add(error.userMessage);
+          }
         }
       },
       'context': () async {
@@ -594,7 +596,9 @@ class AcademicSyncService implements AcademicHubActions {
           );
           saved += records.length;
         } on IntegrationException catch (error) {
-          errors.add(error.userMessage);
+          if (!_isUnavailableOptionalPortalFeature(error)) {
+            errors.add(error.userMessage);
+          }
         }
       },
       'notices': () async {
@@ -644,7 +648,9 @@ class AcademicSyncService implements AcademicHubActions {
           }
           saved += records.length;
         } on IntegrationException catch (error) {
-          errors.add(error.userMessage);
+          if (!_isUnavailableOptionalPortalFeature(error)) {
+            errors.add(error.userMessage);
+          }
         }
       },
       'finance': () async {
@@ -701,6 +707,77 @@ class AcademicSyncService implements AcademicHubActions {
               );
             }
           }
+          saved += records.length;
+        } on IntegrationException catch (error) {
+          errors.add(error.userMessage);
+        }
+      },
+      'absences': () async {
+        try {
+          final values = (await _portal.getAbsences()).map((item) {
+            return item.copyWith(
+              subjectId: _mapSubject(
+                item.subjectCode ?? '',
+                item.subjectName,
+                subjects,
+              ),
+            );
+          }).toList();
+          final records = values
+              .map(
+                (item) => AcademicRecord(
+                  key: AcademicRecord.keyFor(
+                    AcademicSource.portal,
+                    AcademicRecordKind.absence,
+                    item.id,
+                  ),
+                  source: AcademicSource.portal,
+                  kind: AcademicRecordKind.absence,
+                  externalId: item.id,
+                  title: item.subjectName,
+                  subjectId: item.subjectId,
+                  payload: item.toJson(),
+                  syncedAt: DateTime.now().toUtc(),
+                ),
+              )
+              .toList();
+          await _database.replaceAcademicRecords(
+            source: AcademicSource.portal,
+            kind: AcademicRecordKind.absence,
+            records: records,
+          );
+          saved += records.length;
+        } on IntegrationException catch (error) {
+          errors.add(error.userMessage);
+        }
+      },
+      'schoolCalendar': () async {
+        try {
+          final entries = await _portal.getSchoolCalendar();
+          final records = entries
+              .map(
+                (item) => AcademicRecord(
+                  key: AcademicRecord.keyFor(
+                    AcademicSource.portal,
+                    AcademicRecordKind.schoolCalendar,
+                    item.id,
+                  ),
+                  source: AcademicSource.portal,
+                  kind: AcademicRecordKind.schoolCalendar,
+                  externalId: item.id,
+                  title: item.title,
+                  startsAt: item.start,
+                  endsAt: item.end,
+                  payload: item.toJson(),
+                  syncedAt: DateTime.now().toUtc(),
+                ),
+              )
+              .toList();
+          await _database.replaceAcademicRecords(
+            source: AcademicSource.portal,
+            kind: AcademicRecordKind.schoolCalendar,
+            records: records,
+          );
           saved += records.length;
         } on IntegrationException catch (error) {
           errors.add(error.userMessage);
@@ -786,7 +863,9 @@ class AcademicSyncService implements AcademicHubActions {
           );
           saved += records.length;
         } on IntegrationException catch (error) {
-          errors.add(error.userMessage);
+          if (!_isUnavailableOptionalPortalFeature(error)) {
+            errors.add(error.userMessage);
+          }
         }
       },
     };
@@ -1513,7 +1592,10 @@ class AcademicRefreshState {
 }
 
 Duration academicRefreshAge(String stage) => switch (stage) {
-  'timetable' || 'exams' || 'notices' => const Duration(minutes: 30),
+  'timetable' ||
+  'exams' ||
+  'notices' ||
+  'absences' => const Duration(minutes: 30),
   'grades' || 'finance' => const Duration(hours: 6),
   _ => const Duration(hours: 24),
 };
@@ -1523,6 +1605,8 @@ List<String> academicStagePriority(int section) {
     'timetable',
     'exams',
     'notices',
+    'absences',
+    'schoolCalendar',
     'enrollment',
     'grades',
     'finance',
@@ -1534,9 +1618,10 @@ List<String> academicStagePriority(int section) {
   final focused = switch (section) {
     1 => ['moodle'],
     2 => ['exams'],
-    3 => ['notices', 'context', 'summaries'],
+    3 => ['absences'],
     4 => ['grades', 'history', 'enrollment', 'formulas'],
     5 => ['finance'],
+    6 => ['schoolCalendar'],
     _ => ['timetable', 'exams'],
   };
   return [...focused, ...baseline.where((key) => !focused.contains(key))];
@@ -1546,11 +1631,16 @@ Set<String> academicStagesForSection(int section) => switch (section) {
   0 => {'timetable'},
   1 => <String>{},
   2 => {'exams', 'moodle'},
-  3 => {'notices', 'context', 'summaries', 'moodle'},
+  3 => {'absences'},
   4 => {'grades', 'history', 'enrollment', 'formulas'},
   5 => {'finance'},
+  6 => {'schoolCalendar'},
   _ => <String>{},
 };
+
+bool _isUnavailableOptionalPortalFeature(IntegrationException error) =>
+    error.code == 'portal_route_missing' ||
+    error.code == 'portal_layout_changed';
 
 DateTime _academicWeekStart(DateTime value) {
   final local = DateTime(value.year, value.month, value.day);

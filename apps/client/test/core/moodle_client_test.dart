@@ -161,6 +161,48 @@ void main() {
     expect(values.map((item) => item.externalId), ['8']);
   });
 
+  test(
+    'missing news discussions do not discard courses and assignments',
+    () async {
+      final dio = Dio(BaseOptions(baseUrl: 'https://moodle.isep.ipp.pt'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            final function = options.queryParameters['wsfunction'];
+            final data = switch (function) {
+              'core_webservice_get_site_info' => {'userid': 1},
+              'core_enrol_get_users_courses' => [
+                {'id': 42, 'fullname': 'Bases de Dados', 'shortname': 'BDAD'},
+              ],
+              'mod_assign_get_assignments' => {'courses': <Object>[]},
+              'mod_forum_get_forums_by_courses' => [
+                {'id': 7, 'type': 'news', 'course': 42},
+              ],
+              'mod_forum_get_forum_discussions_paginated' => {
+                'exception': 'dml_missing_record_exception',
+                'errorcode': 'invalidrecord',
+                'message': 'Record not found',
+              },
+              _ => throw StateError('Unexpected Moodle call: $function'),
+            };
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: data,
+              ),
+            );
+          },
+        ),
+      );
+
+      final bundle = await MoodleClient(dio: dio).synchronize('token');
+
+      expect(bundle.courses, hasLength(1));
+      expect(bundle.announcements, isEmpty);
+    },
+  );
+
   test('bounds Moodle response bodies', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://moodle.isep.ipp.pt'));
     dio.interceptors.add(

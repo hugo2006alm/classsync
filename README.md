@@ -29,15 +29,16 @@ them with Gemini, and publishes structured study notes to Notion.
 - In-app Notion Library grouped by academic semester, with readable summary
   pages and a direct Open in Notion action.
 - Read-only ISEP Portal integration for enrolment, timetable, official exams,
-  published grades, and academic history, with fail-closed WebForms parsing.
+  published grades, academic history, absences, and the school calendar, with
+  fail-closed WebForms/JSON parsing.
 - Moodle Web Services integration for enrolled courses, assignments, and
   announcements; ambiguous subject mappings stay reviewable.
 - Focused offline Academic hub with a responsive weekly timetable: desktop
   time-by-weekday grid or agenda, mobile agenda or horizontally scrollable grid,
   fixed 50-minute ISEP period rows, and explicit class, room, and teacher
-  details. Longer classes occupy every period they span. Timetable and Tasks stay
-  directly accessible; Evaluations, Grades & progress, and Finance live under
-  the compact More menu.
+  details. Longer classes occupy every period they span. Timetable, Tasks, and
+  Evaluations stay directly accessible; Absences, School calendar, Grades &
+  progress, and Finance live under the compact More menu.
 - Lecture action extraction with evidence, editable lifecycle state, and
   deadline calendar integration; regeneration preserves user decisions.
 - Read-only Portal notices, official lesson summaries, exam-registration
@@ -136,7 +137,9 @@ simply rereads the offline cache. Timetable refresh loads the selected week and
 the following four weeks from Portal; opening an uncached week triggers the
 same focused refresh. Academic history uses the latest dated completed
 curriculum block, preventing the Portal's duplicated unscoped rows from
-inflating earned ECTS. Unavailable data is shown as uncached.
+inflating earned ECTS. Absence percentages use the complete planned timetable
+for the active teaching period rather than classes elapsed so far. Unavailable
+data is shown as uncached.
 
 ## Deploy the relay
 

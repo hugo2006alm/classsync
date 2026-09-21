@@ -602,6 +602,31 @@ class _FakePortal implements PortalAdapter {
 
   @override
   Future<List<TuitionCharge>> getTuitionCharges() async => tuitionCharges;
+
+  @override
+  Future<List<AbsenceSummary>> getAbsences() async => const [
+    AbsenceSummary(
+      id: 'bdad:2026',
+      subjectName: 'Bases de Dados',
+      subjectCode: 'BDAD',
+      absences: 2,
+      totalPlannedClasses: 30,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+    ),
+  ];
+
+  @override
+  Future<List<SchoolCalendarEntry>> getSchoolCalendar() async => [
+    SchoolCalendarEntry(
+      id: 'semester-1',
+      title: 'First semester classes',
+      start: DateTime(2026, 9, 14),
+      end: DateTime(2026, 12, 19),
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/educacao/ver_calendario_escolar.aspx',
+    ),
+  ];
 }
 
 class _FakeMoodle extends MoodleClient {

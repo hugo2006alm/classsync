@@ -80,6 +80,8 @@ abstract interface class PortalAdapter {
   Future<List<PortalNotification>> getNotifications();
   Future<List<OfficialLessonSummary>> getLessonSummaries();
   Future<List<TuitionCharge>> getTuitionCharges();
+  Future<List<AbsenceSummary>> getAbsences();
+  Future<List<SchoolCalendarEntry>> getSchoolCalendar();
 }
 
 class IsepPortalClient implements PortalAdapter {
@@ -347,6 +349,203 @@ class IsepPortalClient implements PortalAdapter {
       'emolumentos',
     ], preferredPath: 'propinas/pedidorefmb.aspx');
     return _parser.parseTuitionCharges(page.html, sourceUrl: page.url);
+  }
+
+  @override
+  Future<List<AbsenceSummary>> getAbsences() async {
+    final page = await _featurePage(const [
+      'ficha aluno',
+      'dados do aluno',
+    ], preferredPath: 'areapessoal/estudante.aspx');
+    final studentMatch = RegExp(
+      r'''["']?cst["']?\s*:\s*(\d+)''',
+      caseSensitive: false,
+    ).firstMatch(page.html);
+    if (studentMatch == null) {
+      return _parser.parseAbsences(page.html, sourceUrl: page.url);
+    }
+    final student = int.parse(studentMatch.group(1)!);
+    final yearsResponse = await _portalServiceJson(
+      page,
+      '../escolas/isep/seraa/wsSERAAhelper.asmx/GetStudentYearEditions',
+      {'cst': student},
+    );
+    final years = _jsonMaps(yearsResponse['years']);
+    if (yearsResponse['ok'] != true || years.isEmpty) return const [];
+    final currentYear = years.last;
+    final yearCode = currentYear['code'];
+    if (yearCode is! String && yearCode is! num) {
+      throw const FormatException();
+    }
+    final attendanceResponse = await _portalServiceJson(
+      page,
+      '../escolas/isep/seraa/wsSERAAhelper.asmx/GetStudentAttendance',
+      {'cst': student, 'cye': yearCode},
+    );
+    if (attendanceResponse['ok'] != true) return const [];
+    var values = _parser.parseAttendanceData(
+      attendanceResponse['faltas'],
+      academicYear: currentYear['name']?.toString(),
+      sourceUrl: page.url,
+    );
+    if (values.isEmpty ||
+        values.every((item) => item.totalPlannedClasses != null)) {
+      return values;
+    }
+    try {
+      values = await _withFullTermClassTotals(values);
+    } on IntegrationException {
+      // Recorded absences remain useful. The UI explicitly marks a missing
+      // full-term denominator instead of showing a misleading percentage.
+    }
+    return values;
+  }
+
+  @override
+  Future<List<SchoolCalendarEntry>> getSchoolCalendar() async {
+    final page = await _featurePage(const [
+      'calendário escolar',
+      'calendario escolar',
+    ], preferredPath: 'educacao/ver_calendario_escolar.aspx');
+    return _parser.parseSchoolCalendar(page.html, sourceUrl: page.url);
+  }
+
+  Future<List<AbsenceSummary>> _withFullTermClassTotals(
+    List<AbsenceSummary> values,
+  ) async {
+    final calendar = await getSchoolCalendar();
+    final now = DateTime.now();
+    final activePeriods =
+        calendar.where((item) {
+          final days = item.end.difference(item.start).inDays;
+          return days >= 14 &&
+              days <= 180 &&
+              !now.isBefore(item.start) &&
+              !now.isAfter(item.end.add(const Duration(days: 1)));
+        }).toList()..sort(
+          (a, b) =>
+              b.end.difference(b.start).compareTo(a.end.difference(a.start)),
+        );
+    final teaching = activePeriods.firstOrNull;
+    if (teaching == null) return values;
+    final start = teaching.start;
+    final end = teaching.end;
+    if (end.difference(start) > const Duration(days: 180)) return values;
+    final timetablePage = await _featurePage(const [
+      'horario',
+      'ver horario',
+    ], preferredHrefContains: 'ver_horario/ver_horario.aspx');
+    final slots = <String, TimetableSlot>{};
+    var week = DateTime(
+      start.year,
+      start.month,
+      start.day,
+    ).subtract(Duration(days: start.weekday - DateTime.monday));
+    for (var count = 0; !week.isAfter(end) && count < 27; count++) {
+      for (final slot in await _timetableWeek(timetablePage, week)) {
+        if (!slot.start.isBefore(start) &&
+            !slot.start.isAfter(end.add(const Duration(days: 1)))) {
+          slots[slot.externalId] = slot;
+        }
+      }
+      week = week.add(const Duration(days: 7));
+    }
+    return values.map((item) {
+      final names = [item.subjectCode, item.subjectName]
+          .whereType<String>()
+          .map(SubjectMapper.normalize)
+          .where((value) => value.isNotEmpty)
+          .toSet();
+      final matching = slots.values.where((slot) {
+        final slotNames =
+            [slot.portalSubjectId, slot.subjectCode, slot.subjectName]
+                .whereType<String>()
+                .map(SubjectMapper.normalize)
+                .where((value) => value.isNotEmpty);
+        return slotNames.any(
+          (slotName) => names.any(
+            (name) => _academicNameSimilarity(slotName, name) >= 0.55,
+          ),
+        );
+      });
+      final total = item.measuredInHours
+          ? matching.fold<double>(
+              0,
+              (sum, slot) =>
+                  sum + slot.end.difference(slot.start).inMinutes / 60,
+            )
+          : matching.length.toDouble();
+      return total > 0 ? item.copyWith(totalPlannedClasses: total) : item;
+    }).toList();
+  }
+
+  Future<Map<String, dynamic>> _portalServiceJson(
+    PortalDocument page,
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final url = _portalUri(Uri.parse(page.url).resolve(path).toString());
+    try {
+      final response = await _dio.post<dynamic>(
+        url.toString(),
+        data: jsonEncode(body),
+        options: Options(
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          headers: {
+            'cookie': _cookies.entries
+                .map((entry) => '${entry.key}=${entry.value}')
+                .join('; '),
+            'referer': page.url,
+          },
+        ),
+      );
+      final bytes = await readBoundedResponse(response.data, response.headers);
+      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+      if (decoded is! Map || decoded['d'] is! String) {
+        throw const FormatException();
+      }
+      final payload = jsonDecode(decoded['d'] as String);
+      if (payload is! Map) throw const FormatException();
+      return payload.map((key, value) => MapEntry(key.toString(), value));
+    } on DioException catch (error) {
+      throw IntegrationException.fromDio('ISEP Portal', error);
+    } on FormatException {
+      throw const IntegrationException(
+        integration: 'ISEP Portal',
+        code: 'portal_layout_changed',
+        userMessage:
+            'ISEP Portal returned an invalid student attendance response.',
+        retryable: false,
+      );
+    }
+  }
+
+  static List<Map<String, dynamic>> _jsonMaps(dynamic value) =>
+      (value as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => item.map((key, value) => MapEntry(key.toString(), value)),
+          )
+          .toList();
+
+  static double _academicNameSimilarity(String left, String right) {
+    if (left == right || left.contains(right) || right.contains(left)) {
+      return 1;
+    }
+    const ignored = {'de', 'da', 'do', 'das', 'dos', 'e', 'i', 'ii'};
+    Set<String> tokens(String value) => value
+        .split(RegExp(r'\s+'))
+        .where((token) => token.length > 1 && !ignored.contains(token))
+        .toSet();
+    final leftTokens = tokens(left);
+    final rightTokens = tokens(right);
+    if (leftTokens.isEmpty || rightTokens.isEmpty) return 0;
+    final denominator = leftTokens.length < rightTokens.length
+        ? leftTokens.length
+        : rightTokens.length;
+    return leftTokens.intersection(rightTokens).length / denominator;
   }
 
   bool get _hasStudentPage =>
@@ -946,6 +1145,9 @@ class IsepPortalParser {
         final subject = _compactText(
           subjectLink?.text ?? fallbackSubject.ifEmpty(title.text ?? ''),
         );
+        final portalSubjectId = Uri.tryParse(
+          subjectLink?.attributes['href'] ?? '',
+        )?.queryParameters['id'];
         if (start == null ||
             end == null ||
             !end.isAfter(start) ||
@@ -999,6 +1201,7 @@ class IsepPortalParser {
             externalId: '$subject:${start.toIso8601String()}:${type ?? ''}',
             subjectCode: subject,
             subjectName: subject,
+            portalSubjectId: portalSubjectId,
             start: start,
             end: end,
             lessonType: [?type, ?season].join(' · '),
@@ -1689,6 +1892,274 @@ class IsepPortalParser {
     return _requireParsed(_dedupe(result, (item) => item.id), 'notifications');
   }
 
+  List<AbsenceSummary> parseAttendanceData(
+    dynamic data, {
+    required String sourceUrl,
+    String? academicYear,
+  }) {
+    Map<String, dynamic> object(dynamic value) => value is Map
+        ? value.map((key, value) => MapEntry(key.toString(), value))
+        : <String, dynamic>{};
+    List<Map<String, dynamic>> objects(dynamic value) =>
+        (value as List<dynamic>? ?? const []).map(object).toList();
+    double? numeric(Map<String, dynamic> value, List<String> keys) {
+      for (final key in keys) {
+        final item = value[key];
+        if (item is num) return item.toDouble();
+        final parsed = double.tryParse('${item ?? ''}'.replaceAll(',', '.'));
+        if (parsed != null) return parsed;
+      }
+      return null;
+    }
+
+    final root = object(data);
+    final result = <AbsenceSummary>[];
+    for (final period in objects(root['PeriodosLetivos'])) {
+      final periodName = period['Name']?.toString() ?? '';
+      for (final subject in objects(period['UCs'])) {
+        final name = subject['Name']?.toString().trim() ?? '';
+        if (name.isEmpty) continue;
+        final measuredInHours = subject['FaltasEmHoras'] == true;
+        double absences;
+        double? total;
+        if (measuredInHours) {
+          absences =
+              numeric(object(subject['ResumoFaltas']), const ['Horas']) ?? 0;
+          total = numeric(subject, const [
+            'HorasPrevistas',
+            'TotalHoras',
+            'CargaHoraria',
+          ]);
+        } else {
+          absences = 0;
+          var planned = 0.0;
+          var hasPlanned = false;
+          for (final type in objects(subject['TiposAula'])) {
+            absences +=
+                numeric(object(type['ResumoFaltas']), const ['Numero']) ?? 0;
+            final typeTotal = numeric(type, const [
+              'AulasPrevistas',
+              'TotalAulas',
+              'NumeroAulasPrevistas',
+            ]);
+            if (typeTotal != null) {
+              hasPlanned = true;
+              planned += typeTotal;
+            }
+          }
+          total = hasPlanned
+              ? planned
+              : numeric(subject, const [
+                  'AulasPrevistas',
+                  'TotalAulas',
+                  'NumeroAulasPrevistas',
+                ]);
+        }
+        result.add(
+          AbsenceSummary(
+            id: [
+              _normalize(name),
+              _normalize(academicYear ?? ''),
+              _normalize(periodName),
+            ].join(':'),
+            subjectName: name,
+            subjectCode: subject['CDE']?.toString(),
+            absences: absences,
+            totalPlannedClasses: total,
+            academicYear: academicYear,
+            measuredInHours: measuredInHours,
+            sourceUrl: sourceUrl,
+          ),
+        );
+      }
+    }
+    return _dedupe(result, (item) => item.id);
+  }
+
+  List<AbsenceSummary> parseAbsences(String html, {required String sourceUrl}) {
+    final result = <AbsenceSummary>[];
+    for (final row in _tableRows(html)) {
+      final name = _value(row, const [
+        'unidade curricular',
+        'disciplina',
+        'uc',
+      ]);
+      final code = _value(row, const ['codigo', 'sigla', 'codigo uc']);
+      final absences = _number(
+        _value(row, const [
+          'faltas',
+          'numero de faltas',
+          'n faltas',
+          'total faltas',
+          'faltas registadas',
+          'injustificadas',
+        ]),
+      );
+      final total = _number(
+        _value(row, const [
+          'aulas previstas',
+          'total de aulas',
+          'aulas totais',
+          'numero de aulas',
+          'total aulas',
+          'horas previstas',
+          'carga horaria',
+        ]),
+      );
+      if ((name.isEmpty && code.isEmpty) || absences == null) continue;
+      final academicYear = _nullable(
+        _value(row, const ['ano letivo', 'ano academico', 'ano']),
+      );
+      final identity = [
+        _normalize(code.ifEmpty(name)),
+        _normalize(academicYear ?? ''),
+      ].join(':');
+      result.add(
+        AbsenceSummary(
+          id: identity,
+          subjectName: name.ifEmpty(code),
+          subjectCode: _nullable(code),
+          absences: absences,
+          totalPlannedClasses: total,
+          excusedAbsences: _number(
+            _value(row, const ['faltas justificadas', 'justificadas']),
+          ),
+          academicYear: academicYear,
+          sourceUrl: sourceUrl,
+        ),
+      );
+    }
+    final normalized = _normalize(html);
+    if (result.isEmpty &&
+        (normalized.contains('nao existem faltas') ||
+            normalized.contains('sem faltas registadas'))) {
+      return const [];
+    }
+    return _requireParsed(
+      _dedupe(result, (item) => item.id),
+      'student absences',
+    );
+  }
+
+  List<SchoolCalendarEntry> parseSchoolCalendar(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final result = _schoolCalendarGrid(html, sourceUrl: sourceUrl);
+    if (result.isNotEmpty) return _dedupe(result, (item) => item.id);
+    for (final row in _tableRows(html)) {
+      final title = _value(row, const [
+        'atividade',
+        'tipo de atividade',
+        'descricao',
+        'designacao',
+        'evento',
+        'periodo letivo',
+        'periodo',
+      ]);
+      final dateRange = _value(row, const ['datas', 'data', 'periodo']);
+      final start =
+          _dateTime(_value(row, const ['inicio', 'data inicio', 'de']), '') ??
+          _datesIn(dateRange).firstOrNull;
+      final dates = _datesIn(dateRange);
+      final end =
+          _dateTime(
+            _value(row, const ['fim', 'data fim', 'ate', 'termino']),
+            '',
+          ) ??
+          (dates.length > 1 ? dates.last : start);
+      if (title.isEmpty || start == null || end == null) continue;
+      final category = _nullable(
+        _value(row, const ['tipo', 'categoria', 'fase']),
+      );
+      final academicYear = _nullable(
+        _value(row, const ['ano letivo', 'ano academico']),
+      );
+      final id = [
+        _normalize(title),
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ].join(':');
+      result.add(
+        SchoolCalendarEntry(
+          id: id,
+          title: title,
+          start: start,
+          end: end,
+          sourceUrl: sourceUrl,
+          category: category,
+          academicYear: academicYear,
+        ),
+      );
+    }
+    return _requireParsed(
+      _dedupe(result, (item) => item.id),
+      'school calendar',
+    );
+  }
+
+  static List<SchoolCalendarEntry> _schoolCalendarGrid(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final document = html_parser.parse(html);
+    final result = <SchoolCalendarEntry>[];
+    for (final table in document.querySelectorAll('table')) {
+      final rows = _directRows(table);
+      var headerIndex = -1;
+      for (var index = 0; index < rows.length && index < 6; index++) {
+        final headers = _directCells(
+          rows[index],
+        ).map((cell) => _normalize(cell.text)).toList();
+        if (headers.length >= 3 &&
+            headers[1] == 'data inicio' &&
+            headers[2] == 'data fim') {
+          headerIndex = index;
+          break;
+        }
+      }
+      if (headerIndex < 0 || rows.length - headerIndex > 200) continue;
+      String? currentTitle;
+      for (final row in rows.skip(headerIndex + 1)) {
+        final cells = _directCells(row).toList();
+        if (cells.length < 2 || cells.length > 3) continue;
+        late final String startText;
+        late final String endText;
+        if (cells.length == 3) {
+          currentTitle = _compactText(cells[0].text);
+          startText = _compactText(cells[1].text);
+          endText = _compactText(cells[2].text);
+        } else {
+          startText = _compactText(cells[0].text);
+          endText = _compactText(cells[1].text);
+        }
+        final start = _dateTime(startText, '');
+        final end = _dateTime(endText, '');
+        if (currentTitle == null ||
+            currentTitle.isEmpty ||
+            start == null ||
+            end == null) {
+          continue;
+        }
+        final id = [
+          _normalize(currentTitle),
+          start.toIso8601String(),
+          end.toIso8601String(),
+        ].join(':');
+        result.add(
+          SchoolCalendarEntry(
+            id: id,
+            title: currentTitle,
+            start: start,
+            end: end,
+            sourceUrl: sourceUrl,
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
   List<OfficialLessonSummary> parseLessonSummaries(
     String html, {
     required String sourceUrl,
@@ -2020,6 +2491,10 @@ class IsepPortalParser {
       'vencimento',
       'pagamento',
       'descricao',
+      'faltas',
+      'aulas previstas',
+      'atividade',
+      'periodo',
     ];
     var bestIndex = 0;
     var bestScore = -1;
@@ -2073,6 +2548,22 @@ class IsepPortalParser {
     return DateTime.tryParse(
       '$normalizedDate ${normalizedTime.isEmpty ? '00:00' : normalizedTime}',
     );
+  }
+
+  static List<DateTime> _datesIn(String value) {
+    final result = <DateTime>[];
+    for (final match in RegExp(
+      r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b',
+    ).allMatches(value)) {
+      final day = int.parse(match.group(1)!);
+      final month = int.parse(match.group(2)!);
+      final year = int.parse(match.group(3)!);
+      final parsed = DateTime.tryParse(
+        '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}',
+      );
+      if (parsed != null) result.add(parsed);
+    }
+    return result;
   }
 
   static double? _number(String value) =>

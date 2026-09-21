@@ -9,6 +9,7 @@ import 'package:collection/collection.dart';
 import '../../core/providers.dart';
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_models.dart';
+import '../../domain/academic/portal_record_validation.dart';
 import '../../core/academic/academic_sync_service.dart';
 import '../shared/page_frame.dart';
 import 'academic_connections_dialog.dart';
@@ -23,7 +24,8 @@ class AcademicScreen extends ConsumerStatefulWidget {
 }
 
 class _AcademicScreenState extends ConsumerState<AcademicScreen> {
-  late int _section = const {0, 1, 2, 4, 5}.contains(widget.initialSection)
+  late int _section =
+      const {0, 1, 2, 3, 4, 5, 6}.contains(widget.initialSection)
       ? widget.initialSection
       : 0;
   late DateTime _weekStart = _startOfWeek(DateTime.now());
@@ -34,8 +36,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     0: 'Timetable',
     1: 'Tasks',
     2: 'Evaluations',
+    3: 'Absences',
     4: 'Grades & progress',
     5: 'Finance',
+    6: 'School calendar',
   };
 
   @override
@@ -87,8 +91,10 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
     final freshnessStage = switch (_section) {
       0 => 'timetable',
       2 => 'exams',
+      3 => 'absences',
       4 => 'grades',
       5 => 'finance',
+      6 => 'schoolCalendar',
       _ => null,
     };
     final updated = freshnessStage == null
@@ -157,9 +163,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 leading: const Icon(Icons.info_outline),
-                title: Text('${refresh.errors.length} sources need attention'),
+                title: Text(
+                  '${refresh.errors.length} update ${refresh.errors.length == 1 ? 'issue' : 'issues'}',
+                ),
                 subtitle: const Text(
-                  'Loaded data stays available. Expand for details.',
+                  'Cached data stays available. Open for details.',
                 ),
                 children: [
                   for (final error in refresh.errors)
@@ -228,6 +236,15 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             ref.watch(activeSubjectsProvider).valueOrNull ??
                             const [],
                       ),
+              3 =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail: 'Connect Portal to load recorded absences.',
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
+                      )
+                    : _AbsencesSection(records: records),
               4 =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
@@ -253,6 +270,15 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             showAcademicConnectionsDialog(context, ref),
                       )
                     : _FinanceSection(records: records),
+              6 =>
+                connections?.portalConfigured == false
+                    ? _SourceSetupState(
+                        source: 'ISEP Portal',
+                        detail: 'Connect Portal to load the school calendar.',
+                        onConnect: () =>
+                            showAcademicConnectionsDialog(context, ref),
+                      )
+                    : _SchoolCalendarSection(records: records),
               _ => const SizedBox.shrink(),
             },
           ],
@@ -272,9 +298,11 @@ class _AcademicSectionNavigation extends StatelessWidget {
   static const primaryDestinations = [
     (0, Icons.view_week_rounded, 'Timetable'),
     (1, Icons.task_alt_rounded, 'Tasks'),
+    (2, Icons.event_rounded, 'Evaluations'),
   ];
   static const moreDestinations = [
-    (2, Icons.event_rounded, 'Evaluations'),
+    (3, Icons.fact_check_outlined, 'Absences'),
+    (6, Icons.date_range_rounded, 'School calendar'),
     (4, Icons.calculate_rounded, 'Grades & progress'),
     (5, Icons.account_balance_wallet_outlined, 'Finance'),
   ];
@@ -603,6 +631,7 @@ class _ProgressSection extends StatelessWidget {
         .toList();
     final registrations = records
         .where((item) => item.kind == AcademicRecordKind.examRegistration)
+        .where((item) => isValidPortalRegistration(item.payload))
         .toList();
     final enrolled = records
         .where((item) => item.kind == AcademicRecordKind.enrollment)
@@ -654,9 +683,12 @@ class _ProgressSection extends StatelessWidget {
                 for (final record in registrations)
                   ListTile(
                     leading: const Icon(Icons.how_to_reg_outlined),
-                    title: Text(record.title),
+                    title: Text(
+                      record.payload['subjectName'] as String? ?? record.title,
+                    ),
                     subtitle: Text(
                       [
+                        record.payload['examType'] as String? ?? 'Exam',
                         record.payload['state'] as String? ?? 'unknown',
                         if (record.endsAt != null)
                           'closes ${DateFormat.yMMMd().format(record.endsAt!)}',
@@ -674,6 +706,254 @@ class _ProgressSection extends StatelessWidget {
     );
   }
 }
+
+class _AbsencesSection extends ConsumerWidget {
+  const _AbsencesSection({required this.records});
+  final List<AcademicRecord> records;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final values =
+        records
+            .where((item) => item.kind == AcademicRecordKind.absence)
+            .map((item) => AbsenceSummary.fromJson(item.payload))
+            .toList()
+          ..sort((a, b) {
+            final byPercentage = (b.percentage ?? -1).compareTo(
+              a.percentage ?? -1,
+            );
+            return byPercentage != 0
+                ? byPercentage
+                : a.subjectName.compareTo(b.subjectName);
+          });
+    final withTotals = values.where((item) => item.percentage != null).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                const Icon(Icons.fact_check_outlined, size: 36),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        values.isEmpty
+                            ? 'No absences reported'
+                            : '${values.length} ${values.length == 1 ? 'subject' : 'subjects'} checked',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(
+                        values.isEmpty
+                            ? 'Portal has not reported attendance records.'
+                            : withTotals == values.length
+                            ? 'Each percentage uses all planned classes through the end of term.'
+                            : '$withTotals of ${values.length} subjects have a reliable full-term percentage.',
+                      ),
+                    ],
+                  ),
+                ),
+                if (values.firstOrNull?.sourceUrl.isNotEmpty == true)
+                  IconButton(
+                    tooltip: 'Open absences in Portal',
+                    onPressed: () => unawaited(
+                      ref
+                          .read(academicHubActionsProvider)
+                          .openSource(values.first.sourceUrl),
+                    ),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (values.isEmpty)
+          const EmptyState(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'No absence records cached',
+            message:
+                'Reload to read the student record. ClassSync only shows values reported by Portal.',
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (var index = 0; index < values.length; index++) ...[
+                  _AbsenceTile(value: values[index]),
+                  if (index < values.length - 1) const Divider(height: 1),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AbsenceTile extends StatelessWidget {
+  const _AbsenceTile({required this.value});
+  final AbsenceSummary value;
+
+  @override
+  Widget build(BuildContext context) {
+    final percentage = value.percentage;
+    final unit = value.measuredInHours ? 'class hours' : 'classes';
+    final details = percentage == null
+        ? '${_compactNumber(value.absences)} absences · full-term total unavailable'
+        : '${_compactNumber(value.absences)} of ${_compactNumber(value.totalPlannedClasses!)} planned $unit · ${percentage.toStringAsFixed(1)}%';
+    return Semantics(
+      label: '${value.subjectName}. $details',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value.subjectName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                if (percentage != null)
+                  Text(
+                    '${percentage.toStringAsFixed(1)}%',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(details, style: Theme.of(context).textTheme.bodySmall),
+            if (percentage != null) ...[
+              const SizedBox(height: 10),
+              LinearProgressIndicator(
+                value: (percentage / 100).clamp(0.0, 1.0),
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SchoolCalendarSection extends ConsumerWidget {
+  const _SchoolCalendarSection({required this.records});
+  final List<AcademicRecord> records;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entries =
+        records
+            .where((item) => item.kind == AcademicRecordKind.schoolCalendar)
+            .map((item) => SchoolCalendarEntry.fromJson(item.payload))
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
+    final today = DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+    final next = entries.where((item) => !item.end.isBefore(day)).firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (next != null) ...[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 62,
+                    child: Column(
+                      children: [
+                        Text(DateFormat.MMM().format(next.start).toUpperCase()),
+                        Text(
+                          '${next.start.day}',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          next.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        Text(_schoolCalendarDateLabel(next)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Open school calendar in Portal',
+                    onPressed: () => unawaited(
+                      ref
+                          .read(academicHubActionsProvider)
+                          .openSource(next.sourceUrl),
+                    ),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (entries.isEmpty)
+          const EmptyState(
+            icon: Icons.date_range_outlined,
+            title: 'No school calendar cached',
+            message:
+                'Reload to import teaching periods, breaks and exam seasons from Portal.',
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (var index = 0; index < entries.length; index++) ...[
+                  ListTile(
+                    leading: Icon(
+                      entries[index].end.isBefore(day)
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.calendar_today_outlined,
+                    ),
+                    title: Text(entries[index].title),
+                    subtitle: Text(
+                      [
+                        _schoolCalendarDateLabel(entries[index]),
+                        if (entries[index].category != null)
+                          entries[index].category!,
+                      ].join(' · '),
+                    ),
+                  ),
+                  if (index < entries.length - 1) const Divider(height: 1),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+String _schoolCalendarDateLabel(SchoolCalendarEntry entry) =>
+    _sameDay(entry.start, entry.end)
+    ? DateFormat.yMMMd().format(entry.start)
+    : '${DateFormat.yMMMd().format(entry.start)} – ${DateFormat.yMMMd().format(entry.end)}';
+
+String _compactNumber(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value.toStringAsFixed(1);
 
 class _FinanceSection extends ConsumerWidget {
   const _FinanceSection({required this.records});
@@ -1727,29 +2007,6 @@ class _EvaluationSection extends ConsumerWidget {
     final eventRecords = records
         .where((item) => item.kind == AcademicRecordKind.evaluation)
         .toList();
-    final taskEvents = records
-        .where((item) => item.kind == AcademicRecordKind.lectureTask)
-        .map((record) => LectureTask.fromJson(record.payload))
-        .where(
-          (task) =>
-              task.dueAt != null && task.status == LectureTaskStatus.pending,
-        )
-        .map(
-          (task) => EvaluationEvent(
-            externalId: task.id,
-            title: task.title,
-            type: 'Lecture task',
-            subjectName: task.subjectName,
-            subjectId: task.subjectId,
-            start: task.dueAt!,
-            provenance: [
-              AcademicProvenance(
-                source: AcademicSource.manual,
-                externalId: task.sourceLectureId,
-              ),
-            ],
-          ),
-        );
     final events =
         EvaluationMerger.merge([
               ...eventRecords.map(
@@ -1758,7 +2015,6 @@ class _EvaluationSection extends ConsumerWidget {
                   changedFields: record.changedFields,
                 ),
               ),
-              ...taskEvents,
             ])
             .where(
               (item) => item.start.isAfter(
@@ -1796,7 +2052,7 @@ class _EvaluationSection extends ConsumerWidget {
             icon: Icons.event_available_outlined,
             title: 'No upcoming evaluations',
             message:
-                'Portal exams, Moodle assignments, and manual events share this offline agenda.',
+                'Tests, exams, presentations and other graded assessments appear here. Task deadlines stay under Tasks.',
           )
         else ...[
           Card(
@@ -1919,6 +2175,7 @@ class _EvaluationSection extends ConsumerWidget {
   Future<void> _addEvaluation(BuildContext context, WidgetRef ref) async {
     final title = TextEditingController();
     var selectedSubject = subjects.firstOrNull;
+    var type = 'Test';
     var date = DateTime.now().add(const Duration(days: 7));
     var time = const TimeOfDay(hour: 9, minute: 0);
     await showDialog<void>(
@@ -1934,6 +2191,34 @@ class _EvaluationSection extends ConsumerWidget {
                 TextField(
                   controller: title,
                   decoration: const InputDecoration(labelText: 'Title'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: const InputDecoration(
+                    labelText: 'Assessment type',
+                    helperText:
+                        'Only add work that directly counts for a grade.',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Test', child: Text('Test')),
+                    DropdownMenuItem(value: 'Exam', child: Text('Exam')),
+                    DropdownMenuItem(
+                      value: 'Presentation',
+                      child: Text('Presentation'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Oral assessment',
+                      child: Text('Oral assessment'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Project defence',
+                      child: Text('Project defence'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => type = value);
+                  },
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<AcademicSubject>(
@@ -2015,7 +2300,7 @@ class _EvaluationSection extends ConsumerWidget {
                       EvaluationEvent(
                         externalId: id,
                         title: title.text.trim(),
-                        type: 'Manual evaluation',
+                        type: type,
                         subjectId: selectedSubject!.notionId,
                         subjectName: selectedSubject!.name,
                         start: start,
@@ -2239,8 +2524,18 @@ class _GradesSection extends ConsumerWidget {
           alignment: Alignment.centerRight,
           child: OutlinedButton.icon(
             onPressed: subjects.isEmpty ? null : () => _addGrade(context, ref),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Manual component'),
+            icon: const Icon(Icons.percent_rounded),
+            label: const Text('Add assessment weight'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card.outlined(
+          child: const ListTile(
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('What is a weight?'),
+            subtitle: Text(
+              'It is the percentage an assessment contributes to the final grade. Add the weight now; the grade itself can stay blank until it is published.',
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -2326,7 +2621,7 @@ class _GradesSection extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Manual grade component'),
+        title: const Text('Add assessment weight'),
         content: SizedBox(
           width: 430,
           child: SingleChildScrollView(
@@ -2351,7 +2646,10 @@ class _GradesSection extends ConsumerWidget {
                 const SizedBox(height: 10),
                 TextField(
                   controller: name,
-                  decoration: const InputDecoration(labelText: 'Component'),
+                  decoration: const InputDecoration(
+                    labelText: 'Assessment',
+                    hintText: 'Example: Test 1',
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -2360,7 +2658,7 @@ class _GradesSection extends ConsumerWidget {
                     decimal: true,
                   ),
                   decoration: const InputDecoration(
-                    labelText: 'Grade (0–20, blank if remaining)',
+                    labelText: 'Grade (optional, 0–20)',
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -2509,7 +2807,7 @@ class _SubjectGrades extends StatelessWidget {
                     ),
                 ],
               ),
-            ] else
+            ] else if (current.isNotEmpty)
               const Text('Add confirmed weights to calculate targets.'),
             if (formulaRecords.isNotEmpty) ...[
               const Divider(),

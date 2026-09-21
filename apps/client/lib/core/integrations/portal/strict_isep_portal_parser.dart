@@ -152,6 +152,28 @@ class StrictIsepPortalParser extends IsepPortalParser {
   }
 
   @override
+  List<AbsenceSummary> parseAbsences(String html, {required String sourceUrl}) {
+    final values = super.parseAbsences(
+      _filterTables(html, [_subjectHeaders, _absenceHeaders]),
+      sourceUrl: sourceUrl,
+    );
+    return _rejectMarkupNoise(
+      values,
+      (item) => '${item.subjectCode} ${item.subjectName}',
+      'student absences',
+    );
+  }
+
+  @override
+  List<SchoolCalendarEntry> parseSchoolCalendar(
+    String html, {
+    required String sourceUrl,
+  }) {
+    final values = super.parseSchoolCalendar(html, sourceUrl: sourceUrl);
+    return _rejectMarkupNoise(values, (item) => item.title, 'school calendar');
+  }
+
+  @override
   List<FucProfile> parseFucProfiles(String html, {required String sourceUrl}) {
     final values = super.parseFucProfiles(
       _filterTables(html, [_subjectHeaders, _fucDetailHeaders]),
@@ -221,6 +243,15 @@ class StrictIsepPortalParser extends IsepPortalParser {
     'emolumento',
     'inscrever',
     'acao',
+  ];
+
+  static const _absenceHeaders = <String>[
+    'faltas',
+    'numero de faltas',
+    'n faltas',
+    'total faltas',
+    'faltas registadas',
+    'injustificadas',
   ];
 
   static const _fucDetailHeaders = <String>[

@@ -76,11 +76,13 @@ void main() {
 
     expect(find.text('Timetable'), findsWidgets);
     expect(find.text('Tasks'), findsOneWidget);
+    expect(find.text('Evaluations'), findsOneWidget);
     expect(find.text('More'), findsOneWidget);
     expect(find.text('Search & ask'), findsNothing);
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
-    expect(find.text('Evaluations'), findsOneWidget);
+    expect(find.text('Absences'), findsOneWidget);
+    expect(find.text('School calendar'), findsOneWidget);
     expect(find.text('Grades & progress'), findsOneWidget);
     expect(find.text('Finance'), findsOneWidget);
     expect(find.text('Updates'), findsNothing);
@@ -210,6 +212,109 @@ void main() {
     expect(find.text('Official history'), findsOneWidget);
     expect(find.text('2025/2026 · Final result'), findsOneWidget);
     expect(find.textContaining('6.0 ECTS confirmed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('absences show the full-term planned-class percentage', (
+    tester,
+  ) async {
+    _useDesktopViewport(tester);
+    const absence = AbsenceSummary(
+      id: 'so:2026',
+      subjectName: 'Operating Systems',
+      subjectId: 'subject-1',
+      absences: 3,
+      totalPlannedClasses: 40,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+    );
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: AcademicRecord.keyFor(
+          AcademicSource.portal,
+          AcademicRecordKind.absence,
+          absence.id,
+        ),
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.absence,
+        externalId: absence.id,
+        title: absence.subjectName,
+        payload: absence.toJson(),
+        syncedAt: DateTime.now().toUtc(),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(initialSection: 3),
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 subject checked'), findsOneWidget);
+    expect(
+      find.text(
+        'Each percentage uses all planned classes through the end of term.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('3 of 40 planned classes'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('task deadlines do not appear as evaluations', (tester) async {
+    _useDesktopViewport(tester);
+    final task = LectureTask(
+      id: 'task-1',
+      title: 'Choose an organisation for the project',
+      description: 'Prepare the next project step.',
+      sourceLectureId: 'lecture-1',
+      sourceLectureTitle: 'Lecture 1',
+      subjectId: _subject.notionId,
+      subjectName: _subject.name,
+      dueAt: DateTime.now().add(const Duration(days: 3)),
+      confidence: LectureActionConfidence.certain,
+      supportingSegment: 'Choose an organisation.',
+      status: LectureTaskStatus.pending,
+    );
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: AcademicRecord.keyFor(
+          AcademicSource.manual,
+          AcademicRecordKind.lectureTask,
+          task.id,
+        ),
+        source: AcademicSource.manual,
+        kind: AcademicRecordKind.lectureTask,
+        externalId: task.id,
+        title: task.title,
+        subjectId: task.subjectId,
+        startsAt: task.dueAt,
+        payload: task.toJson(),
+        syncedAt: DateTime.now().toUtc(),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(initialSection: 2),
+        subjects: [_subject],
+        credentialStore: _PortalCredentialStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(task.title), findsNothing);
+    expect(find.text('No upcoming evaluations'), findsOneWidget);
+    expect(
+      find.textContaining('Task deadlines stay under Tasks'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });

@@ -23,6 +23,8 @@ enum AcademicRecordKind {
   lectureTask,
   grade,
   gradeFormula,
+  absence,
+  schoolCalendar,
   reminderPreference,
 }
 
@@ -147,6 +149,123 @@ class PortalNotification {
     'sourceUrl': sourceUrl,
     'read': false,
   };
+}
+
+class AbsenceSummary {
+  const AbsenceSummary({
+    required this.id,
+    required this.subjectName,
+    required this.absences,
+    required this.sourceUrl,
+    this.subjectCode,
+    this.subjectId,
+    this.totalPlannedClasses,
+    this.excusedAbsences,
+    this.academicYear,
+    this.measuredInHours = false,
+  });
+
+  final String id;
+  final String subjectName;
+  final String? subjectCode;
+  final String? subjectId;
+  final double absences;
+  final double? totalPlannedClasses;
+  final double? excusedAbsences;
+  final String? academicYear;
+  final bool measuredInHours;
+  final String sourceUrl;
+
+  double? get percentage =>
+      totalPlannedClasses == null || totalPlannedClasses! <= 0
+      ? null
+      : absences / totalPlannedClasses! * 100;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'subjectName': subjectName,
+    'subjectCode': subjectCode,
+    'subjectId': subjectId,
+    'absences': absences,
+    'totalPlannedClasses': totalPlannedClasses,
+    'excusedAbsences': excusedAbsences,
+    'academicYear': academicYear,
+    'measuredInHours': measuredInHours,
+    'sourceUrl': sourceUrl,
+  };
+
+  factory AbsenceSummary.fromJson(Map<String, dynamic> json) => AbsenceSummary(
+    id: json['id'] as String? ?? '',
+    subjectName: json['subjectName'] as String? ?? '',
+    subjectCode: json['subjectCode'] as String?,
+    subjectId: json['subjectId'] as String?,
+    absences: (json['absences'] as num?)?.toDouble() ?? 0,
+    totalPlannedClasses: (json['totalPlannedClasses'] as num?)?.toDouble(),
+    excusedAbsences: (json['excusedAbsences'] as num?)?.toDouble(),
+    academicYear: json['academicYear'] as String?,
+    measuredInHours: json['measuredInHours'] as bool? ?? false,
+    sourceUrl: json['sourceUrl'] as String? ?? '',
+  );
+
+  AbsenceSummary copyWith({String? subjectId, double? totalPlannedClasses}) =>
+      AbsenceSummary(
+        id: id,
+        subjectName: subjectName,
+        subjectCode: subjectCode,
+        subjectId: subjectId ?? this.subjectId,
+        absences: absences,
+        totalPlannedClasses: totalPlannedClasses ?? this.totalPlannedClasses,
+        excusedAbsences: excusedAbsences,
+        academicYear: academicYear,
+        measuredInHours: measuredInHours,
+        sourceUrl: sourceUrl,
+      );
+}
+
+class SchoolCalendarEntry {
+  const SchoolCalendarEntry({
+    required this.id,
+    required this.title,
+    required this.start,
+    required this.end,
+    required this.sourceUrl,
+    this.category,
+    this.academicYear,
+  });
+
+  final String id;
+  final String title;
+  final DateTime start;
+  final DateTime end;
+  final String sourceUrl;
+  final String? category;
+  final String? academicYear;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'start': start.toIso8601String(),
+    'end': end.toIso8601String(),
+    'sourceUrl': sourceUrl,
+    'category': category,
+    'academicYear': academicYear,
+  };
+
+  factory SchoolCalendarEntry.fromJson(Map<String, dynamic> json) {
+    final start = DateTime.tryParse(json['start'] as String? ?? '');
+    return SchoolCalendarEntry(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      start: start ?? DateTime.fromMillisecondsSinceEpoch(0),
+      end:
+          DateTime.tryParse(json['end'] as String? ?? '') ??
+          start ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      sourceUrl: json['sourceUrl'] as String? ?? '',
+      category: json['category'] as String?,
+      academicYear: json['academicYear'] as String?,
+    );
+  }
 }
 
 enum TuitionPaymentState { pending, partial, paid, overdue, cancelled, unknown }
@@ -520,6 +639,7 @@ class TimetableSlot {
     required this.start,
     required this.end,
     this.subjectId,
+    this.portalSubjectId,
     this.className,
     this.lessonType,
     this.room,
@@ -532,6 +652,7 @@ class TimetableSlot {
   final String subjectCode;
   final String subjectName;
   final String? subjectId;
+  final String? portalSubjectId;
   final DateTime start;
   final DateTime end;
   final String? className;
@@ -546,6 +667,7 @@ class TimetableSlot {
     'subjectCode': subjectCode,
     'subjectName': subjectName,
     'subjectId': subjectId,
+    'portalSubjectId': portalSubjectId,
     'start': start.toIso8601String(),
     'end': end.toIso8601String(),
     'className': className,
@@ -561,6 +683,7 @@ class TimetableSlot {
     subjectCode: json['subjectCode'] as String? ?? '',
     subjectName: json['subjectName'] as String? ?? '',
     subjectId: json['subjectId'] as String?,
+    portalSubjectId: json['portalSubjectId'] as String?,
     start: DateTime.parse(json['start'] as String),
     end: DateTime.parse(json['end'] as String),
     className: json['className'] as String?,
@@ -576,6 +699,7 @@ class TimetableSlot {
     subjectCode: subjectCode,
     subjectName: subjectName,
     subjectId: subjectId ?? this.subjectId,
+    portalSubjectId: portalSubjectId,
     start: start,
     end: end,
     className: className,

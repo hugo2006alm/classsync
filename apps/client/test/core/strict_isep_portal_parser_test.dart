@@ -159,6 +159,124 @@ void main() {
     expect(values.single.state, ExamRegistrationState.registered);
   });
 
+  test('rejects repeated exam-season navigation as a registration', () {
+    const html = '''
+      <table>
+        <tr><th>UC</th><th>Época</th><th>Estado</th></tr>
+        <tr><td>Época de Recurso Época Normal Fora de Época Época Especial de Setembro</td><td>Época de Recurso Época Normal</td><td></td></tr>
+      </table>
+    ''';
+
+    expect(
+      () => parser.parseExamRegistrations(
+        html,
+        sourceUrl: 'https://portal.isep.ipp.pt/intranet/exams',
+      ),
+      throwsA(isA<IntegrationException>()),
+    );
+  });
+
+  test('parses absences against the complete planned class total', () {
+    const html = '''
+      <table>
+        <tr><th>Sigla</th><th>Unidade Curricular</th><th>Faltas</th><th>Aulas previstas</th><th>Faltas justificadas</th></tr>
+        <tr><td>BDAD</td><td>Bases de Dados</td><td>3</td><td>40</td><td>1</td></tr>
+      </table>
+    ''';
+
+    final value = parser
+        .parseAbsences(
+          html,
+          sourceUrl:
+              'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+        )
+        .single;
+
+    expect(value.absences, 3);
+    expect(value.totalPlannedClasses, 40);
+    expect(value.percentage, 7.5);
+    expect(value.excusedAbsences, 1);
+  });
+
+  test(
+    'parses the live attendance service grammar without inventing totals',
+    () {
+      final values = parser.parseAttendanceData(
+        {
+          'PeriodosLetivos': [
+            {
+              'Name': 'First semester',
+              'UCs': [
+                {
+                  'CDE': 85433,
+                  'Name': 'Programming',
+                  'FaltasEmHoras': false,
+                  'TiposAula': [
+                    {
+                      'ResumoFaltas': {'Numero': 2, 'TotalPresencas': 8},
+                    },
+                    {
+                      'ResumoFaltas': {'Numero': 1, 'TotalPresencas': 4},
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        academicYear: '2026/2027',
+        sourceUrl:
+            'https://portal.isep.ipp.pt/intranet/areapessoal/estudante.aspx',
+      );
+
+      expect(values.single.subjectCode, '85433');
+      expect(values.single.absences, 3);
+      expect(values.single.totalPlannedClasses, isNull);
+      expect(values.single.percentage, isNull);
+    },
+  );
+
+  test('parses school calendar periods and date ranges', () {
+    const html = '''
+      <table>
+        <tr><th>Atividade</th><th>Início</th><th>Fim</th><th>Categoria</th></tr>
+        <tr><td>Aulas do primeiro semestre</td><td>14/09/2026</td><td>19/12/2026</td><td>Período letivo</td></tr>
+      </table>
+    ''';
+
+    final value = parser
+        .parseSchoolCalendar(
+          html,
+          sourceUrl:
+              'https://portal.isep.ipp.pt/intranet/educacao/ver_calendario_escolar.aspx',
+        )
+        .single;
+
+    expect(value.title, 'Aulas do primeiro semestre');
+    expect(value.start, DateTime(2026, 9, 14));
+    expect(value.end, DateTime(2026, 12, 19));
+    expect(value.category, 'Período letivo');
+  });
+
+  test('parses grouped rows from the live school-calendar grid', () {
+    const html = '''
+      <table>
+        <tr><td>Atividade académica</td><td>Data Início</td><td>Data Fim</td></tr>
+        <tr><td rowspan="2">Teaching period</td><td>14/09/2026</td><td>19/12/2026</td></tr>
+        <tr><td>04/01/2027</td><td>23/01/2027</td></tr>
+      </table>
+    ''';
+
+    final values = parser.parseSchoolCalendar(
+      html,
+      sourceUrl:
+          'https://portal.isep.ipp.pt/intranet/educacao/ver_calendario_escolar.aspx',
+    );
+
+    expect(values, hasLength(2));
+    expect(values.every((item) => item.title == 'Teaching period'), isTrue);
+  });
+
   test('rejects WebForms layout and script text as exam registrations', () {
     const html = r'''
       <table id="portal-layout">
