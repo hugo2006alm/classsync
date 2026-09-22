@@ -195,6 +195,86 @@ void main() {
   });
 
   test(
+    'not-a-lecture classification remains visible for manual review',
+    () async {
+      gemini.result = const ClassificationResult(
+        decision: ClassificationDecision.notALecture,
+        confidence: 0.99,
+        candidates: [],
+        reasoningSummary: ['Recording was misclassified as non-lecture'],
+      );
+
+      await coordinator.run(SyncReason.mobileBackground);
+
+      final job = (await database.readJobs()).single;
+      expect(job.status, SyncJobStatus.needsReview);
+      expect(job.transcriptJson, isNotNull);
+      expect(job.completedAt, isNull);
+      expect(notifier.needsReviews, 1);
+      expect(notion.createCalls, 0);
+    },
+  );
+
+  test('rediscovery revives legacy automatic non-lecture ignores', () async {
+    await database.discoverJob(
+      id: 'legacy-auto-ignore',
+      firefliesId: 'meeting-1',
+      title: 'Pending Fireflies transcript',
+      meetingDate: DateTime.utc(2026, 9, 5, 10),
+    );
+    await database.setJobStatus(
+      'legacy-auto-ignore',
+      SyncJobStatus.ignored,
+      'Gemini classified recording as not a lecture',
+      terminal: true,
+    );
+
+    final result = await coordinator.run(SyncReason.mobileBackground);
+
+    final job = (await database.readJob('legacy-auto-ignore'))!;
+    expect(result.discovered, 1);
+    expect(job.status, SyncJobStatus.needsReview);
+    expect(job.completedAt, isNull);
+  });
+
+  test('rediscovery preserves an explicit user discard tombstone', () async {
+    await database.discoverJob(
+      id: 'user-discarded',
+      firefliesId: 'meeting-1',
+      title: 'Pending Fireflies transcript',
+      meetingDate: DateTime.utc(2026, 9, 5, 10),
+    );
+    await database.setJobStatus(
+      'user-discarded',
+      SyncJobStatus.ignored,
+      'Transcript discarded by user',
+      terminal: true,
+    );
+
+    final result = await coordinator.run(SyncReason.mobileBackground);
+
+    final job = (await database.readJob('user-discarded'))!;
+    expect(result.discovered, 0);
+    expect(job.status, SyncJobStatus.ignored);
+  });
+
+  test('queue checkpoints expose discovery before background processing', () async {
+    final checkpointStatuses = <SyncJobStatus>[];
+
+    await coordinator.run(
+      SyncReason.mobileBackground,
+      onQueueCheckpoint: () async {
+        final jobs = await database.readJobs();
+        if (jobs.isNotEmpty) checkpointStatuses.add(jobs.single.status);
+      },
+    );
+
+    expect(checkpointStatuses, isNotEmpty);
+    expect(checkpointStatuses.first, SyncJobStatus.discovered);
+    expect(checkpointStatuses.last, SyncJobStatus.success);
+  });
+
+  test(
     'third Gemini failure suggests a model but keeps normal retry',
     () async {
       gemini.failClassification = true;
@@ -788,12 +868,15 @@ class _FakeRelay extends RelayClient {
 
 class _FakeNotifier implements SyncNotifier {
   var successes = 0;
+  var needsReviews = 0;
 
   @override
   Future<void> failure(String jobId, String message) async {}
 
   @override
-  Future<void> needsReview(String jobId) async {}
+  Future<void> needsReview(String jobId) async {
+    needsReviews += 1;
+  }
 
   @override
   Future<void> success(String jobId, String subjectName) async {

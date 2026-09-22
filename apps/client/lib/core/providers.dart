@@ -281,18 +281,21 @@ class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
       final academic = _academicSync
           .synchronize(force: reason == SyncReason.manual)
           .then<void>((_) {}, onError: (Object _, StackTrace _) {});
-      try {
-        await _deviceSync.synchronize();
-      } catch (_) {
-        // Cloud state is an optional accelerator; lecture processing remains local-first.
+      Future<void> synchronizeAccountState() async {
+        try {
+          await _deviceSync.synchronize();
+        } catch (_) {
+          // Cloud state is an optional accelerator; lecture processing remains local-first.
+        }
       }
-      final result = await _coordinator.run(reason);
+
+      await synchronizeAccountState();
+      final result = await _coordinator.run(
+        reason,
+        onQueueCheckpoint: synchronizeAccountState,
+      );
       await academic;
-      try {
-        await _deviceSync.synchronize();
-      } catch (_) {
-        // The next foreground/manual run retries device synchronization.
-      }
+      await synchronizeAccountState();
       return result;
     });
   }

@@ -31,23 +31,24 @@ void callbackDispatcher() {
       if (settings.notificationsEnabled) {
         await container.read(notificationServiceProvider).initialize();
       }
-      try {
-        await container.read(deviceSyncServiceProvider).synchronize();
-      } catch (_) {
-        // Account sync is an accelerator; the durable lecture queue remains local-first.
+      Future<void> synchronizeAccountState() async {
+        try {
+          await container.read(deviceSyncServiceProvider).synchronize();
+        } catch (_) {
+          // Account sync is an accelerator; the durable lecture queue remains local-first.
+        }
       }
+
+      await synchronizeAccountState();
       await container
           .read(syncCoordinatorProvider)
           .run(
             task == mobilePushTaskName
                 ? SyncReason.firefliesWebhook
                 : SyncReason.mobileBackground,
+            onQueueCheckpoint: synchronizeAccountState,
           );
-      try {
-        await container.read(deviceSyncServiceProvider).synchronize();
-      } catch (_) {
-        // A later foreground or background run retries account synchronization.
-      }
+      await synchronizeAccountState();
       return true;
     } catch (_) {
       return false;
