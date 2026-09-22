@@ -519,7 +519,15 @@ class IsepPortalClient implements PortalAdapter {
         ),
       );
       final bytes = await readBoundedResponse(response.data, response.headers);
-      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+      late final String bodyText;
+      try {
+        bodyText = utf8.decode(bytes);
+      } on FormatException {
+        // Legacy SERAA methods return JSON bytes as Latin-1 when names contain
+        // Portuguese characters, despite using an application/json response.
+        bodyText = latin1.decode(bytes);
+      }
+      final decoded = jsonDecode(bodyText);
       if (decoded is! Map || decoded['d'] is! String) {
         throw const FormatException();
       }
@@ -1409,17 +1417,39 @@ class IsepPortalParser {
         'unidade curricular',
         'disciplina',
         'uc',
+        'nome uc',
+        'designacao uc',
+        'cadeira',
       ]);
-      final code = _value(row, const ['codigo', 'sigla', 'codigo uc']);
+      final code = _value(row, const [
+        'codigo',
+        'sigla',
+        'codigo uc',
+        'codigo da uc',
+        'cod uc',
+      ]);
       if (name.isEmpty && code.isEmpty) continue;
       final type = _value(row, const [
         'epoca',
+        'epoca de exame',
+        'epoca exame',
+        'epoca de avaliacao',
         'tipo',
+        'tipo de exame',
         'avaliacao',
       ]).ifEmpty('Exam');
-      final state = _registrationState(
-        _value(row, const ['estado inscricao', 'estado', 'inscricao']),
-      );
+      final stateText = _value(row, const [
+        'estado inscricao',
+        'estado da inscricao',
+        'situacao inscricao',
+        'situacao da inscricao',
+        'estado pedido',
+        'situacao pedido',
+        'estado',
+        'situacao',
+        'inscricao',
+      ]).ifEmpty(_value(row, const ['acao', 'opcoes', 'inscrever']));
+      final state = _registrationState(stateText);
       result.add(
         ExamRegistration(
           externalId: _examIdentity(row, code: code, name: name, type: type),
@@ -1429,20 +1459,48 @@ class IsepPortalParser {
           state: state,
           sourceUrl: sourceUrl,
           registrationOpensAt: _dateTime(
-            _value(row, const ['inicio inscricao', 'abertura']),
+            _value(row, const [
+              'inicio inscricao',
+              'inicio da inscricao',
+              'data inicio inscricao',
+              'abertura',
+              'abertura inscricao',
+            ]),
             _value(row, const ['hora abertura']),
           ),
           registrationClosesAt: _dateTime(
-            _value(row, const ['fim inscricao', 'fecho', 'limite inscricao']),
+            _value(row, const [
+              'fim inscricao',
+              'fim da inscricao',
+              'fecho',
+              'fecho inscricao',
+              'limite inscricao',
+              'data limite inscricao',
+              'data limite de inscricao',
+              'prazo inscricao',
+              'prazo de inscricao',
+            ]),
             _value(row, const ['hora fecho']),
           ),
           examAt: _dateTime(
-            _value(row, const ['data exame', 'data']),
+            _value(row, const ['data exame', 'data do exame', 'data']),
             _value(row, const ['hora exame', 'hora']),
           ),
-          fee: _nullable(_value(row, const ['taxa', 'valor', 'emolumento'])),
+          fee: _nullable(
+            _value(row, const ['taxa', 'valor', 'emolumento', 'emolumentos']),
+          ),
         ),
       );
+    }
+    if (result.isEmpty) {
+      final normalized = _normalize(html);
+      if (normalized.contains('nao existem inscricoes em exames') ||
+          normalized.contains('nao existem exames para inscricao') ||
+          normalized.contains('nenhum exame disponivel para inscricao') ||
+          normalized.contains('nenhum periodo de inscricao em exames') ||
+          normalized.contains('fora do periodo de inscricoes')) {
+        return const [];
+      }
     }
     return _requireParsed(result, 'exam registration');
   }
@@ -2704,16 +2762,23 @@ class IsepPortalParser {
 
   static ExamRegistrationState _registrationState(String value) {
     final normalized = _normalize(value);
-    if (normalized.contains('nao inscr')) {
+    if (normalized.contains('nao inscr') ||
+        normalized.contains('nao efetuad') ||
+        normalized.contains('por efetuar')) {
       return ExamRegistrationState.notRegistered;
     }
-    if (normalized.contains('inscrito')) {
+    if (normalized.contains('inscrito') ||
+        normalized.contains('efetuad') ||
+        normalized.contains('validada') ||
+        normalized.contains('bloqueada')) {
       return ExamRegistrationState.registered;
     }
     if (normalized.contains('encerr')) {
       return ExamRegistrationState.registrationClosed;
     }
-    if (normalized.contains('abert') || normalized.contains('disponivel')) {
+    if (normalized.contains('abert') ||
+        normalized.contains('disponivel') ||
+        normalized.contains('inscrever')) {
       return ExamRegistrationState.registrationAvailable;
     }
     if (normalized.contains('agend') || normalized.contains('marcad')) {

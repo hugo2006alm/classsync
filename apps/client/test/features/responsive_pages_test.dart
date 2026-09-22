@@ -33,7 +33,7 @@ void main() {
 
   tearDown(() => database.close());
 
-  testWidgets('phone overview metric cards do not overflow', (tester) async {
+  testWidgets('phone overview keeps routine status compact', (tester) async {
     _usePhoneViewport(tester);
     await database.replaceSubjects([_subject]);
 
@@ -42,9 +42,66 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Active classes'), findsWidgets);
-    expect(find.text('3º Ano · 1º Semestre'), findsWidgets);
+    expect(find.text('1 active class'), findsOneWidget);
+    expect(find.text('Sync healthy'), findsOneWidget);
+    expect(find.text('Active classes'), findsNothing);
     expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('overview leads with class starting within four days', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final start = DateTime.now().add(const Duration(hours: 2));
+    await _saveTimetableSlot(
+      database,
+      TimetableSlot(
+        externalId: 'next-class',
+        subjectCode: 'SO',
+        subjectName: 'Operating Systems',
+        start: start,
+        end: start.add(const Duration(hours: 2)),
+        className: '3DA',
+        lessonType: 'TP',
+        room: 'B301',
+        lecturer: 'Jane Teacher',
+      ),
+    );
+
+    await tester.pumpWidget(_app(database, const OverviewScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Next class'), findsOneWidget);
+    expect(find.text('Operating Systems'), findsOneWidget);
+    expect(find.textContaining('Room B301'), findsOneWidget);
+    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
+    final nextClassY = tester.getTopLeft(find.text('Next class')).dy;
+    final generalY = tester.getTopLeft(find.text('General')).dy;
+    expect(nextClassY, lessThan(generalY));
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
+  testWidgets('overview hides class four or more days away', (tester) async {
+    _usePhoneViewport(tester);
+    final start = DateTime.now().add(const Duration(days: 4, minutes: 1));
+    await _saveTimetableSlot(
+      database,
+      TimetableSlot(
+        externalId: 'later-class',
+        subjectCode: 'SO',
+        subjectName: 'Later Operating Systems',
+        start: start,
+        end: start.add(const Duration(hours: 2)),
+      ),
+    );
+
+    await tester.pumpWidget(_app(database, const OverviewScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Next class'), findsNothing);
+    expect(find.text('Later Operating Systems'), findsNothing);
     await _disposeApp(tester);
   });
 
@@ -95,7 +152,7 @@ void main() {
     await _disposeApp(tester);
   });
 
-  testWidgets('phone timetable defaults to agenda and can switch to table', (
+  testWidgets('phone timetable defaults to table and can switch to agenda', (
     tester,
   ) async {
     _usePhoneViewport(tester);
@@ -111,17 +168,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Room B301'), findsOneWidget);
-    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
-    expect(find.text('TIME'), findsNothing);
-    await tester.tap(find.text('Table'));
-    await tester.pumpAndSettle();
     expect(find.text('TIME'), findsOneWidget);
-    expect(find.text('MON'), findsOneWidget);
-    expect(find.text('09:10–10:00'), findsOneWidget);
-    expect(find.text('10:10–11:00'), findsOneWidget);
     expect(find.textContaining('Room B301'), findsNWidgets(2));
     expect(find.textContaining('Teacher Jane Teacher'), findsNWidgets(2));
+    await tester.tap(find.text('Agenda'));
+    await tester.pumpAndSettle();
+    expect(find.text('TIME'), findsNothing);
+    expect(find.textContaining('Room B301'), findsOneWidget);
+    expect(find.textContaining('Teacher Jane Teacher'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -795,26 +849,31 @@ Future<void> _saveTimetable(ClassSyncDatabase database) async {
       ),
   ];
   for (final slot in slots) {
-    await database.upsertAcademicRecord(
-      AcademicRecord(
-        key: AcademicRecord.keyFor(
-          AcademicSource.portal,
-          AcademicRecordKind.timetable,
-          slot.externalId,
-        ),
-        source: AcademicSource.portal,
-        kind: AcademicRecordKind.timetable,
-        externalId: slot.externalId,
-        title: slot.subjectName,
-        subjectId: slot.subjectId,
-        startsAt: slot.start,
-        endsAt: slot.end,
-        payload: slot.toJson(),
-        syncedAt: DateTime.now().toUtc(),
-      ),
-    );
+    await _saveTimetableSlot(database, slot);
   }
 }
+
+Future<void> _saveTimetableSlot(
+  ClassSyncDatabase database,
+  TimetableSlot slot,
+) => database.upsertAcademicRecord(
+  AcademicRecord(
+    key: AcademicRecord.keyFor(
+      AcademicSource.portal,
+      AcademicRecordKind.timetable,
+      slot.externalId,
+    ),
+    source: AcademicSource.portal,
+    kind: AcademicRecordKind.timetable,
+    externalId: slot.externalId,
+    title: slot.subjectName,
+    subjectId: slot.subjectId,
+    startsAt: slot.start,
+    endsAt: slot.end,
+    payload: slot.toJson(),
+    syncedAt: DateTime.now().toUtc(),
+  ),
+);
 
 Future<void> _saveGrade(
   ClassSyncDatabase database,

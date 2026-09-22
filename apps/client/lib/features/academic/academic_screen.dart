@@ -812,13 +812,21 @@ class _AbsenceTile extends StatelessWidget {
     final unit = value.measuredInHours ? 'class hours' : 'classes';
     final remaining = value.remainingTpPlAbsences;
     final exceeded = value.exceededTpPlAbsences;
+    final atLimit = exceeded == null && remaining == 0;
+    final closeToLimit =
+        exceeded == null &&
+        remaining != null &&
+        remaining > 0 &&
+        remaining <= 2;
     final details = percentage == null
         ? '${_compactNumber(value.absences)} absences · full-term total unavailable'
         : '${_compactNumber(value.absences)} of ${_compactNumber(value.totalPlannedClasses!)} planned $unit · ${percentage.toStringAsFixed(1)}%';
     final allowance = exceeded != null
         ? 'TP + PL absence limit exceeded by ${_compactNumber(exceeded)} $unit.'
+        : atLimit
+        ? 'TP + PL one-third absence limit reached. The next absence exceeds it.'
         : remaining != null
-        ? 'You can still miss ${_compactNumber(remaining)} TP + PL $unit (one-third limit).'
+        ? '${closeToLimit ? 'Warning: only' : 'You can still miss'} ${_compactNumber(remaining)} TP + PL $unit${closeToLimit ? ' before reaching the one-third limit.' : ' (one-third limit).'}'
         : null;
     return Semantics(
       label: '${value.subjectName}. $details',
@@ -850,7 +858,9 @@ class _AbsenceTile extends StatelessWidget {
                 allowance,
                 style: TextStyle(
                   color: exceeded == null
-                      ? Theme.of(context).colorScheme.primary
+                      ? atLimit || closeToLimit
+                            ? Theme.of(context).colorScheme.tertiary
+                            : Theme.of(context).colorScheme.primary
                       : Theme.of(context).colorScheme.error,
                   fontWeight: FontWeight.w600,
                 ),
@@ -862,6 +872,11 @@ class _AbsenceTile extends StatelessWidget {
                 value: (percentage / 100).clamp(0.0, 1.0),
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(999),
+                color: exceeded != null
+                    ? Theme.of(context).colorScheme.error
+                    : atLimit || closeToLimit
+                    ? Theme.of(context).colorScheme.tertiary
+                    : null,
               ),
             ],
           ],
@@ -1747,11 +1762,7 @@ class _TimetableSection extends StatelessWidget {
     if (slots.isEmpty) onEmptyWeek(weekStart);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final effectiveView =
-            view ??
-            (constraints.maxWidth < 700
-                ? _TimetableView.agenda
-                : _TimetableView.table);
+        final effectiveView = view ?? _TimetableView.table;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

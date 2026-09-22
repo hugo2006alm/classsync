@@ -33,12 +33,15 @@ them with Gemini, and publishes structured study notes to Notion.
   fail-closed WebForms/JSON parsing.
 - Moodle Web Services integration for enrolled courses, assignments, and
   announcements; ambiguous subject mappings stay reviewable.
-- Focused offline Academic hub with a responsive weekly timetable: desktop
-  time-by-weekday grid or agenda, mobile agenda or horizontally scrollable grid,
+- Focused offline Academic hub with a responsive weekly timetable: desktop and
+  mobile default to the time-by-weekday table, with agenda available on demand,
   fixed 50-minute ISEP period rows, and explicit class, room, and teacher
   details. Longer classes occupy every period they span. Timetable, Tasks, and
   Evaluations stay directly accessible; Absences, School calendar, Grades &
   progress, and Finance live under the compact More menu.
+- Overview prioritizes the next class when it starts within four days, including
+  its time, room, class, lesson type, and teacher; routine sync/class counts stay
+  compact while actionable sync failures remain prominent.
 - Lecture action extraction with evidence, editable lifecycle state, and
   deadline calendar integration; regeneration preserves user decisions.
 - Read-only Portal notices, official lesson summaries, exam-registration
