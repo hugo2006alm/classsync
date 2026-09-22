@@ -340,15 +340,21 @@ ${jsonEncode(courseContext)}
       candidates = candidates.skip(1).toList();
       if (!attempted.add(candidate)) continue;
       try {
-        final result = await _generateOnce(
-          apiKey: apiKey,
-          model: candidate,
-          prompt: prompt,
-          schema: schema,
-          maxOutputTokens: maxOutputTokens,
-        );
-        _resolvedModels[model] = candidate;
-        return result;
+        for (var outputAttempt = 0; outputAttempt < 2; outputAttempt += 1) {
+          try {
+            final result = await _generateOnce(
+              apiKey: apiKey,
+              model: candidate,
+              prompt: prompt,
+              schema: schema,
+              maxOutputTokens: maxOutputTokens,
+            );
+            _resolvedModels[model] = candidate;
+            return result;
+          } on _StructuredOutputFailure catch (error) {
+            if (!error.retryable || outputAttempt == 1) rethrow;
+          }
+        }
       } on DioException catch (error) {
         lastError = error;
         final fallbackKind = _fallbackKind(error);
@@ -372,13 +378,8 @@ ${jsonEncode(courseContext)}
             ];
           }
         }
-      } on FormatException {
-        throw const IntegrationException(
-          integration: 'Gemini',
-          code: 'invalid_json',
-          userMessage: 'Gemini returned invalid structured content.',
-          retryable: true,
-        );
+      } on _StructuredOutputFailure catch (error) {
+        throw error.toIntegrationException();
       }
     }
 
@@ -413,27 +414,55 @@ ${jsonEncode(courseContext)}
         ],
         'generationConfig': {
           'maxOutputTokens': maxOutputTokens,
+          if (_thinkingLevel(model) case final thinkingLevel?)
+            'thinkingConfig': {'thinkingLevel': thinkingLevel},
           'responseMimeType': 'application/json',
           'responseJsonSchema': schema,
         },
       },
     );
     final candidates = response.data?['candidates'] as List<dynamic>?;
-    final content = candidates?.firstOrNull as Map<String, dynamic>?;
-    final parts =
-        (content?['content'] as Map<String, dynamic>?)?['parts']
-            as List<dynamic>?;
-    final text =
-        (parts?.firstOrNull as Map<String, dynamic>?)?['text'] as String?;
-    if (text == null || text.isEmpty) {
-      throw const IntegrationException(
-        integration: 'Gemini',
-        code: 'empty_response',
-        userMessage: 'Gemini returned no structured content.',
+    final candidate = candidates?.firstOrNull as Map<String, dynamic>?;
+    final finishReason = candidate?['finishReason']?.toString().toUpperCase();
+    final content = candidate?['content'] as Map<String, dynamic>?;
+    final parts = content?['parts'] as List<dynamic>? ?? const <dynamic>[];
+    final text = parts
+        .whereType<Map<String, dynamic>>()
+        .where((part) => part['thought'] != true)
+        .map((part) => part['text'])
+        .whereType<String>()
+        .join();
+    if (finishReason == 'MAX_TOKENS') {
+      throw const _StructuredOutputFailure(
+        code: 'output_truncated',
+        userMessage:
+            'Gemini exhausted its output budget before completing the structured summary.',
         retryable: true,
       );
     }
-    return jsonDecode(text) as Map<String, dynamic>;
+    if (text.trim().isEmpty) {
+      throw _StructuredOutputFailure(
+        code: finishReason == 'MALFORMED_RESPONSE'
+            ? 'malformed_response'
+            : 'empty_response',
+        userMessage: finishReason == 'MALFORMED_RESPONSE'
+            ? 'Gemini could not complete a valid structured response.'
+            : 'Gemini returned no structured content.',
+        retryable: true,
+      );
+    }
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } on FormatException {
+      // Converted below so malformed generations can retry without releasing
+      // the durable queue lease and waiting for the next sync run.
+    }
+    throw const _StructuredOutputFailure(
+      code: 'invalid_json',
+      userMessage: 'Gemini returned invalid structured content.',
+      retryable: true,
+    );
   }
 
   Iterable<String> _modelCandidates(String requestedModel) sync* {
@@ -496,6 +525,30 @@ ${jsonEncode(courseContext)}
     }
     return null;
   }
+}
+
+String? _thinkingLevel(String model) {
+  if (!RegExp(r'^gemini-3(?:[.-])').hasMatch(model)) return null;
+  return model.contains('flash-lite') ? 'minimal' : 'low';
+}
+
+class _StructuredOutputFailure implements Exception {
+  const _StructuredOutputFailure({
+    required this.code,
+    required this.userMessage,
+    required this.retryable,
+  });
+
+  final String code;
+  final String userMessage;
+  final bool retryable;
+
+  IntegrationException toIntegrationException() => IntegrationException(
+    integration: 'Gemini',
+    code: code,
+    userMessage: userMessage,
+    retryable: retryable,
+  );
 }
 
 enum _FallbackKind { none, permanent, transient }

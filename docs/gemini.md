@@ -19,8 +19,9 @@ ClassSync validates a key with the model catalogue instead of spending a
 `generateContent` request. If the configured model is retired, unavailable, or
 temporarily overloaded, ClassSync tries the next supported stable Flash model
 sequentially and remembers the first model that works for the rest of the app
-session. It makes at most three generation attempts for one operation and only
-one fallback for transient availability errors.
+session. It tries at most three model candidates for one operation and only one
+fallback for transient availability errors. A malformed structured generation
+is retried once immediately before the durable job is released to backoff.
 
 After repeated Gemini failures (attempt 3, attempt 6, and the final attempt), an
 open foreground app offers a named model dropdown. Accepting switches the model
@@ -55,4 +56,8 @@ Long transcripts use chunked structured notes and resumable checkpoints,
 followed by hierarchical synthesis. Every synthesis request must preserve
 chronology and every specialized list. Output ceilings scale with detail mode:
 6,144 tokens for concise, 10,240 for balanced, and 16,384 for detailed. These
-are limits, not reserved usage; actual returned output determines consumption.
+are limits shared by model thinking and visible output, not reserved usage.
+ClassSync requests `minimal` thinking from Gemini 3 Flash-Lite and `low`
+thinking from other Gemini 3 text models so structured JSON is not crowded out
+by hidden reasoning tokens. It also reads the response finish reason and
+reports token exhaustion separately from malformed JSON.
