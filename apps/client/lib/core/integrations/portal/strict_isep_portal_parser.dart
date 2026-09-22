@@ -213,6 +213,11 @@ class StrictIsepPortalParser extends IsepPortalParser {
     'disciplina',
     'uc',
     'nome',
+    'nome uc',
+    'designacao uc',
+    'cadeira',
+    'codigo da uc',
+    'cod uc',
   ];
 
   static const _enrollmentHeaders = <String>[
@@ -228,21 +233,44 @@ class StrictIsepPortalParser extends IsepPortalParser {
 
   static const _examRegistrationHeaders = <String>[
     'epoca',
+    'epoca de exame',
+    'epoca exame',
+    'epoca de avaliacao',
     'tipo',
+    'tipo de exame',
     'avaliacao',
     'estado inscricao',
+    'estado da inscricao',
+    'situacao inscricao',
+    'situacao da inscricao',
+    'estado pedido',
+    'situacao pedido',
     'estado',
+    'situacao',
     'inscricao',
     'inicio inscricao',
+    'inicio da inscricao',
+    'data inicio inscricao',
     'abertura',
+    'abertura inscricao',
     'fim inscricao',
+    'fim da inscricao',
     'fecho',
+    'fecho inscricao',
+    'limite inscricao',
+    'data limite inscricao',
+    'data limite de inscricao',
+    'prazo inscricao',
+    'prazo de inscricao',
     'data exame',
+    'data do exame',
     'taxa',
     'valor',
     'emolumento',
+    'emolumentos',
     'inscrever',
     'acao',
+    'opcoes',
   ];
 
   static const _absenceHeaders = <String>[
@@ -330,15 +358,17 @@ class StrictIsepPortalParser extends IsepPortalParser {
         .where((table) {
           final rows = _directRows(table);
           if (rows.length < 2) return false;
-          final headers = _directCells(rows.first)
-              .map((cell) => SubjectMapper.normalize(cell.text))
-              .where((value) => value.isNotEmpty)
-              .toList();
-          if (headers.length < requiredHeaderGroups.length ||
-              headers.any((value) => value.length > 120)) {
-            return false;
-          }
-          return _matchesSchema(headers, requiredHeaderGroups);
+          return rows.take(8).any((row) {
+            final headers = _directCells(row)
+                .map((cell) => SubjectMapper.normalize(cell.text))
+                .where((value) => value.isNotEmpty)
+                .toList();
+            if (headers.length < requiredHeaderGroups.length ||
+                headers.any((value) => value.length > 120)) {
+              return false;
+            }
+            return _matchesSchema(headers, requiredHeaderGroups);
+          });
         })
         .map((table) => table.outerHtml);
 

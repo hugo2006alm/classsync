@@ -159,6 +159,40 @@ void main() {
     expect(values.single.state, ExamRegistrationState.registered);
   });
 
+  test('parses live WebForms registration grid below its title row', () {
+    const html = '''
+      <table id="ContentPlaceHolderMain_gvExames">
+        <tr><td colspan="7">Inscrições em exames — 2026/2027</td></tr>
+        <tr><th>Cód. UC</th><th>Designação UC</th><th>Época de exame</th><th>Situação da inscrição</th><th>Data limite de inscrição</th><th>Data do exame</th><th>Emolumentos</th></tr>
+        <tr><td>BDAD</td><td>Bases de Dados</td><td>Época de Recurso</td><td>Inscrição efetuada</td><td>10/02/2027</td><td>12/02/2027</td><td>3 EUR</td></tr>
+      </table>
+    ''';
+
+    final value = parser
+        .parseExamRegistrations(
+          html,
+          sourceUrl: 'https://portal.isep.ipp.pt/intranet/exams',
+        )
+        .single;
+
+    expect(value.subjectCode, 'BDAD');
+    expect(value.subjectName, 'Bases de Dados');
+    expect(value.examType, 'Época de Recurso');
+    expect(value.state, ExamRegistrationState.registered);
+    expect(value.registrationClosesAt, DateTime(2027, 2, 10));
+    expect(value.examAt, DateTime(2027, 2, 12));
+    expect(value.fee, '3 EUR');
+  });
+
+  test('accepts explicit no-registration-period Portal message', () {
+    final values = parser.parseExamRegistrations(
+      '<div>Neste momento não existe nenhum período de inscrição em exames.</div>',
+      sourceUrl: 'https://portal.isep.ipp.pt/intranet/exams',
+    );
+
+    expect(values, isEmpty);
+  });
+
   test('rejects repeated exam-season navigation as a registration', () {
     const html = '''
       <table>

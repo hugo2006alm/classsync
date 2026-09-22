@@ -541,6 +541,111 @@ void main() {
   );
 
   test(
+    'decodes Latin-1 SERAA attendance names without replacement chars',
+    () async {
+      final dio = Dio(
+        BaseOptions(baseUrl: 'https://portal.isep.ipp.pt/intranet/'),
+      );
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.uri.path.endsWith('/GetStudentYearEditions')) {
+              final body = jsonEncode({
+                'd': jsonEncode({
+                  'ok': true,
+                  'years': [
+                    {'code': 2026, 'name': '2026/2027'},
+                  ],
+                }),
+              });
+              handler.resolve(
+                Response<dynamic>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: ResponseBody.fromBytes(latin1.encode(body), 200),
+                ),
+              );
+              return;
+            }
+            if (options.uri.path.endsWith('/GetStudentAttendance')) {
+              final body = jsonEncode({
+                'd': jsonEncode({
+                  'ok': true,
+                  'faltas': {
+                    'PeriodosLetivos': [
+                      {
+                        'Name': '1.º Semestre',
+                        'UCs': [
+                          {
+                            'CDE': 85433,
+                            'Name': 'Programação',
+                            'FaltasEmHoras': false,
+                            'TiposAula': [
+                              {
+                                'Sigla': 'TP',
+                                'AulasPrevistas': 30,
+                                'ResumoFaltas': {'Numero': 2},
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                }),
+              });
+              handler.resolve(
+                Response<dynamic>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: ResponseBody.fromBytes(latin1.encode(body), 200),
+                ),
+              );
+              return;
+            }
+            if (options.method == 'POST') {
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  '<span id="CurrentUser">Hugo</span>'
+                  '<a href="/intranet/areapessoal/estudante.aspx">Ficha Aluno</a>',
+                ),
+              );
+              return;
+            }
+            if (options.uri.path.endsWith('/areapessoal/estudante.aspx')) {
+              handler.resolve(
+                _htmlResponse(
+                  options,
+                  '<script>var student = {cst: 123};</script>',
+                ),
+              );
+              return;
+            }
+            handler.resolve(
+              _htmlResponse(
+                options,
+                '<input type="hidden" name="__VIEWSTATE" value="state">'
+                '<input id="ContentPlaceHolderMain_txtLoginISEP">'
+                '<input type="password">',
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = IsepPortalClient(dio: dio);
+      await client.authenticate(
+        const PortalCredentials(username: '1234567', password: 'secret'),
+      );
+
+      final absence = (await client.getAbsences()).single;
+      expect(absence.subjectName, 'Programação');
+      expect(absence.subjectName, isNot(contains('�')));
+    },
+  );
+
+  test(
     'prefers and resolves the live timetable route from the dashboard',
     () async {
       final requestedPaths = <String>[];

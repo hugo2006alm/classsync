@@ -98,7 +98,9 @@ student query parameter. Calendar events are read from its bounded static
 are cached as both timetable entries and evaluations, including all rooms.
 Current-grade components are read from the bounded `detailsDialog` data grammar
 without evaluating JavaScript. Student JSON methods tolerate the Portal's
-legacy Latin-1 response bytes before strict schema validation.
+legacy Latin-1 response bytes before strict schema validation. The same strict
+UTF-8-then-Latin-1 decoding applies to SERAA attendance JSON, so Portuguese
+subject and teaching-period names retain their accents.
 Academic history is read from the latest explicitly dated curriculum section in
 the student-file accordion. The Portal also emits an unscoped curriculum block
 that repeats completed units; combining both blocks duplicates grades and ECTS,
@@ -162,7 +164,11 @@ Exam registration integration is deliberately read-only. ClassSync records the
 Portal-reported state, opening/closing window, exam date, and fee when present,
 but never interprets a timetable row as proof of registration and exposes no
 generic Portal write action. Registration reminders point the student back to
-the authoritative Portal page.
+the authoritative Portal page. The parser accepts WebForms grids whose first
+row is a title followed by the real headers, including Portal labels such as
+`Época de exame`, `Situação da inscrição`, and `Data limite de inscrição`.
+An explicit no-active-registration-period message is treated as an empty valid
+result; unrelated layout or menu tables still fail closed.
 
 ## Tuition, fees, and payments
 
