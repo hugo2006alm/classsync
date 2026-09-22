@@ -4,6 +4,7 @@ import 'package:classsync/core/integrations/gemini/gemini_client.dart';
 import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
+import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -64,6 +65,7 @@ void main() {
           final body = options.data as Map<String, dynamic>;
           final config = body['generationConfig'] as Map<String, dynamic>;
           expect(config, isNot(contains('temperature')));
+          expect(config['thinkingConfig'], {'thinkingLevel': 'low'});
           handler.resolve(_classificationResponse(options));
         }),
       );
@@ -135,6 +137,26 @@ void main() {
     ]);
   });
 
+  test('Flash-Lite classification uses minimal thinking', () async {
+    Map<String, dynamic>? generationConfig;
+    final client = GeminiClient(
+      dio: _stubDio((options, handler) {
+        final body = options.data as Map<String, dynamic>;
+        generationConfig = body['generationConfig'] as Map<String, dynamic>;
+        handler.resolve(_classificationResponse(options));
+      }),
+    );
+
+    await client.classify(
+      apiKey: 'test-key',
+      model: 'gemini-3.1-flash-lite',
+      transcript: _transcript,
+      subjects: [_subject],
+    );
+
+    expect(generationConfig!['thinkingConfig'], {'thinkingLevel': 'minimal'});
+  });
+
   test(
     'quota response does not try another model and enforces cooldown',
     () async {
@@ -180,6 +202,87 @@ void main() {
     },
   );
 
+  test('malformed structured output retries immediately', () async {
+    var requestCount = 0;
+    final client = GeminiClient(
+      dio: _stubDio((options, handler) {
+        requestCount += 1;
+        handler.resolve(
+          requestCount == 1
+              ? _textResponse(
+                  options,
+                  text: '{"decision":',
+                  finishReason: 'MALFORMED_RESPONSE',
+                )
+              : _classificationResponse(options),
+        );
+      }),
+    );
+
+    final result = await client.classify(
+      apiKey: 'test-key',
+      model: 'gemini-3.8-flash',
+      transcript: _transcript,
+      subjects: [_subject],
+    );
+
+    expect(requestCount, 2);
+    expect(result.decision, ClassificationDecision.match);
+  });
+
+  test('output token exhaustion is reported as truncation', () async {
+    var requestCount = 0;
+    final client = GeminiClient(
+      dio: _stubDio((options, handler) {
+        requestCount += 1;
+        handler.resolve(
+          _textResponse(
+            options,
+            text: '{"decision":',
+            finishReason: 'MAX_TOKENS',
+          ),
+        );
+      }),
+    );
+
+    await expectLater(
+      client.classify(
+        apiKey: 'test-key',
+        model: 'gemini-3.8-flash',
+        transcript: _transcript,
+        subjects: [_subject],
+      ),
+      throwsA(
+        isA<IntegrationException>()
+            .having((error) => error.code, 'code', 'output_truncated')
+            .having((error) => error.retryable, 'retryable', isTrue),
+      ),
+    );
+    expect(requestCount, 2);
+  });
+
+  test('structured output skips thought parts', () async {
+    final client = GeminiClient(
+      dio: _stubDio((options, handler) {
+        handler.resolve(
+          _partsResponse(options, [
+            {'text': 'internal reasoning', 'thought': true},
+            {'text': jsonEncode(_classificationPayload())},
+          ]),
+        );
+      }),
+    );
+
+    final result = await client.classify(
+      apiKey: 'test-key',
+      model: 'gemini-3.8-flash',
+      transcript: _transcript,
+      subjects: [_subject],
+    );
+
+    expect(result.decision, ClassificationDecision.match);
+  });
+
   test('detailed summaries preserve lecture fidelity fields', () async {
     Map<String, dynamic>? requestBody;
     final client = GeminiClient(
@@ -208,6 +311,7 @@ void main() {
     final required = (schema['required'] as List<dynamic>).cast<String>();
 
     expect(config['maxOutputTokens'], 16384);
+    expect(config, isNot(contains('thinkingConfig')));
     expect(prompt, contains("teacher's original topic order"));
     expect(prompt, contains('every substantive teaching point'));
     expect(prompt, contains('questionsAndAnswers'));
@@ -275,23 +379,59 @@ Response<Map<String, dynamic>> _classificationResponse(
       {
         'content': {
           'parts': [
-            {
-              'text': jsonEncode({
-                'decision': 'match',
-                'subjectId': _subject.notionId,
-                'subjectName': _subject.name,
-                'confidence': 0.9,
-                'candidates': [
-                  {
-                    'subjectId': _subject.notionId,
-                    'subjectName': _subject.name,
-                    'confidence': 0.9,
-                  },
-                ],
-                'reasoningSummary': ['Matched lecture title'],
-                'suggestedLectureTitle': null,
-              }),
-            },
+            {'text': jsonEncode(_classificationPayload())},
+          ],
+        },
+      },
+    ],
+  },
+);
+
+Map<String, dynamic> _classificationPayload() => {
+  'decision': 'match',
+  'subjectId': _subject.notionId,
+  'subjectName': _subject.name,
+  'confidence': 0.9,
+  'candidates': [
+    {
+      'subjectId': _subject.notionId,
+      'subjectName': _subject.name,
+      'confidence': 0.9,
+    },
+  ],
+  'reasoningSummary': ['Matched lecture title'],
+  'suggestedLectureTitle': null,
+};
+
+Response<Map<String, dynamic>> _partsResponse(
+  RequestOptions options,
+  List<Map<String, dynamic>> parts,
+) => Response<Map<String, dynamic>>(
+  requestOptions: options,
+  statusCode: 200,
+  data: {
+    'candidates': [
+      {
+        'content': {'parts': parts},
+      },
+    ],
+  },
+);
+
+Response<Map<String, dynamic>> _textResponse(
+  RequestOptions options, {
+  required String text,
+  required String finishReason,
+}) => Response<Map<String, dynamic>>(
+  requestOptions: options,
+  statusCode: 200,
+  data: {
+    'candidates': [
+      {
+        'finishReason': finishReason,
+        'content': {
+          'parts': [
+            {'text': text},
           ],
         },
       },
