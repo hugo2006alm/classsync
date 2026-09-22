@@ -11,8 +11,11 @@ SQLite leases for startup recovery and periodic polling.
 FCM background callbacks enqueue expedited WorkManager work keyed by relay
 event, so duplicate delivery is harmless without one pending event suppressing
 another. Workers initialize their headless dependencies, synchronize account
-state, and use durable leases and stage checkpoints; manual imports process
-immediately. The FCM token remains registered whenever background automation is
+state, persist discovered queue entries to the encrypted account snapshot
+before expensive processing, and use durable leases and stage checkpoints.
+This keeps Sync history recoverable on other devices even if Android stops a
+worker after discovery or publication. Manual imports process immediately. The
+FCM token remains registered whenever background automation is
 enabled, independently from the preference for visible ClassSync alerts.
 Android may defer/stop work, so app-resume recovery continues unfinished jobs.
 Foreground-service promotion is not yet implemented; oversized transcripts are

@@ -69,7 +69,10 @@ class SyncCoordinator {
   final void Function(ModelRetryPrompt prompt)? _onModelRetrySuggested;
   final String _owner;
 
-  Future<SyncRunResult> run(SyncReason reason) async {
+  Future<SyncRunResult> run(
+    SyncReason reason, {
+    Future<void> Function()? onQueueCheckpoint,
+  }) async {
     await _database.saveCursor('sync_run_started', DateTime.now().toUtc());
     final settings = await _database.readSettings();
     if (!settings.setupComplete) {
@@ -158,6 +161,10 @@ class SyncCoordinator {
       }
     }
 
+    if (onQueueCheckpoint != null) {
+      await onQueueCheckpoint();
+    }
+
     try {
       await refreshActiveSubjects();
     } on IntegrationException {
@@ -182,6 +189,9 @@ class SyncCoordinator {
         } else {
           failed += 1;
         }
+      }
+      if (onQueueCheckpoint != null) {
+        await onQueueCheckpoint();
       }
     }
     await _database.pruneDiagnostics(
@@ -556,12 +566,11 @@ class SyncCoordinator {
         if (classification.decision == ClassificationDecision.notALecture) {
           await _database.setJobStatus(
             jobId,
-            SyncJobStatus.ignored,
-            'Gemini classified recording as not a lecture',
-            terminal: true,
+            SyncJobStatus.needsReview,
+            'Gemini classified recording as not a lecture; confirm or discard it',
           );
-          if (settings.cleanCompletedPayloads && !settings.keepTranscripts) {
-            await _database.clearTranscriptPayload(jobId);
+          if (settings.notificationsEnabled) {
+            await _notifier.needsReview(jobId);
           }
           return true;
         }
