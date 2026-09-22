@@ -258,21 +258,24 @@ void main() {
     expect(job.status, SyncJobStatus.ignored);
   });
 
-  test('queue checkpoints expose discovery before background processing', () async {
-    final checkpointStatuses = <SyncJobStatus>[];
+  test(
+    'queue checkpoints expose discovery before background processing',
+    () async {
+      final checkpointStatuses = <SyncJobStatus>[];
 
-    await coordinator.run(
-      SyncReason.mobileBackground,
-      onQueueCheckpoint: () async {
-        final jobs = await database.readJobs();
-        if (jobs.isNotEmpty) checkpointStatuses.add(jobs.single.status);
-      },
-    );
+      await coordinator.run(
+        SyncReason.mobileBackground,
+        onQueueCheckpoint: () async {
+          final jobs = await database.readJobs();
+          if (jobs.isNotEmpty) checkpointStatuses.add(jobs.single.status);
+        },
+      );
 
-    expect(checkpointStatuses, isNotEmpty);
-    expect(checkpointStatuses.first, SyncJobStatus.discovered);
-    expect(checkpointStatuses.last, SyncJobStatus.success);
-  });
+      expect(checkpointStatuses, isNotEmpty);
+      expect(checkpointStatuses.first, SyncJobStatus.discovered);
+      expect(checkpointStatuses.last, SyncJobStatus.success);
+    },
+  );
 
   test(
     'third Gemini failure suggests a model but keeps normal retry',

@@ -541,28 +541,32 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         final latestEvent =
             await (select(jobEvents)
                   ..where((row) => row.jobId.equals(existing.id))
-                  ..orderBy([(row) => OrderingTerm.desc(row.createdAt)])
+                  ..orderBy([
+                    (row) => OrderingTerm.desc(row.createdAt),
+                    (row) => OrderingTerm.desc(row.id),
+                  ])
                   ..limit(1))
                 .getSingleOrNull();
         if (latestEvent?.message ==
             'Gemini classified recording as not a lecture') {
-          await (update(syncJobs)..where((row) => row.id.equals(existing.id)))
-              .write(
-                SyncJobsCompanion(
-                  meetingTitle: Value(title),
-                  meetingDate: Value(meetingDate),
-                  firefliesUrl: Value(firefliesUrl ?? existing.firefliesUrl),
-                  status: Value(SyncJobStatus.needsReview.wireName),
-                  sourceType: Value(sourceType),
-                  nextRetryAt: const Value(null),
-                  lastErrorType: const Value(null),
-                  lastErrorMessage: const Value(null),
-                  completedAt: const Value(null),
-                  leaseOwner: const Value(null),
-                  leaseExpiresAt: const Value(null),
-                  updatedAt: Value(now),
-                ),
-              );
+          await (update(
+            syncJobs,
+          )..where((row) => row.id.equals(existing.id))).write(
+            SyncJobsCompanion(
+              meetingTitle: Value(title),
+              meetingDate: Value(meetingDate),
+              firefliesUrl: Value(firefliesUrl ?? existing.firefliesUrl),
+              status: Value(SyncJobStatus.needsReview.wireName),
+              sourceType: Value(sourceType),
+              nextRetryAt: const Value(null),
+              lastErrorType: const Value(null),
+              lastErrorMessage: const Value(null),
+              completedAt: const Value(null),
+              leaseOwner: const Value(null),
+              leaseExpiresAt: const Value(null),
+              updatedAt: Value(now),
+            ),
+          );
           await addJobEvent(
             existing.id,
             SyncJobStatus.needsReview,
