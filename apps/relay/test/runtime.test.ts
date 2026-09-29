@@ -22,7 +22,7 @@ describe("real Worker and D1", () => {
       workers: [{
       name: "relay",
       modules: true,
-      scriptPath: "dist/index.js",
+      scriptPath: "dist/entrypoint.js",
       compatibilityDate: "2026-09-01",
       d1Databases: ["DB"],
       bindings: { DEVICE_API_TOKEN: bootstrap, FIREFLIES_WEBHOOK_SECRET: "local-test-only" },
