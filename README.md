@@ -130,8 +130,12 @@ Required Notion data-source properties:
 - **Histórico de Resumos:** `Nome`, `Data`, `Cadeira`; optional
   `Fireflies ID`, which helps reconciliation after interrupted publication.
 
-Optional academic integrations can be skipped during first-run setup and are
-also configured under **Academic → Connections**.
+ISEP Portal and Moodle are off by default for new accounts. Enable them in the
+Academic setup step or later under **Settings → Connections**. The switch hides
+imported sections and cached ISEP records while off; local Tasks and manual
+Evaluations remain available. Existing installations keep their current ISEP
+behavior after upgrading. Credentials stay in secure storage when the switch is
+off, and enabling it resumes imports at the next sync.
 One ISEP username/password connects Portal and Moodle; a separate Moodle login
 remains available for external accounts. Portal credentials and the Moodle app
 token stay in OS secure storage and travel between the owner's devices only

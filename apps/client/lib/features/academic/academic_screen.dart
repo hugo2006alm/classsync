@@ -84,6 +84,16 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settingsValue = ref.watch(settingsProvider);
+    final integrationsEnabled =
+        settingsValue.valueOrNull?.academicIntegrationsEnabled ?? false;
+    if (settingsValue.hasValue &&
+        !integrationsEnabled &&
+        _section != 1 &&
+        _section != 2) {
+      _section = 1;
+      ref.read(academicSyncServiceProvider).focusedSection = 1;
+    }
     final recordsValue = ref.watch(academicRecordsProvider);
     final refresh =
         ref.watch(academicRefreshProvider).valueOrNull ??
@@ -105,21 +115,23 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
       title: 'Academic',
       subtitle: 'Your week, rooms and deadlines',
       actions: [
-        OutlinedButton.icon(
-          onPressed: () => showAcademicConnectionsDialog(context, ref),
-          icon: const Icon(Icons.link_rounded),
-          label: const Text('Connections'),
-        ),
-        FilledButton.tonalIcon(
-          onPressed: refresh.running ? null : _reloadAll,
-          icon: refresh.running
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.refresh_rounded),
-          label: const Text('Reload'),
-        ),
+        if (integrationsEnabled)
+          OutlinedButton.icon(
+            onPressed: () => showAcademicConnectionsDialog(context, ref),
+            icon: const Icon(Icons.link_rounded),
+            label: const Text('Connections'),
+          ),
+        if (integrationsEnabled)
+          FilledButton.tonalIcon(
+            onPressed: refresh.running ? null : _reloadAll,
+            icon: refresh.running
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: const Text('Reload'),
+          ),
       ],
       child: recordsValue.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -131,7 +143,9 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
         data: (records) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (connections != null && !connections.anyConfigured) ...[
+            if (integrationsEnabled &&
+                connections != null &&
+                !connections.anyConfigured) ...[
               _Banner(
                 icon: Icons.link_off_rounded,
                 text:
@@ -177,6 +191,7 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
             const SizedBox(height: 16),
             _AcademicSectionNavigation(
               selected: _section,
+              integrationsEnabled: integrationsEnabled,
               onSelected: (value) {
                 ref.read(academicSyncServiceProvider).focusedSection = value;
                 setState(() => _section = value);
@@ -185,18 +200,24 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
             const SizedBox(height: 22),
             SectionHeader(
               _sectionLabels[_section]!,
-              action: Tooltip(
-                message: 'Reload ${_sectionLabels[_section]} only',
-                child: IconButton(
-                  onPressed: refresh.running ? null : _reloadCurrentSection,
-                  icon: refresh.running
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                ),
-              ),
+              action: integrationsEnabled
+                  ? Tooltip(
+                      message: 'Reload ${_sectionLabels[_section]} only',
+                      child: IconButton(
+                        onPressed: refresh.running
+                            ? null
+                            : _reloadCurrentSection,
+                        icon: refresh.running
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh_rounded),
+                      ),
+                    )
+                  : null,
             ),
             switch (_section) {
               0 =>
@@ -221,21 +242,11 @@ class _AcademicScreenState extends ConsumerState<AcademicScreen> {
                             setState(() => _timetableView = value),
                       ),
               1 => _TasksSection(records: records),
-              2 =>
-                connections?.anyConfigured == false
-                    ? _SourceSetupState(
-                        source: 'Portal or Moodle',
-                        detail:
-                            'Connect a source to load exams and assignments.',
-                        onConnect: () =>
-                            showAcademicConnectionsDialog(context, ref),
-                      )
-                    : _EvaluationSection(
-                        records: records,
-                        subjects:
-                            ref.watch(activeSubjectsProvider).valueOrNull ??
-                            const [],
-                      ),
+              2 => _EvaluationSection(
+                records: records,
+                subjects:
+                    ref.watch(activeSubjectsProvider).valueOrNull ?? const [],
+              ),
               3 =>
                 connections?.portalConfigured == false
                     ? _SourceSetupState(
@@ -292,9 +303,11 @@ class _AcademicSectionNavigation extends StatelessWidget {
   const _AcademicSectionNavigation({
     required this.selected,
     required this.onSelected,
+    required this.integrationsEnabled,
   });
   final int selected;
   final ValueChanged<int> onSelected;
+  final bool integrationsEnabled;
   static const primaryDestinations = [
     (0, Icons.view_week_rounded, 'Timetable'),
     (1, Icons.task_alt_rounded, 'Tasks'),
@@ -318,49 +331,51 @@ class _AcademicSectionNavigation extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         for (final item in primaryDestinations)
-          ChoiceChip(
-            showCheckmark: false,
-            avatar: Icon(item.$2, size: 18),
-            label: Text(item.$3),
-            selected: selected == item.$1,
-            onSelected: (_) => onSelected(item.$1),
-          ),
-        PopupMenuButton<int>(
-          tooltip: 'More academic sections',
-          onSelected: onSelected,
-          itemBuilder: (context) => [
-            for (final item in moreDestinations)
-              PopupMenuItem(
-                value: item.$1,
-                child: Row(
-                  children: [
-                    Icon(item.$2, size: 19),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(item.$3)),
-                    if (selected == item.$1)
-                      const Icon(Icons.check_rounded, size: 18),
-                  ],
+          if (integrationsEnabled || item.$1 != 0)
+            ChoiceChip(
+              showCheckmark: false,
+              avatar: Icon(item.$2, size: 18),
+              label: Text(item.$3),
+              selected: selected == item.$1,
+              onSelected: (_) => onSelected(item.$1),
+            ),
+        if (integrationsEnabled)
+          PopupMenuButton<int>(
+            tooltip: 'More academic sections',
+            onSelected: onSelected,
+            itemBuilder: (context) => [
+              for (final item in moreDestinations)
+                PopupMenuItem(
+                  value: item.$1,
+                  child: Row(
+                    children: [
+                      Icon(item.$2, size: 19),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(item.$3)),
+                      if (selected == item.$1)
+                        const Icon(Icons.check_rounded, size: 18),
+                    ],
+                  ),
                 ),
+            ],
+            child: Chip(
+              avatar: Icon(
+                selectedMore?.$2 ?? Icons.more_horiz_rounded,
+                size: 18,
               ),
-          ],
-          child: Chip(
-            avatar: Icon(
-              selectedMore?.$2 ?? Icons.more_horiz_rounded,
-              size: 18,
-            ),
-            label: Text(
-              selectedMore == null ? 'More' : 'More · ${selectedMore.$3}',
-            ),
-            backgroundColor: selectedMore == null
-                ? null
-                : scheme.secondaryContainer,
-            side: BorderSide(
-              color: selectedMore == null
-                  ? scheme.outlineVariant
-                  : scheme.secondary,
+              label: Text(
+                selectedMore == null ? 'More' : 'More · ${selectedMore.$3}',
+              ),
+              backgroundColor: selectedMore == null
+                  ? null
+                  : scheme.secondaryContainer,
+              side: BorderSide(
+                color: selectedMore == null
+                    ? scheme.outlineVariant
+                    : scheme.secondary,
+              ),
             ),
           ),
-        ),
       ],
     );
   }

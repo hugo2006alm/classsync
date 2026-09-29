@@ -12,13 +12,23 @@ class NextClassWidget {
   static Future<bool> requestPin() async =>
       await _channel.invokeMethod<bool>('pin') ?? false;
 
-  static StreamSubscription<List<AcademicRecord>> observe(
-    ClassSyncDatabase database,
-  ) => database
-      .watchAcademicRecords(kinds: {AcademicRecordKind.timetable})
-      .listen((records) {
-        unawaited(_publish(records));
-      });
+  static void observe(ClassSyncDatabase database) {
+    Future<void> refresh() async {
+      final enabled =
+          (await database.readSettings()).academicIntegrationsEnabled;
+      final records = enabled
+          ? await database.readAcademicRecords(
+              kind: AcademicRecordKind.timetable,
+            )
+          : <AcademicRecord>[];
+      await _publish(records);
+    }
+
+    database
+        .watchAcademicRecords(kinds: {AcademicRecordKind.timetable})
+        .listen((_) => unawaited(refresh()));
+    database.watchSettings().listen((_) => unawaited(refresh()));
+  }
 
   static Future<void> _publish(List<AcademicRecord> records) async {
     final slots =

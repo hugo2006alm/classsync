@@ -74,4 +74,26 @@ void main() {
     expect(answer.insufficientEvidence, isTrue);
     expect(answer.citationIds, isEmpty);
   });
+
+  test('disabled ISEP sources stay out of academic search', () async {
+    for (final source in [AcademicSource.portal, AcademicSource.manual]) {
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: source.name,
+          source: source,
+          kind: AcademicRecordKind.evaluation,
+          externalId: source.name,
+          title: 'Unique deadline ${source.name}',
+          payload: const {},
+          syncedAt: DateTime.utc(2026),
+        ),
+      );
+    }
+    final settings = await database.readSettings();
+    await database.saveSettings(
+      settings.copyWith(academicIntegrationsEnabled: false),
+    );
+    final hits = await service.search('unique deadline');
+    expect(hits.map((hit) => hit.id), ['manual']);
+  });
 }

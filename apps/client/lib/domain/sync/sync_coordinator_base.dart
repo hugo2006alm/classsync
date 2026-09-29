@@ -529,7 +529,10 @@ class SyncCoordinator {
                   .where((item) => item.notionId == correction.subjectId)
                   .firstOrNull;
         if (correctedSubject == null) {
-          final context = await _timetableContext(transcript);
+          final context = await _timetableContext(
+            transcript,
+            includeImported: settings.academicIntegrationsEnabled,
+          );
           if (settings.useAiClassification) {
             final semantic = await _gemini.classify(
               apiKey: geminiKey,
@@ -619,6 +622,8 @@ class SyncCoordinator {
               .where(
                 (record) =>
                     record.subjectId == subject!.notionId &&
+                    (settings.academicIntegrationsEnabled ||
+                        !isImportedAcademicSource(record.source)) &&
                     (record.kind == AcademicRecordKind.fucProfile ||
                         record.kind == AcademicRecordKind.lessonSummary),
               )
@@ -846,11 +851,14 @@ class SyncCoordinator {
   });
 
   Future<TimetableContext> _timetableContext(
-    LectureTranscript transcript,
-  ) async {
-    final timetableRecords = await _database.readAcademicRecords(
-      kind: AcademicRecordKind.timetable,
-    );
+    LectureTranscript transcript, {
+    required bool includeImported,
+  }) async {
+    final timetableRecords = includeImported
+        ? await _database.readAcademicRecords(
+            kind: AcademicRecordKind.timetable,
+          )
+        : <AcademicRecord>[];
     final slots = <TimetableSlot>[];
     for (final record in timetableRecords) {
       try {

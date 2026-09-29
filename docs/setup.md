@@ -38,7 +38,7 @@ Choose **Use recovery code** on Welcome. Enter your own account recovery code;
 for a self-hosted account, expand **Custom relay** and use its existing HTTPS
 URL. Recovery does not require an invite or registration token. ClassSync
 authenticates, decrypts the saved configuration, and restores Fireflies sources,
-Gemini/Notion keys, Notion mappings, Moodle app token, and Portal credentials
+Gemini/Notion keys, Notion mappings, the academic-source preference, Moodle app token, and Portal credentials
 when those fields exist in the encrypted snapshot.
 
 If no complete configuration has been synced, finish setup and sync on the
@@ -69,8 +69,9 @@ with the new device's blank defaults. Keep the recovery code private.
 5. **Gemini** accepts the API key and tests the recommended model.
 6. **Notion** discovers shared databases. Select `Lista de Cadeiras` and
    `Histórico de Resumos`.
-7. **Academic** optionally configures ISEP Portal and Moodle. Moodle stores only
-   the exchanged app token; its submitted password is discarded.
+7. **Academic** keeps ISEP Portal and Moodle off for new accounts unless you
+   enable them. Local tasks and manual evaluations remain available. Moodle
+   stores only the exchanged app token; its submitted password is discarded.
 8. **Automation** controls notifications and platform background behaviour.
 9. **Ready** reviews the verified connections before the first sync.
 
@@ -80,8 +81,11 @@ First-run setup is not rerun because doing so could accidentally create a new
 account or overwrite source configuration. The same controls remain available
 under **Settings**:
 
-- **Connections** manages Fireflies, Gemini, Notion credentials, and the combined
-  **Moodle + ISEP** connection.
+- **Connections** manages Fireflies, Gemini, and Notion credentials. The
+  **Use ISEP Portal and Moodle** switch controls imports and the combined
+  **Moodle + ISEP** connection. Turning it off keeps cached ISEP data locally
+  but hides imported sections, search results, and the next-class widget, and
+  cancels imported reminders. Turning it on resumes imports at the next sync.
 - **Notion workspace** shows the selected data-source mappings.
 - **Account & device sync → Setup & relay** provides shortcuts back to those
   controls and exposes **Custom relay** directly.

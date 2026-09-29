@@ -55,6 +55,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _notifications = true;
   var _launchWithWindows = true;
   var _backgroundMobile = true;
+  var _academicIntegrationsEnabled = false;
   var _joinAccount = false;
   var _joinedExistingAccount = false;
   var _recoveryEntry = false;
@@ -563,89 +564,100 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
     icon: Icons.school_outlined,
     title: 'Bring the official context with you.',
     description:
-        'Portal adds your timetable, grades, enrolment, exam registrations, official lesson summaries, FUC details, and notices. Moodle adds assignments and announcements. Leave everything blank to skip this step.',
+        'Use ClassSync with any university. Turn on ISEP sources only if you use ISEP Portal or Moodle. Your local tasks and evaluations remain available either way.',
     child: Column(
       children: [
-        const _InfoStrip(
-          icon: Icons.lock_outline_rounded,
-          message:
-              'These credentials stay in OS secure storage and transfer only inside your encrypted account snapshot. ClassSync only reads academic data and never submits an exam registration.',
-        ),
-        const SizedBox(height: 14),
-        Card(
-          child: ExpansionTile(
-            initiallyExpanded: true,
-            leading: const Icon(Icons.account_balance_outlined),
-            title: const Text('ISEP Portal'),
-            subtitle: const Text('Recommended · username and password'),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            children: [
-              TextField(
-                controller: _portalUsernameController,
-                autofillHints: const [AutofillHints.username],
-                decoration: const InputDecoration(
-                  labelText: 'Portal username or ISEP email',
-                  helperText:
-                      'Username and password are both required on the first connection.',
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SecretField(
-                controller: _portalPasswordController,
-                label: 'Portal password',
-                hint: 'Same password used at portal.isep.ipp.pt',
-              ),
-            ],
+        SwitchListTile(
+          title: const Text('Use ISEP Portal and Moodle'),
+          subtitle: const Text(
+            'Import timetable, exams, grades, assignments, and other ISEP data.',
           ),
+          value: _academicIntegrationsEnabled,
+          onChanged: (value) =>
+              setState(() => _academicIntegrationsEnabled = value),
         ),
-        const SizedBox(height: 10),
-        Card(
-          child: ExpansionTile(
-            leading: const Icon(Icons.hub_outlined),
-            title: const Text('Moodle ISEP'),
-            subtitle: const Text('Optional · ISEP username and password'),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => setState(() {
-                    _moodleUsernameController.text =
-                        _portalUsernameController.text;
-                    _moodlePasswordController.text =
-                        _portalPasswordController.text;
-                  }),
-                  icon: const Icon(Icons.copy_all_outlined),
-                  label: const Text('Use Portal credentials'),
-                ),
-              ),
-              TextField(
-                controller: _moodleUsernameController,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  labelText: 'Moodle username or ISEP email',
-                  hintText: 'Usually the same username as the Portal',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _SecretField(
-                controller: _moodlePasswordController,
-                label: 'Moodle password',
-                hint: 'Leave blank to connect later',
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'ClassSync exchanges these credentials for a Moodle app token, stores only the token, and immediately discards the password.',
-              ),
-            ],
+        if (_academicIntegrationsEnabled) ...[
+          const _InfoStrip(
+            icon: Icons.lock_outline_rounded,
+            message:
+                'These credentials stay in OS secure storage and transfer only inside your encrypted account snapshot. ClassSync only reads academic data and never submits an exam registration.',
           ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'You can connect or replace either source later from Academic → Connections.',
-        ),
+          const SizedBox(height: 14),
+          Card(
+            child: ExpansionTile(
+              initiallyExpanded: true,
+              leading: const Icon(Icons.account_balance_outlined),
+              title: const Text('ISEP Portal'),
+              subtitle: const Text('Recommended · username and password'),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [
+                TextField(
+                  controller: _portalUsernameController,
+                  autofillHints: const [AutofillHints.username],
+                  decoration: const InputDecoration(
+                    labelText: 'Portal username or ISEP email',
+                    helperText:
+                        'Username and password are both required on the first connection.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _SecretField(
+                  controller: _portalPasswordController,
+                  label: 'Portal password',
+                  hint: 'Same password used at portal.isep.ipp.pt',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: ExpansionTile(
+              leading: const Icon(Icons.hub_outlined),
+              title: const Text('Moodle ISEP'),
+              subtitle: const Text('Optional · ISEP username and password'),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() {
+                      _moodleUsernameController.text =
+                          _portalUsernameController.text;
+                      _moodlePasswordController.text =
+                          _portalPasswordController.text;
+                    }),
+                    icon: const Icon(Icons.copy_all_outlined),
+                    label: const Text('Use Portal credentials'),
+                  ),
+                ),
+                TextField(
+                  controller: _moodleUsernameController,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Moodle username or ISEP email',
+                    hintText: 'Usually the same username as the Portal',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _SecretField(
+                  controller: _moodlePasswordController,
+                  label: 'Moodle password',
+                  hint: 'Leave blank to connect later',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'ClassSync exchanges these credentials for a Moodle app token, stores only the token, and immediately discards the password.',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'You can connect or replace either source later from Academic → Connections.',
+          ),
+        ],
       ],
     ),
   );
@@ -910,7 +922,12 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               Icons.webhook_rounded,
               'This device can reach the relay',
             ),
-            if (_joinedExistingAccount) ...[
+            if (_joinedExistingAccount &&
+                (ref
+                        .watch(settingsProvider)
+                        .valueOrNull
+                        ?.academicIntegrationsEnabled ??
+                    false)) ...[
               const SizedBox(height: 12),
               _ReadyRow(
                 Icons.school_outlined,
@@ -985,6 +1002,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
                 metadataEnabled: _addMetadata,
               );
         case 4:
+          if (!_academicIntegrationsEnabled) break;
           final portalUser = _portalUsernameController.text.trim();
           final portalPassword = _portalPasswordController.text;
           if (portalUser.isNotEmpty || portalPassword.isNotEmpty) {
@@ -1136,6 +1154,9 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
       launchWithWindows: _launchWithWindows,
       backgroundMobileSync: _backgroundMobile,
       notificationsEnabled: _notifications,
+      academicIntegrationsEnabled: _joinedExistingAccount
+          ? restored.academicIntegrationsEnabled
+          : _academicIntegrationsEnabled,
       classificationModel: _joinedExistingAccount
           ? restored.classificationModel
           : AppSettings.defaults.classificationModel,

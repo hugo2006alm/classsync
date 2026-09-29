@@ -87,6 +87,7 @@ class AppSettings {
     required this.cleanCompletedPayloads,
     required this.diagnosticsRetentionDays,
     required this.useAiClassification,
+    required this.academicIntegrationsEnabled,
     required this.classificationModel,
     required this.summaryModel,
     required this.autoClassifyThreshold,
@@ -114,6 +115,7 @@ class AppSettings {
     cleanCompletedPayloads: true,
     diagnosticsRetentionDays: 14,
     useAiClassification: true,
+    academicIntegrationsEnabled: true,
     classificationModel: 'gemini-3.1-flash-lite',
     summaryModel: 'gemini-3.8-flash',
     autoClassifyThreshold: 0.85,
@@ -138,6 +140,7 @@ class AppSettings {
   final bool cleanCompletedPayloads;
   final int diagnosticsRetentionDays;
   final bool useAiClassification;
+  final bool academicIntegrationsEnabled;
   final String classificationModel;
   final String summaryModel;
   final double autoClassifyThreshold;
@@ -164,6 +167,7 @@ class AppSettings {
     bool? cleanCompletedPayloads,
     int? diagnosticsRetentionDays,
     bool? useAiClassification,
+    bool? academicIntegrationsEnabled,
     String? classificationModel,
     String? summaryModel,
     double? autoClassifyThreshold,
@@ -191,6 +195,8 @@ class AppSettings {
     diagnosticsRetentionDays:
         diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
     useAiClassification: useAiClassification ?? this.useAiClassification,
+    academicIntegrationsEnabled:
+        academicIntegrationsEnabled ?? this.academicIntegrationsEnabled,
     classificationModel: classificationModel ?? this.classificationModel,
     summaryModel: summaryModel ?? this.summaryModel,
     autoClassifyThreshold: autoClassifyThreshold ?? this.autoClassifyThreshold,

@@ -152,6 +152,33 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('disabled ISEP sources keep local academic tools visible', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    await tester.pumpWidget(
+      _app(
+        database,
+        const AcademicScreen(),
+        settings: AppSettings.defaults.copyWith(
+          academicIntegrationsEnabled: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Timetable'), findsNothing);
+    expect(find.text('More'), findsNothing);
+    expect(find.text('Connections'), findsNothing);
+    expect(find.text('Tasks'), findsWidgets);
+    expect(find.text('Evaluations'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Evaluations'));
+    await tester.pumpAndSettle();
+    expect(find.text('Manual evaluation'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _disposeApp(tester);
+  });
+
   testWidgets('phone timetable defaults to table and can switch to agenda', (
     tester,
   ) async {

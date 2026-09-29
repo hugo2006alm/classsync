@@ -101,6 +101,8 @@ class SettingsRecords extends Table {
   IntColumn get diagnosticsRetentionDays => integer()();
   BoolColumn get useAiClassification =>
       boolean().withDefault(const Constant(true))();
+  BoolColumn get academicIntegrationsEnabled =>
+      boolean().withDefault(const Constant(true))();
   TextColumn get classificationModel => text()();
   TextColumn get summaryModel => text()();
   RealColumn get autoClassifyThreshold => real()();
@@ -176,7 +178,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -225,6 +227,12 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           );
         }
       }
+      if (from < 8) {
+        await migrator.addColumn(
+          settingsRecords,
+          settingsRecords.academicIntegrationsEnabled,
+        );
+      }
     },
   );
 
@@ -268,6 +276,9 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         cleanCompletedPayloads: settings.cleanCompletedPayloads,
         diagnosticsRetentionDays: settings.diagnosticsRetentionDays,
         useAiClassification: Value(settings.useAiClassification),
+        academicIntegrationsEnabled: Value(
+          settings.academicIntegrationsEnabled,
+        ),
         classificationModel: settings.classificationModel,
         summaryModel: settings.summaryModel,
         autoClassifyThreshold: settings.autoClassifyThreshold,
@@ -1191,6 +1202,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     cleanCompletedPayloads: row.cleanCompletedPayloads,
     diagnosticsRetentionDays: row.diagnosticsRetentionDays,
     useAiClassification: row.useAiClassification,
+    academicIntegrationsEnabled: row.academicIntegrationsEnabled,
     classificationModel: row.classificationModel,
     summaryModel: row.summaryModel,
     autoClassifyThreshold: row.autoClassifyThreshold,

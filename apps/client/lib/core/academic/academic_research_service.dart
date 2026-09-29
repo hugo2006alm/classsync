@@ -34,8 +34,13 @@ class AcademicResearchService {
     if (terms.isEmpty) return const [];
     final hits = <AcademicSearchHit>[];
     final records = await _database.readAcademicRecords();
+    final integrationsEnabled =
+        (await _database.readSettings()).academicIntegrationsEnabled;
     for (final record in records) {
       if (isInvalidPortalRecord(record)) continue;
+      if (!integrationsEnabled && isImportedAcademicSource(record.source)) {
+        continue;
+      }
       if (subjectId != null && record.subjectId != subjectId) continue;
       if (subjectIds != null && !subjectIds.contains(record.subjectId)) {
         continue;
