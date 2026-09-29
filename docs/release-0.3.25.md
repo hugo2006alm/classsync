@@ -5,6 +5,7 @@
 - New accounts can leave ISEP Portal and Moodle disabled during setup. Enable or disable both later under **Settings → Connections**.
 - When disabled, ClassSync stops ISEP imports and hides imported Academic sections, cached imported records, search hits, and next-class widget data. Local tasks and manual evaluations remain available.
 - Existing accounts keep ISEP imports enabled after upgrading. The preference follows encrypted account recovery and device sync. Stored credentials and cached records remain available if the sources are enabled again.
+- Updated the relay development toolchain's transitive `undici` dependency to a patched version. The Worker runtime is unchanged.
 
 ## Upgrade notes
 
