@@ -158,7 +158,7 @@ void main() {
         name: 'Hugo',
         apiKey: 'key-mine',
         firefliesUserId: 'fireflies-user-hugo',
-        accountEmail: 'hugo@example.com',
+        accountEmail: 'owner@example.com',
       ),
       FirefliesConnection(id: 'ana', name: 'Ana', apiKey: 'key-ana'),
     ]);

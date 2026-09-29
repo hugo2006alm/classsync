@@ -6,6 +6,17 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('checks a public release without authorization', () async {
+    final adapter = _ReleaseAdapter();
+    final service = ReleaseUpdateService(
+      dio: Dio()..httpClientAdapter = adapter,
+      currentVersion: '0.3.23',
+      platform: ReleasePlatform.windows,
+    );
+    await service.check();
+    expect(adapter.authorization, isNull);
+  });
+
   test(
     'checks a private release with bearer auth and trusted asset URLs',
     () async {

@@ -519,23 +519,24 @@ class _SettingsDetailBody extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.key_rounded),
-                  title: const Text('GitHub release access'),
+                  title: const Text('GitHub token (optional)'),
                   subtitle: const Text(
-                    'Private repository: add a fine-grained token with Contents: read access to ClassSync. Stored only on this device.',
+                    'Public releases need no token. Add one only if GitHub rate limits checks on this device. Stored only on this device.',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _configureSecret(
                     context,
                     ref,
-                    name: 'GitHub release access',
+                    name: 'GitHub token (optional)',
                     key: CredentialKey.githubReleaseToken,
                     syncAfterSave: false,
                     tester: (value) async {
+                      if (value.isEmpty) return;
                       try {
                         await ReleaseUpdateService(token: value).check();
                       } catch (_) {
                         throw const FormatException(
-                          'GitHub could not access ClassSync releases. Use a token with Contents: read access to this repository.',
+                          'GitHub could not access ClassSync releases. Use a token with Contents: read access to this repository, or leave blank.',
                         );
                       }
                     },

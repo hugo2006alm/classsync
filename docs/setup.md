@@ -9,11 +9,11 @@ the same. Do not uninstall the app or clear its storage before updating. Android
 also requires the update to use the same signing certificate as the installed
 build.
 
-For future updates, open **Settings → App updates & widget → GitHub release
-access** once on each device. Create a fine-grained GitHub personal access token
-for the private `hugo2006alm/classsync` repository with only **Contents: read**
-permission. ClassSync validates it, stores it in OS secure storage on that
-device, and then checks published releases when the app opens. An available
+For future updates, ClassSync checks public GitHub releases when the app opens;
+no token is needed. If GitHub rate limits a device, **Settings → App updates &
+widget → GitHub token (optional)** accepts a fine-grained token with only
+**Contents: read** permission, stored in OS secure storage on that device.
+An available
 update appears as an alert; accepting it downloads the installer or APK,
 verifies the release checksum, and starts installation. Android may ask you to
 allow installs from ClassSync and always asks you to confirm the APK update.

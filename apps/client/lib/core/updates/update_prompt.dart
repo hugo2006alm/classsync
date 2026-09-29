@@ -18,12 +18,6 @@ Future<void> checkForUpdates(
   _checking = true;
   try {
     final token = await credentials.read(CredentialKey.githubReleaseToken);
-    if (token == null || token.isEmpty) {
-      if (context.mounted && !silent) {
-        _message(context, 'Configure GitHub release access in Settings first.');
-      }
-      return;
-    }
     final service = ReleaseUpdateService(token: token);
     final update = await service.check();
     if (!context.mounted) return;
@@ -113,7 +107,7 @@ Future<void> checkForUpdates(
     if (context.mounted && !silent) {
       _message(
         context,
-        'Could not check GitHub releases. Check your release token and connection.',
+        'Could not check GitHub releases. Check your connection and try again.',
       );
     }
   } finally {

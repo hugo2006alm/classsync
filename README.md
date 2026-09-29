@@ -57,11 +57,11 @@ them with Gemini, and publishes structured study notes to Notion.
   published GitHub release at launch, downloads the matching installer or APK,
   verifies its SHA-256 release checksum, then starts the platform installer.
   Android requires system approval for sideloaded updates. **Settings → App
-  updates & widget** also has a manual check. Because this repository is private,
-  each device needs a one-time fine-grained GitHub token limited to this
-  repository with **Contents: read**. Enter it under **GitHub release access**
-  in the same Settings section. The token stays in OS secure storage on that
-  device and is not sent through the ClassSync relay.
+  updates & widget** also has a manual check. Public releases need no GitHub
+  token. If GitHub rate limits checks on a device, an optional fine-grained
+  token with **Contents: read** can be entered in the same Settings section.
+  The token stays in OS secure storage on that device and is not sent through
+  the ClassSync relay.
 - Android next-class home-screen widget with time, room, class, lesson type,
   and teacher from the cached timetable. Add it through **Settings → App
   updates & widget** or the launcher widget picker. It advances to the next
