@@ -179,6 +179,7 @@ void main() {
     final config = client.writes['config']!;
     expect(config['schemaVersion'], 4);
     expect((config['settings'] as Map)['useAiClassification'], isTrue);
+    expect((config['settings'] as Map)['academicIntegrationsEnabled'], isTrue);
     expect((config['settings'] as Map)['displayName'], 'Hugo');
     final savedCredentials = config['credentials'] as Map;
     expect(savedCredentials['firefliesConnections'], hasLength(2));
@@ -199,6 +200,7 @@ void main() {
           'settings': {
             'displayName': 'Restored',
             'useAiClassification': false,
+            'academicIntegrationsEnabled': false,
             'notionSubjectsDataSourceId': 'subjects',
             'notionSummariesDataSourceId': 'summaries',
           },
@@ -243,6 +245,10 @@ void main() {
       expect(await credentials.read(CredentialKey.syncDeviceId), 'new-device');
       expect(await credentials.read(CredentialKey.relayDeviceToken), isNull);
       expect((await database.readSettings()).useAiClassification, isFalse);
+      expect(
+        (await database.readSettings()).academicIntegrationsEnabled,
+        isFalse,
+      );
     },
   );
 

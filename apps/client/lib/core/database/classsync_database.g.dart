@@ -3020,6 +3020,21 @@ class $SettingsRecordsTable extends SettingsRecords
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _academicIntegrationsEnabledMeta =
+      const VerificationMeta('academicIntegrationsEnabled');
+  @override
+  late final GeneratedColumn<bool> academicIntegrationsEnabled =
+      GeneratedColumn<bool>(
+        'academic_integrations_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("academic_integrations_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
   static const VerificationMeta _classificationModelMeta =
       const VerificationMeta('classificationModel');
   @override
@@ -3150,6 +3165,7 @@ class $SettingsRecordsTable extends SettingsRecords
     cleanCompletedPayloads,
     diagnosticsRetentionDays,
     useAiClassification,
+    academicIntegrationsEnabled,
     classificationModel,
     summaryModel,
     autoClassifyThreshold,
@@ -3321,6 +3337,15 @@ class $SettingsRecordsTable extends SettingsRecords
         useAiClassification.isAcceptableOrUnknown(
           data['use_ai_classification']!,
           _useAiClassificationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('academic_integrations_enabled')) {
+      context.handle(
+        _academicIntegrationsEnabledMeta,
+        academicIntegrationsEnabled.isAcceptableOrUnknown(
+          data['academic_integrations_enabled']!,
+          _academicIntegrationsEnabledMeta,
         ),
       );
     }
@@ -3497,6 +3522,10 @@ class $SettingsRecordsTable extends SettingsRecords
         DriftSqlType.bool,
         data['${effectivePrefix}use_ai_classification'],
       )!,
+      academicIntegrationsEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}academic_integrations_enabled'],
+      )!,
       classificationModel: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}classification_model'],
@@ -3562,6 +3591,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   final bool cleanCompletedPayloads;
   final int diagnosticsRetentionDays;
   final bool useAiClassification;
+  final bool academicIntegrationsEnabled;
   final String classificationModel;
   final String summaryModel;
   final double autoClassifyThreshold;
@@ -3588,6 +3618,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     required this.cleanCompletedPayloads,
     required this.diagnosticsRetentionDays,
     required this.useAiClassification,
+    required this.academicIntegrationsEnabled,
     required this.classificationModel,
     required this.summaryModel,
     required this.autoClassifyThreshold,
@@ -3617,6 +3648,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     map['clean_completed_payloads'] = Variable<bool>(cleanCompletedPayloads);
     map['diagnostics_retention_days'] = Variable<int>(diagnosticsRetentionDays);
     map['use_ai_classification'] = Variable<bool>(useAiClassification);
+    map['academic_integrations_enabled'] = Variable<bool>(
+      academicIntegrationsEnabled,
+    );
     map['classification_model'] = Variable<String>(classificationModel);
     map['summary_model'] = Variable<String>(summaryModel);
     map['auto_classify_threshold'] = Variable<double>(autoClassifyThreshold);
@@ -3657,6 +3691,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       cleanCompletedPayloads: Value(cleanCompletedPayloads),
       diagnosticsRetentionDays: Value(diagnosticsRetentionDays),
       useAiClassification: Value(useAiClassification),
+      academicIntegrationsEnabled: Value(academicIntegrationsEnabled),
       classificationModel: Value(classificationModel),
       summaryModel: Value(summaryModel),
       autoClassifyThreshold: Value(autoClassifyThreshold),
@@ -3709,6 +3744,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       useAiClassification: serializer.fromJson<bool>(
         json['useAiClassification'],
       ),
+      academicIntegrationsEnabled: serializer.fromJson<bool>(
+        json['academicIntegrationsEnabled'],
+      ),
       classificationModel: serializer.fromJson<String>(
         json['classificationModel'],
       ),
@@ -3752,6 +3790,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
         diagnosticsRetentionDays,
       ),
       'useAiClassification': serializer.toJson<bool>(useAiClassification),
+      'academicIntegrationsEnabled': serializer.toJson<bool>(
+        academicIntegrationsEnabled,
+      ),
       'classificationModel': serializer.toJson<String>(classificationModel),
       'summaryModel': serializer.toJson<String>(summaryModel),
       'autoClassifyThreshold': serializer.toJson<double>(autoClassifyThreshold),
@@ -3785,6 +3826,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     bool? cleanCompletedPayloads,
     int? diagnosticsRetentionDays,
     bool? useAiClassification,
+    bool? academicIntegrationsEnabled,
     String? classificationModel,
     String? summaryModel,
     double? autoClassifyThreshold,
@@ -3813,6 +3855,8 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     diagnosticsRetentionDays:
         diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
     useAiClassification: useAiClassification ?? this.useAiClassification,
+    academicIntegrationsEnabled:
+        academicIntegrationsEnabled ?? this.academicIntegrationsEnabled,
     classificationModel: classificationModel ?? this.classificationModel,
     summaryModel: summaryModel ?? this.summaryModel,
     autoClassifyThreshold: autoClassifyThreshold ?? this.autoClassifyThreshold,
@@ -3873,6 +3917,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       useAiClassification: data.useAiClassification.present
           ? data.useAiClassification.value
           : this.useAiClassification,
+      academicIntegrationsEnabled: data.academicIntegrationsEnabled.present
+          ? data.academicIntegrationsEnabled.value
+          : this.academicIntegrationsEnabled,
       classificationModel: data.classificationModel.present
           ? data.classificationModel.value
           : this.classificationModel,
@@ -3924,6 +3971,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           ..write('cleanCompletedPayloads: $cleanCompletedPayloads, ')
           ..write('diagnosticsRetentionDays: $diagnosticsRetentionDays, ')
           ..write('useAiClassification: $useAiClassification, ')
+          ..write('academicIntegrationsEnabled: $academicIntegrationsEnabled, ')
           ..write('classificationModel: $classificationModel, ')
           ..write('summaryModel: $summaryModel, ')
           ..write('autoClassifyThreshold: $autoClassifyThreshold, ')
@@ -3955,6 +4003,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     cleanCompletedPayloads,
     diagnosticsRetentionDays,
     useAiClassification,
+    academicIntegrationsEnabled,
     classificationModel,
     summaryModel,
     autoClassifyThreshold,
@@ -3985,6 +4034,8 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           other.cleanCompletedPayloads == this.cleanCompletedPayloads &&
           other.diagnosticsRetentionDays == this.diagnosticsRetentionDays &&
           other.useAiClassification == this.useAiClassification &&
+          other.academicIntegrationsEnabled ==
+              this.academicIntegrationsEnabled &&
           other.classificationModel == this.classificationModel &&
           other.summaryModel == this.summaryModel &&
           other.autoClassifyThreshold == this.autoClassifyThreshold &&
@@ -4014,6 +4065,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   final Value<bool> cleanCompletedPayloads;
   final Value<int> diagnosticsRetentionDays;
   final Value<bool> useAiClassification;
+  final Value<bool> academicIntegrationsEnabled;
   final Value<String> classificationModel;
   final Value<String> summaryModel;
   final Value<double> autoClassifyThreshold;
@@ -4040,6 +4092,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     this.cleanCompletedPayloads = const Value.absent(),
     this.diagnosticsRetentionDays = const Value.absent(),
     this.useAiClassification = const Value.absent(),
+    this.academicIntegrationsEnabled = const Value.absent(),
     this.classificationModel = const Value.absent(),
     this.summaryModel = const Value.absent(),
     this.autoClassifyThreshold = const Value.absent(),
@@ -4067,6 +4120,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     required bool cleanCompletedPayloads,
     required int diagnosticsRetentionDays,
     this.useAiClassification = const Value.absent(),
+    this.academicIntegrationsEnabled = const Value.absent(),
     required String classificationModel,
     required String summaryModel,
     required double autoClassifyThreshold,
@@ -4111,6 +4165,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Expression<bool>? cleanCompletedPayloads,
     Expression<int>? diagnosticsRetentionDays,
     Expression<bool>? useAiClassification,
+    Expression<bool>? academicIntegrationsEnabled,
     Expression<String>? classificationModel,
     Expression<String>? summaryModel,
     Expression<double>? autoClassifyThreshold,
@@ -4143,6 +4198,8 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
         'diagnostics_retention_days': diagnosticsRetentionDays,
       if (useAiClassification != null)
         'use_ai_classification': useAiClassification,
+      if (academicIntegrationsEnabled != null)
+        'academic_integrations_enabled': academicIntegrationsEnabled,
       if (classificationModel != null)
         'classification_model': classificationModel,
       if (summaryModel != null) 'summary_model': summaryModel,
@@ -4177,6 +4234,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Value<bool>? cleanCompletedPayloads,
     Value<int>? diagnosticsRetentionDays,
     Value<bool>? useAiClassification,
+    Value<bool>? academicIntegrationsEnabled,
     Value<String>? classificationModel,
     Value<String>? summaryModel,
     Value<double>? autoClassifyThreshold,
@@ -4206,6 +4264,8 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
       diagnosticsRetentionDays:
           diagnosticsRetentionDays ?? this.diagnosticsRetentionDays,
       useAiClassification: useAiClassification ?? this.useAiClassification,
+      academicIntegrationsEnabled:
+          academicIntegrationsEnabled ?? this.academicIntegrationsEnabled,
       classificationModel: classificationModel ?? this.classificationModel,
       summaryModel: summaryModel ?? this.summaryModel,
       autoClassifyThreshold:
@@ -4277,6 +4337,11 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     if (useAiClassification.present) {
       map['use_ai_classification'] = Variable<bool>(useAiClassification.value);
     }
+    if (academicIntegrationsEnabled.present) {
+      map['academic_integrations_enabled'] = Variable<bool>(
+        academicIntegrationsEnabled.value,
+      );
+    }
     if (classificationModel.present) {
       map['classification_model'] = Variable<String>(classificationModel.value);
     }
@@ -4336,6 +4401,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
           ..write('cleanCompletedPayloads: $cleanCompletedPayloads, ')
           ..write('diagnosticsRetentionDays: $diagnosticsRetentionDays, ')
           ..write('useAiClassification: $useAiClassification, ')
+          ..write('academicIntegrationsEnabled: $academicIntegrationsEnabled, ')
           ..write('classificationModel: $classificationModel, ')
           ..write('summaryModel: $summaryModel, ')
           ..write('autoClassifyThreshold: $autoClassifyThreshold, ')
@@ -7690,6 +7756,7 @@ typedef $$SettingsRecordsTableCreateCompanionBuilder =
       required bool cleanCompletedPayloads,
       required int diagnosticsRetentionDays,
       Value<bool> useAiClassification,
+      Value<bool> academicIntegrationsEnabled,
       required String classificationModel,
       required String summaryModel,
       required double autoClassifyThreshold,
@@ -7718,6 +7785,7 @@ typedef $$SettingsRecordsTableUpdateCompanionBuilder =
       Value<bool> cleanCompletedPayloads,
       Value<int> diagnosticsRetentionDays,
       Value<bool> useAiClassification,
+      Value<bool> academicIntegrationsEnabled,
       Value<String> classificationModel,
       Value<String> summaryModel,
       Value<double> autoClassifyThreshold,
@@ -7811,6 +7879,11 @@ class $$SettingsRecordsTableFilterComposer
 
   ColumnFilters<bool> get useAiClassification => $composableBuilder(
     column: $table.useAiClassification,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get academicIntegrationsEnabled => $composableBuilder(
+    column: $table.academicIntegrationsEnabled,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7949,6 +8022,11 @@ class $$SettingsRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get academicIntegrationsEnabled => $composableBuilder(
+    column: $table.academicIntegrationsEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get classificationModel => $composableBuilder(
     column: $table.classificationModel,
     builder: (column) => ColumnOrderings(column),
@@ -8082,6 +8160,11 @@ class $$SettingsRecordsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get academicIntegrationsEnabled => $composableBuilder(
+    column: $table.academicIntegrationsEnabled,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get classificationModel => $composableBuilder(
     column: $table.classificationModel,
     builder: (column) => column,
@@ -8185,6 +8268,7 @@ class $$SettingsRecordsTableTableManager
                 Value<bool> cleanCompletedPayloads = const Value.absent(),
                 Value<int> diagnosticsRetentionDays = const Value.absent(),
                 Value<bool> useAiClassification = const Value.absent(),
+                Value<bool> academicIntegrationsEnabled = const Value.absent(),
                 Value<String> classificationModel = const Value.absent(),
                 Value<String> summaryModel = const Value.absent(),
                 Value<double> autoClassifyThreshold = const Value.absent(),
@@ -8213,6 +8297,7 @@ class $$SettingsRecordsTableTableManager
                 cleanCompletedPayloads: cleanCompletedPayloads,
                 diagnosticsRetentionDays: diagnosticsRetentionDays,
                 useAiClassification: useAiClassification,
+                academicIntegrationsEnabled: academicIntegrationsEnabled,
                 classificationModel: classificationModel,
                 summaryModel: summaryModel,
                 autoClassifyThreshold: autoClassifyThreshold,
@@ -8241,6 +8326,7 @@ class $$SettingsRecordsTableTableManager
                 required bool cleanCompletedPayloads,
                 required int diagnosticsRetentionDays,
                 Value<bool> useAiClassification = const Value.absent(),
+                Value<bool> academicIntegrationsEnabled = const Value.absent(),
                 required String classificationModel,
                 required String summaryModel,
                 required double autoClassifyThreshold,
@@ -8269,6 +8355,7 @@ class $$SettingsRecordsTableTableManager
                 cleanCompletedPayloads: cleanCompletedPayloads,
                 diagnosticsRetentionDays: diagnosticsRetentionDays,
                 useAiClassification: useAiClassification,
+                academicIntegrationsEnabled: academicIntegrationsEnabled,
                 classificationModel: classificationModel,
                 summaryModel: summaryModel,
                 autoClassifyThreshold: autoClassifyThreshold,

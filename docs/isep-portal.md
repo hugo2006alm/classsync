@@ -1,5 +1,11 @@
 # ISEP Portal integration
 
+New accounts enable Portal together with Moodle during setup or later under
+**Settings → Connections → Use ISEP Portal and Moodle**. Existing accounts keep
+their previous enabled state during upgrade. Disabling this switch stops Portal
+requests, hides imported records and sections, cancels imported reminders, and
+retains credentials in secure storage for a later return.
+
 ClassSync uses a read-only adapter for the legacy ASP.NET WebForms Portal at
 `https://portal.isep.ipp.pt/intranet/`. Portal credentials and cookies never
 enter SQLite, diagnostics, relay plaintext, or source control. Username and

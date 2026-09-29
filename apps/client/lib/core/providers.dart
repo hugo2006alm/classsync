@@ -85,15 +85,23 @@ final subjectsProvider = StreamProvider<List<AcademicSubject>>(
   (ref) => ref.watch(databaseProvider).watchSubjects(),
 );
 
-final academicRecordsProvider = StreamProvider<List<AcademicRecord>>(
-  (ref) => ref
+final academicRecordsProvider = StreamProvider<List<AcademicRecord>>((ref) {
+  final enabled =
+      ref.watch(settingsProvider).valueOrNull?.academicIntegrationsEnabled ??
+      false;
+  return ref
       .watch(databaseProvider)
       .watchAcademicRecords()
       .map(
-        (records) =>
-            records.where((record) => !isInvalidPortalRecord(record)).toList(),
-      ),
-);
+        (records) => records
+            .where(
+              (record) =>
+                  !isInvalidPortalRecord(record) &&
+                  (enabled || !isImportedAcademicSource(record.source)),
+            )
+            .toList(),
+      );
+});
 
 final academicChangesProvider = StreamProvider<List<AcademicChangeRow>>(
   (ref) => ref.watch(databaseProvider).watchAcademicChanges(),
@@ -278,9 +286,6 @@ class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
     if (state.isLoading) return;
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final academic = _academicSync
-          .synchronize(force: reason == SyncReason.manual)
-          .then<void>((_) {}, onError: (Object _, StackTrace _) {});
       Future<void> synchronizeAccountState() async {
         try {
           await _deviceSync.synchronize();
@@ -290,6 +295,9 @@ class SyncController extends StateNotifier<AsyncValue<SyncRunResult?>> {
       }
 
       await synchronizeAccountState();
+      final academic = _academicSync
+          .synchronize(force: reason == SyncReason.manual)
+          .then<void>((_) {}, onError: (Object _, StackTrace _) {});
       final result = await _coordinator.run(
         reason,
         onQueueCheckpoint: synchronizeAccountState,
@@ -311,12 +319,20 @@ final syncControllerProvider =
     );
 
 class SettingsController {
-  const SettingsController(this._database, this._deviceSync);
+  const SettingsController(
+    this._database,
+    this._deviceSync,
+    this._academicSync,
+  );
   final ClassSyncDatabase _database;
   final DeviceSyncService _deviceSync;
+  final AcademicSyncService _academicSync;
 
   Future<void> save(AppSettings settings) async {
     await _database.saveSettings(settings);
+    if (!settings.academicIntegrationsEnabled) {
+      await _academicSync.synchronize(force: true);
+    }
     try {
       await _deviceSync.pushConfiguration();
     } catch (_) {
@@ -329,5 +345,6 @@ final settingsControllerProvider = Provider(
   (ref) => SettingsController(
     ref.watch(databaseProvider),
     ref.watch(deviceSyncServiceProvider),
+    ref.watch(academicSyncServiceProvider),
   ),
 );

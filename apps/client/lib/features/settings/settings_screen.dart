@@ -72,7 +72,7 @@ class _SettingsBody extends StatelessWidget {
             category: _SettingsCategory.connections,
             icon: Icons.link_rounded,
             title: 'Connections',
-            subtitle: 'Fireflies, Gemini, Notion, and Moodle + ISEP',
+            subtitle: 'Fireflies, Gemini, Notion, and optional ISEP sources',
           ),
           (
             category: _SettingsCategory.deviceSync,
@@ -204,6 +204,22 @@ class _SettingsDetailBody extends ConsumerWidget {
     children: [
       if (category == _SettingsCategory.connections) ...[
         _SettingsSection(
+          title: 'Academic sources',
+          child: Card(
+            child: _SettingSwitch(
+              title: 'Use ISEP Portal and Moodle',
+              subtitle:
+                  'Show imported academic sections and refresh ISEP data. Local tasks and evaluations stay available.',
+              value: settings.academicIntegrationsEnabled,
+              onChanged: (value) => _save(
+                ref,
+                settings.copyWith(academicIntegrationsEnabled: value),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        _SettingsSection(
           title: 'Integrations',
           description: 'Secrets remain in OS secure storage.',
           child: LayoutBuilder(
@@ -257,13 +273,14 @@ class _SettingsDetailBody extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: width,
-                    child: _AcademicIntegrationTile(
-                      onConfigure: () =>
-                          showAcademicConnectionsDialog(context, ref),
+                  if (settings.academicIntegrationsEnabled)
+                    SizedBox(
+                      width: width,
+                      child: _AcademicIntegrationTile(
+                        onConfigure: () =>
+                            showAcademicConnectionsDialog(context, ref),
+                      ),
                     ),
-                  ),
                   SizedBox(
                     width: width,
                     child: _IntegrationTile(
@@ -304,8 +321,10 @@ class _SettingsDetailBody extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.link_rounded),
                   title: const Text('Manage integrations'),
-                  subtitle: const Text(
-                    'Fireflies sources, Gemini, Notion credentials, and Moodle + ISEP.',
+                  subtitle: Text(
+                    settings.academicIntegrationsEnabled
+                        ? 'Fireflies sources, Gemini, Notion credentials, and Moodle + ISEP.'
+                        : 'Fireflies sources, Gemini, and Notion credentials.',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(
@@ -542,7 +561,8 @@ class _SettingsDetailBody extends ConsumerWidget {
                     },
                   ),
                 ),
-                if (Platform.isAndroid) ...[
+                if (Platform.isAndroid &&
+                    settings.academicIntegrationsEnabled) ...[
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.widgets_rounded),
@@ -1864,7 +1884,7 @@ Future<void> _exportDiagnostics(
     'version': info.version,
     'platform': Platform.operatingSystem,
     'generatedAt': DateTime.now().toUtc().toIso8601String(),
-    'database': {'status': 'ready', 'schemaVersion': 7},
+    'database': {'status': 'ready', 'schemaVersion': 8},
     'queueEntries': jobs.length,
     'pollingMinutes': settings.pollingMinutes,
     'overlapHours': settings.overlapHours,

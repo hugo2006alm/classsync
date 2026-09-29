@@ -140,6 +140,51 @@ void main() {
     },
   );
 
+  test('disabled ISEP sources cannot influence lecture prompts', () async {
+    await database.saveSettings(
+      (await database.readSettings()).copyWith(
+        academicIntegrationsEnabled: false,
+      ),
+    );
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: 'portal:timetable:cached',
+        source: AcademicSource.portal,
+        kind: AcademicRecordKind.timetable,
+        externalId: 'cached',
+        title: 'Cached ISEP class',
+        subjectId: notion.subject.notionId,
+        payload: TimetableSlot(
+          externalId: 'cached',
+          subjectCode: 'AI',
+          subjectName: notion.subject.name,
+          subjectId: notion.subject.notionId,
+          start: DateTime.utc(2026, 9, 5, 10),
+          end: DateTime.utc(2026, 9, 5, 11),
+        ).toJson(),
+        syncedAt: DateTime.utc(2026),
+      ),
+    );
+    await database.upsertAcademicRecord(
+      AcademicRecord(
+        key: 'fuc:cached',
+        source: AcademicSource.fuc,
+        kind: AcademicRecordKind.fucProfile,
+        externalId: 'cached',
+        title: 'Cached ISEP course',
+        subjectId: notion.subject.notionId,
+        payload: const {'syllabus': 'ISEP-only syllabus'},
+        syncedAt: DateTime.utc(2026),
+      ),
+    );
+
+    await coordinator.run(SyncReason.manual);
+
+    expect(gemini.lastTimetableContext?.slots, isEmpty);
+    expect(gemini.lastCourseContext, isEmpty);
+    expect((await database.readJobs()).single.status, SyncJobStatus.success);
+  });
+
   test(
     'low confidence generates once, pauses, then publishes manual choice',
     () async {
@@ -637,6 +682,8 @@ class _FakeFireflies extends FirefliesClient {
 class _FakeGemini extends GeminiClient {
   var classificationCalls = 0;
   var summaryCalls = 0;
+  TimetableContext? lastTimetableContext;
+  List<AcademicRecord>? lastCourseContext;
   var failClassification = false;
   ClassificationResult result = const ClassificationResult(
     decision: ClassificationDecision.match,
@@ -662,6 +709,7 @@ class _FakeGemini extends GeminiClient {
     TimetableContext? timetableContext,
   }) async {
     classificationCalls += 1;
+    lastTimetableContext = timetableContext;
     if (failClassification) {
       throw const IntegrationException(
         integration: 'Gemini',
@@ -683,6 +731,7 @@ class _FakeGemini extends GeminiClient {
     List<AcademicRecord> courseContext = const [],
   }) async {
     summaryCalls += 1;
+    lastCourseContext = courseContext;
     return LectureSummary(
       title: 'Algoritmos de Pesquisa',
       context: 'Comparação de algoritmos de pesquisa.',
@@ -724,6 +773,7 @@ class _FakeGemini extends GeminiClient {
     transcript: transcript,
     subject: subject,
     settings: settings,
+    courseContext: courseContext,
   );
 }
 

@@ -265,6 +265,7 @@ class DeviceSyncService {
         'cleanCompletedPayloads': settings.cleanCompletedPayloads,
         'diagnosticsRetentionDays': settings.diagnosticsRetentionDays,
         'useAiClassification': settings.useAiClassification,
+        'academicIntegrationsEnabled': settings.academicIntegrationsEnabled,
         'classificationModel': settings.classificationModel,
         'summaryModel': settings.summaryModel,
         'autoClassifyThreshold': settings.autoClassifyThreshold,
@@ -326,6 +327,7 @@ class DeviceSyncService {
       'keepTranscripts',
       'cleanCompletedPayloads',
       'useAiClassification',
+      'academicIntegrationsEnabled',
       'notionMetadataEnabled',
     ]) {
       final value = settings[key];
@@ -421,6 +423,8 @@ class DeviceSyncService {
       diagnosticsRetentionDays: (values['diagnosticsRetentionDays'] as num?)
           ?.toInt(),
       useAiClassification: values['useAiClassification'] as bool?,
+      academicIntegrationsEnabled:
+          values['academicIntegrationsEnabled'] as bool?,
       classificationModel: values['classificationModel'] as String?,
       summaryModel: values['summaryModel'] as String?,
       autoClassifyThreshold: (values['autoClassifyThreshold'] as num?)

@@ -8,6 +8,9 @@ import '../sync/sync_models.dart';
 
 enum AcademicSource { portal, moodle, manual, fuc }
 
+bool isImportedAcademicSource(AcademicSource source) =>
+    source != AcademicSource.manual;
+
 enum AcademicRecordKind {
   enrollment,
   academicHistory,

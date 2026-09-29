@@ -43,6 +43,46 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'disabled ISEP sources make no requests and cancel imported reminders',
+    () async {
+      final now = DateTime.now().toUtc();
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: 'portal-exam',
+          source: AcademicSource.portal,
+          kind: AcademicRecordKind.evaluation,
+          externalId: 'portal-exam',
+          title: 'Portal exam',
+          payload: const {},
+          syncedAt: now,
+        ),
+      );
+      await database.upsertAcademicRecord(
+        AcademicRecord(
+          key: 'local-task',
+          source: AcademicSource.manual,
+          kind: AcademicRecordKind.lectureTask,
+          externalId: 'local-task',
+          title: 'Local task',
+          payload: const {},
+          syncedAt: now,
+        ),
+      );
+      final settings = await database.readSettings();
+      await database.saveSettings(
+        settings.copyWith(academicIntegrationsEnabled: false),
+      );
+      final result = await service.synchronize();
+      expect(result.configured, isFalse);
+      expect(portal.authenticationCount, 0);
+      expect(moodle.synchronizationCount, 0);
+      expect(notifications.cancelled, contains('portal-exam'));
+      expect(notifications.cancelled, isNot(contains('local-task')));
+      expect(await database.readAcademicRecord('portal-exam'), isNotNull);
+    },
+  );
+
+  test(
     'cache repair preserves valid and user data and retries reminder cancellation',
     () async {
       final now = DateTime.now().toUtc();

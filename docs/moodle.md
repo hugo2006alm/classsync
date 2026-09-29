@@ -1,5 +1,11 @@
 # Moodle ISEP integration
 
+New accounts enable Moodle together with ISEP Portal during setup or later under
+**Settings → Connections → Use ISEP Portal and Moodle**. Existing accounts keep
+their previous enabled state during upgrade. Disabling this switch stops
+automatic Moodle requests, hides imported records, and retains the app token
+in secure storage for a later return.
+
 ClassSync uses Moodle's official Web Services REST endpoint:
 
 ```text

@@ -191,6 +191,11 @@ class AcademicSyncService implements AcademicHubActions {
     required Set<String>? onlyStages,
     required DateTime? timetableFrom,
   }) async {
+    if (!(await _database.readSettings()).academicIntegrationsEnabled) {
+      await _cancelImportedReminders();
+      _report(running: false, errors: const []);
+      return const AcademicSyncResult(saved: 0, sources: {}, errors: []);
+    }
     _report();
     await repairPortalCache();
     final errors = <String>[];
@@ -264,6 +269,30 @@ class AcademicSyncService implements AcademicHubActions {
     await Future.wait(work);
     _report(running: false, errors: errors);
     return AcademicSyncResult(saved: saved, sources: sources, errors: errors);
+  }
+
+  Future<void> _cancelImportedReminders() async {
+    final records = await _database.readAcademicRecords();
+    for (final record in records) {
+      if (!isImportedAcademicSource(record.source)) continue;
+      final ids = switch (record.kind) {
+        AcademicRecordKind.evaluation ||
+        AcademicRecordKind.examRegistration => [record.key],
+        AcademicRecordKind.tuitionCharge => [
+          record.key,
+          '${record.key}:due',
+          '${record.key}:daily',
+        ],
+        _ => const <String>[],
+      };
+      for (final id in ids) {
+        try {
+          await _notifications.cancelAcademicReminder(id);
+        } catch (_) {
+          // A later background or foreground run retries cancellation.
+        }
+      }
+    }
   }
 
   Future<void> repairPortalCache() async {
