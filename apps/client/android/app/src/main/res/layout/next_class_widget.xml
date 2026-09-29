@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_margin="6dp"
+    android:background="@drawable/next_class_widget_background"
+    android:orientation="vertical"
+    android:padding="16dp">
+    <TextView android:id="@+id/widget_label"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Next class" android:textColor="#315F5D"
+        android:textSize="13sp" android:textStyle="bold" />
+    <TextView android:id="@+id/widget_subject"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" android:maxLines="1"
+        android:ellipsize="end" android:text="Open ClassSync to load timetable"
+        android:textColor="#173B39" android:textSize="20sp" android:textStyle="bold" />
+    <TextView android:id="@+id/widget_time"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="5dp" android:maxLines="1"
+        android:ellipsize="end" android:textColor="#173B39" android:textSize="13sp" />
+    <TextView android:id="@+id/widget_details"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="3dp" android:maxLines="2"
+        android:ellipsize="end" android:textColor="#315F5D" android:textSize="12sp" />
+</LinearLayout>

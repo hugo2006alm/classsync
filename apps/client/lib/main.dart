@@ -15,6 +15,7 @@ import 'platform/desktop/desktop_automation_service.dart';
 import 'platform/desktop/single_instance_service.dart';
 import 'platform/mobile/background_sync.dart';
 import 'platform/mobile/firebase_push_service.dart';
+import 'platform/mobile/next_class_widget.dart';
 import 'firebase_options.dart';
 
 Future<void> main(List<String> arguments) async {
@@ -26,6 +27,7 @@ Future<void> main(List<String> arguments) async {
   }
   final database = ClassSyncDatabase();
   await database.initialize();
+  if (Platform.isAndroid) NextClassWidget.observe(database);
   final container = ProviderContainer(
     overrides: [databaseProvider.overrideWithValue(database)],
   );

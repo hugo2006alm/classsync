@@ -53,6 +53,19 @@ them with Gemini, and publishes structured study notes to Notion.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
 - Android WorkManager background sync and user-controlled notifications.
+- In-app update alerts on Windows and Android. ClassSync checks the latest
+  published GitHub release at launch, downloads the matching installer or APK,
+  verifies its SHA-256 release checksum, then starts the platform installer.
+  Android requires system approval for sideloaded updates. **Settings → App
+  updates & widget** also has a manual check. Because this repository is private,
+  each device needs a one-time fine-grained GitHub token limited to this
+  repository with **Contents: read**. Enter it under **GitHub release access**
+  in the same Settings section. The token stays in OS secure storage on that
+  device and is not sent through the ClassSync relay.
+- Android next-class home-screen widget with time, room, class, lesson type,
+  and teacher from the cached timetable. Add it through **Settings → App
+  updates & widget** or the launcher widget picker. It advances to the next
+  cached class every 30 minutes and refreshes when ClassSync updates its cache.
 - Firebase Cloud Messaging fast-path using project
   `classsync-obl1vi0uzz`, with authenticated device registration.
 

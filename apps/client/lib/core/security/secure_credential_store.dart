@@ -20,7 +20,8 @@ enum CredentialKey {
   syncDeviceId('sync_device_id'),
   syncLocalOwnerId('sync_local_owner_id'),
   syncConfigRevision('sync_config_revision'),
-  syncJobsRevision('sync_jobs_revision');
+  syncJobsRevision('sync_jobs_revision'),
+  githubReleaseToken('github_release_token');
 
   const CredentialKey(this.storageKey);
   final String storageKey;

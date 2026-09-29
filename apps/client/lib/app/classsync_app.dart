@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
+import '../core/updates/update_prompt.dart';
 import '../domain/settings/app_settings.dart';
 import '../domain/sync/sync_models.dart';
 import '../features/setup/setup_wizard.dart';
@@ -20,6 +21,7 @@ class ClassSyncApp extends ConsumerStatefulWidget {
 class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
     with WidgetsBindingObserver {
   DateTime? _lastResumeSync;
+  DateTime? _lastUpdateCheck;
   bool _modelPromptOpen = false;
 
   @override
@@ -37,6 +39,7 @@ class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    _scheduleUpdateCheck();
     final now = DateTime.now();
     if (_lastResumeSync != null &&
         now.difference(_lastResumeSync!) < const Duration(seconds: 30)) {
@@ -68,6 +71,9 @@ class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
       error: (error, stack) => _materialApp(_BootstrapError(error: error)),
       data: (value) {
         if (!value.setupComplete) return _materialApp(const SetupWizard());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _scheduleUpdateCheck(),
+        );
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: 'ClassSync',
@@ -77,6 +83,25 @@ class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
           routerConfig: ref.watch(routerProvider),
         );
       },
+    );
+  }
+
+  void _scheduleUpdateCheck() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    if (_lastUpdateCheck != null &&
+        now.difference(_lastUpdateCheck!) < const Duration(hours: 24)) {
+      return;
+    }
+    final context = rootNavigatorKey.currentContext;
+    if (context == null) return;
+    _lastUpdateCheck = now;
+    unawaited(
+      checkForUpdates(
+        context,
+        credentials: ref.read(credentialStoreProvider),
+        silent: true,
+      ),
     );
   }
 

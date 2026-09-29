@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/providers.dart';
 import '../../domain/academic/academic_hub_models.dart';
 import '../../domain/academic/academic_models.dart';
+import '../../domain/academic/next_class.dart';
 import '../../domain/sync/sync_coordinator.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
@@ -45,7 +46,7 @@ class OverviewScreen extends ConsumerWidget {
         .where((job) => job.status == SyncJobStatus.success)
         .take(5)
         .toList();
-    final nextClass = _nextUpcomingClass(academicRecords, DateTime.now());
+    final nextClass = nextUpcomingClass(academicRecords, DateTime.now());
     final showSyncHealth =
         attention + failures > 0 || syncState.isLoading || syncState.hasError;
 
@@ -348,23 +349,3 @@ String _greeting() => switch (DateTime.now().hour) {
   < 18 => 'Good afternoon',
   _ => 'Good evening',
 };
-
-TimetableSlot? _nextUpcomingClass(
-  Iterable<AcademicRecord> records,
-  DateTime now,
-) {
-  final cutoff = now.add(const Duration(days: 4));
-  final upcoming = <TimetableSlot>[];
-  for (final record in records) {
-    if (record.kind != AcademicRecordKind.timetable) continue;
-    try {
-      final slot = TimetableSlot.fromJson(record.payload);
-      final start = slot.start.toLocal();
-      if (start.isAfter(now) && start.isBefore(cutoff)) upcoming.add(slot);
-    } on FormatException {
-      // Ignore malformed cache entries; refresh owns repair.
-    }
-  }
-  upcoming.sort((a, b) => a.start.compareTo(b.start));
-  return upcoming.isEmpty ? null : upcoming.first;
-}

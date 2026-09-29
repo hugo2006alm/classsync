@@ -12,11 +12,14 @@ import 'package:uuid/uuid.dart';
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
 import '../../core/security/secure_credential_store.dart';
+import '../../core/updates/release_update_service.dart';
+import '../../core/updates/update_prompt.dart';
 import '../../core/integrations/relay/account_sync_client.dart';
 import '../../domain/settings/app_settings.dart';
 import '../../domain/settings/fireflies_connection.dart';
 import '../../domain/sync/sync_models.dart';
 import '../../platform/mobile/background_sync.dart';
+import '../../platform/mobile/next_class_widget.dart';
 import '../shared/page_frame.dart';
 import '../academic/academic_connections_dialog.dart';
 import 'device_sync_settings.dart';
@@ -43,6 +46,7 @@ enum _SettingsCategory {
   connections,
   deviceSync,
   automation,
+  updates,
   ai,
   notion,
   storage,
@@ -82,6 +86,13 @@ class _SettingsBody extends StatelessWidget {
             title: 'Automation',
             subtitle: _automationSubtitle(Theme.of(context).platform),
           ),
+          if (Platform.isWindows || Platform.isAndroid)
+            (
+              category: _SettingsCategory.updates,
+              icon: Icons.system_update_rounded,
+              title: 'App updates & widget',
+              subtitle: 'Check releases and add the Android next-class widget',
+            ),
           (
             category: _SettingsCategory.ai,
             icon: Icons.auto_awesome_rounded,
@@ -169,6 +180,7 @@ String _categoryTitle(_SettingsCategory category) => switch (category) {
   _SettingsCategory.connections => 'Connections',
   _SettingsCategory.deviceSync => 'Account & device sync',
   _SettingsCategory.automation => 'Automation',
+  _SettingsCategory.updates => 'App updates & widget',
   _SettingsCategory.ai => 'AI & summaries',
   _SettingsCategory.notion => 'Notion workspace',
   _SettingsCategory.storage => 'Storage & privacy',
@@ -479,6 +491,79 @@ class _SettingsDetailBody extends ConsumerWidget {
                     },
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      ],
+      if (category == _SettingsCategory.updates) ...[
+        _SettingsSection(
+          title: 'App updates',
+          description:
+              'ClassSync checks GitHub releases when you open the app and shows an alert for newer versions.',
+          child: Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.system_update_rounded),
+                  title: const Text('Check for updates'),
+                  subtitle: const Text(
+                    'Download and verify the release before installing.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => checkForUpdates(
+                    context,
+                    credentials: ref.read(credentialStoreProvider),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.key_rounded),
+                  title: const Text('GitHub release access'),
+                  subtitle: const Text(
+                    'Private repository: add a fine-grained token with Contents: read access to ClassSync. Stored only on this device.',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _configureSecret(
+                    context,
+                    ref,
+                    name: 'GitHub release access',
+                    key: CredentialKey.githubReleaseToken,
+                    syncAfterSave: false,
+                    tester: (value) async {
+                      try {
+                        await ReleaseUpdateService(token: value).check();
+                      } catch (_) {
+                        throw const FormatException(
+                          'GitHub could not access ClassSync releases. Use a token with Contents: read access to this repository.',
+                        );
+                      }
+                    },
+                  ),
+                ),
+                if (Platform.isAndroid) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.widgets_rounded),
+                    title: const Text('Add next-class widget'),
+                    subtitle: const Text(
+                      'Show your next class from the cached timetable on the Android home screen.',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      final supported = await NextClassWidget.requestPin();
+                      if (!supported && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Add the ClassSync widget from your launcher’s widget picker.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -1605,6 +1690,7 @@ Future<void> _configureSecret(
   required String name,
   required CredentialKey key,
   required Future<void> Function(String value) tester,
+  bool syncAfterSave = true,
 }) async {
   final controller = TextEditingController();
   String? error;
@@ -1653,11 +1739,13 @@ Future<void> _configureSecret(
                       await ref
                           .read(credentialStoreProvider)
                           .write(key, controller.text);
-                      try {
-                        await ref
-                            .read(deviceSyncServiceProvider)
-                            .pushConfiguration();
-                      } catch (_) {}
+                      if (syncAfterSave) {
+                        try {
+                          await ref
+                              .read(deviceSyncServiceProvider)
+                              .pushConfiguration();
+                        } catch (_) {}
+                      }
                       ref.invalidate(credentialConfiguredProvider(key));
                       if (context.mounted) Navigator.pop(context);
                     } catch (failure) {

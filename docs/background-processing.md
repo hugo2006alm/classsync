@@ -18,6 +18,10 @@ worker after discovery or publication. Manual imports process immediately. The
 FCM token remains registered whenever background automation is
 enabled, independently from the preference for visible ClassSync alerts.
 Android may defer/stop work, so app-resume recovery continues unfinished jobs.
+The optional Android home-screen widget receives a bounded snapshot of cached
+timetable slots when the app opens or its cache changes. Android redraws it at
+most every 30 minutes, selecting the next class in the same four-day window as
+Overview. It does not contact Portal or the relay from the widget process.
 Foreground-service promotion is not yet implemented; oversized transcripts are
 rejected and AI work is bounded to reduce execution risk.
 
