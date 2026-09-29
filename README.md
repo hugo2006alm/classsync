@@ -245,3 +245,11 @@ existing installation:
 See [background processing](docs/background-processing.md), integration guides
 under [docs](docs), [Firebase setup](docs/firebase.md), and
 [troubleshooting](docs/troubleshooting.md).
+
+## Contributing
+
+Open a pull request against `main`. GitHub requires the relay, Flutter, and
+security checks to pass before merging. Run the commands in [AGENTS.md](AGENTS.md)
+locally first, and keep credentials, transcripts, and personal records out of
+commits and test fixtures. Published releases can be checked in the app without
+a GitHub token.
