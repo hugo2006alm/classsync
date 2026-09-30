@@ -3,6 +3,12 @@
 .vscode/
 *.log
 .DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
 
 # Node / Cloudflare
 node_modules/

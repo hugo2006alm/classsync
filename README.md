@@ -252,8 +252,8 @@ under [docs](docs), [Firebase setup](docs/firebase.md), and
 
 ## Contributing
 
-Open a pull request against `main`. GitHub requires the relay, Flutter, and
-security checks to pass before merging. Run the commands in [AGENTS.md](AGENTS.md)
-locally first, and keep credentials, transcripts, and personal records out of
-commits and test fixtures. Published releases can be checked in the app without
-a GitHub token.
+ClassSync is copyright 2026 Hugo Almeida and licensed under the [MIT license](LICENSE).
+You may use and improve it while retaining the copyright and license notice in
+copies or substantial portions. See [CONTRIBUTING.md](CONTRIBUTING.md) for pull
+requests and [SECURITY.md](SECURITY.md) for private vulnerability reports.
+Published releases can be checked in the app without a GitHub token.
