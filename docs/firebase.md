@@ -11,6 +11,14 @@ FlutterFire generated:
 - `apps/client/android/app/google-services.json`
 - `apps/client/firebase.json`
 
+The generated `apiKey`/`current_key` is a public Firebase client identifier,
+not a private credential. In Google Cloud **APIs & Services > Credentials**,
+verify that this key is restricted to the Firebase APIs needed by the app and
+does not allow the Generative Language API. Keep the separate Gemini API key
+private in OS secure storage. Do not remove the Firebase client key from the
+generated files or rewrite Git history to conceal it; installed clients need
+their published Firebase configuration.
+
 The client requests notification permission when visible alerts or background
 mobile sync are enabled. It registers its FCM token with the authenticated
 ClassSync relay whenever either capability needs it, refreshes registration
