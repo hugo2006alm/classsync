@@ -645,6 +645,7 @@ void main() {
 
     expect(find.text('Background mobile sync'), findsOneWidget);
     expect(find.text('Launch with Windows'), findsNothing);
+    expect(find.text('Start minimized'), findsNothing);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -663,6 +664,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Launch with Windows'), findsOneWidget);
+    expect(find.text('Start minimized'), findsOneWidget);
+    final minimized = find.ancestor(
+      of: find.text('Start minimized'),
+      matching: find.byType(SwitchListTile),
+    );
+    await tester.ensureVisible(minimized);
+    await tester.tap(minimized);
+    await tester.pumpAndSettle();
+    expect((await database.readSettings()).startMinimized, isFalse);
+    expect((await database.readSettings()).launchWithWindows, isTrue);
     expect(find.text('Background mobile sync'), findsNothing);
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);

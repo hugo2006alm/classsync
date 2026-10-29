@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/domain/academic/academic_models.dart';
 import 'package:classsync/domain/settings/app_settings.dart';
@@ -14,6 +16,67 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('startup choices persist independently', () async {
+    for (final launch in [true, false]) {
+      for (final minimized in [true, false]) {
+        await database.saveSettings(
+          AppSettings.defaults.copyWith(
+            launchWithWindows: launch,
+            startMinimized: minimized,
+          ),
+        );
+        final saved = await database.readSettings();
+        expect(saved.launchWithWindows, launch);
+        expect(saved.startMinimized, minimized);
+      }
+    }
+  });
+
+  test(
+    'version 8 upgrade preserves settings and jobs with hidden login default',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('classsync-v8-');
+      final file = File('${directory.path}/upgrade.sqlite');
+      var upgraded = ClassSyncDatabase(NativeDatabase(file));
+      try {
+        await upgraded.initialize();
+        await upgraded.saveSettings(
+          AppSettings.defaults.copyWith(
+            displayName: 'Saved user',
+            launchWithWindows: false,
+          ),
+        );
+        await upgraded.discoverJob(
+          id: 'retained',
+          firefliesId: 'saved-transcript',
+          title: 'Saved lecture',
+          meetingDate: DateTime.utc(2026),
+        );
+        // Recreate the complete previous schema by removing only the v9 column.
+        await upgraded.customStatement(
+          'ALTER TABLE settings_records DROP COLUMN start_minimized',
+        );
+        await upgraded.customStatement('PRAGMA user_version = 8');
+        await upgraded.close();
+        upgraded = ClassSyncDatabase(NativeDatabase(file));
+        await upgraded.initialize();
+        final saved = await upgraded.readSettings();
+        expect(saved.displayName, 'Saved user');
+        expect(saved.launchWithWindows, isFalse);
+        expect(saved.startMinimized, isTrue);
+        expect((await upgraded.readJob('retained'))?.title, 'Saved lecture');
+        await upgraded.saveSettings(saved.copyWith(startMinimized: false));
+        await upgraded.close();
+        upgraded = ClassSyncDatabase(NativeDatabase(file));
+        await upgraded.initialize();
+        expect((await upgraded.readSettings()).startMinimized, isFalse);
+      } finally {
+        await upgraded.close();
+        await directory.delete(recursive: true);
+      }
+    },
+  );
 
   test(
     'remote snapshot imports a new terminal job instead of queueing it',

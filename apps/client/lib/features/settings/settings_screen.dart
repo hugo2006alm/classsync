@@ -383,10 +383,19 @@ class _SettingsDetailBody extends ConsumerWidget {
                 if (Theme.of(context).platform == TargetPlatform.windows) ...[
                   _SettingSwitch(
                     title: 'Launch with Windows',
-                    subtitle: 'Start hidden in the tray after login.',
+                    subtitle: 'Open ClassSync after signing in to this PC.',
                     value: settings.launchWithWindows,
                     onChanged: (value) =>
                         _save(ref, settings.copyWith(launchWithWindows: value)),
+                  ),
+                  const Divider(),
+                  _SettingSwitch(
+                    title: 'Start minimized',
+                    subtitle:
+                        'At Windows sign-in, stay in the system tray. Open ClassSync from the tray or shortcut.',
+                    value: settings.startMinimized,
+                    onChanged: (value) =>
+                        _save(ref, settings.copyWith(startMinimized: value)),
                   ),
                   const Divider(),
                 ],

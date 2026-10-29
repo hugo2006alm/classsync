@@ -2,9 +2,15 @@
 
 ## Windows
 
-Launch-at-login starts ClassSync with background flag. Named Windows mutex keeps
-one process; later launches activate existing window. Shared coordinator uses
-SQLite leases for startup recovery and periodic polling.
+Launch-at-login starts ClassSync with `--startup` (legacy `--background` entries
+remain supported). **Settings → Automation** independently controls **Launch
+with Windows** and **Start minimized**. The latter chooses a hidden tray window
+or visible window at sign-in; manual shortcuts always show the window, and
+incomplete setup stays visible. Both preferences are local to the device.
+Named Windows mutex keeps one process; manual later launches activate the
+existing window, while duplicate login launches leave its visibility alone.
+Shared coordinator uses SQLite leases for startup recovery and periodic polling,
+including while hidden.
 
 ## Android
 

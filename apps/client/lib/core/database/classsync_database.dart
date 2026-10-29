@@ -89,6 +89,8 @@ class SettingsRecords extends Table {
   BoolColumn get setupComplete => boolean()();
   BoolColumn get automaticSync => boolean()();
   BoolColumn get launchWithWindows => boolean()();
+  BoolColumn get startMinimized =>
+      boolean().withDefault(const Constant(true))();
   BoolColumn get syncOnLaunch => boolean()();
   BoolColumn get backgroundMobileSync => boolean()();
   BoolColumn get notificationsEnabled =>
@@ -178,7 +180,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     : super(executor ?? driftDatabase(name: 'classsync'));
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -233,6 +235,12 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
           settingsRecords.academicIntegrationsEnabled,
         );
       }
+      if (from < 9) {
+        await migrator.addColumn(
+          settingsRecords,
+          settingsRecords.startMinimized,
+        );
+      }
     },
   );
 
@@ -266,6 +274,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         setupComplete: settings.setupComplete,
         automaticSync: settings.automaticSync,
         launchWithWindows: settings.launchWithWindows,
+        startMinimized: Value(settings.startMinimized),
         syncOnLaunch: settings.syncOnLaunch,
         backgroundMobileSync: settings.backgroundMobileSync,
         notificationsEnabled: Value(settings.notificationsEnabled),
@@ -1192,6 +1201,7 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
     setupComplete: row.setupComplete,
     automaticSync: row.automaticSync,
     launchWithWindows: row.launchWithWindows,
+    startMinimized: row.startMinimized,
     syncOnLaunch: row.syncOnLaunch,
     backgroundMobileSync: row.backgroundMobileSync,
     notificationsEnabled: row.notificationsEnabled,
