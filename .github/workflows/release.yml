@@ -88,7 +88,7 @@ jobs:
       - run: |
           cp apps/client/build/app/outputs/flutter-apk/app-release.apk ClassSync-Android.apk
           cp apps/client/build/app/outputs/bundle/release/app-release.aab ClassSync-Android.aab
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ClassSync-Android
           path: |
@@ -148,7 +148,7 @@ jobs:
           if ($installers.Count -ne 1) { throw "Expected one installer, found $($installers.Count)." }
           $installer = $installers[0].FullName
           & $signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /f "$env:RUNNER_TEMP\classsync.pfx" /p $env:CERTIFICATE_PASSWORD $installer
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ClassSync-Windows
           path: dist/*.exe
