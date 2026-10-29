@@ -52,6 +52,11 @@ them with Gemini, and publishes structured study notes to Notion.
   payment; full payment references are never stored.
 - Windows tray, close-to-tray, periodic polling, autostart, notifications, and
   an Inno Setup installer definition.
+  **Settings → Automation** has independent **Launch with Windows** and
+  **Start minimized** switches. At Windows sign-in, choose the full window or
+  the system tray; open the tray icon or shortcut to show the window. Both
+  choices belong to this PC and are not synced to other devices. Existing
+  installations keep their hidden-at-login behavior.
 - Android WorkManager background sync and user-controlled notifications.
 - In-app update alerts on Windows and Android. ClassSync checks the latest
   published GitHub release at launch, downloads the matching installer or APK,

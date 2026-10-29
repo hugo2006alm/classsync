@@ -20,7 +20,7 @@ typedef _SetForegroundWindowDart = int Function(int);
 class SingleInstanceService {
   static final List<int> _heldMutexes = [];
 
-  static bool acquire() {
+  static bool acquire({bool activateExisting = true}) {
     if (!Platform.isWindows) return true;
     if (_heldMutexes.isNotEmpty) return true;
     final kernel = DynamicLibrary.open('kernel32.dll');
@@ -36,7 +36,7 @@ class SingleInstanceService {
     if (handle == 0) return false;
     if (getLastError() == 183) {
       closeHandle(handle);
-      _activateExistingWindow();
+      if (activateExisting) _activateExistingWindow();
       return false;
     }
     _heldMutexes.add(handle);

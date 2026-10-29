@@ -2893,6 +2893,21 @@ class $SettingsRecordsTable extends SettingsRecords
       'CHECK ("launch_with_windows" IN (0, 1))',
     ),
   );
+  static const VerificationMeta _startMinimizedMeta = const VerificationMeta(
+    'startMinimized',
+  );
+  @override
+  late final GeneratedColumn<bool> startMinimized = GeneratedColumn<bool>(
+    'start_minimized',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("start_minimized" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _syncOnLaunchMeta = const VerificationMeta(
     'syncOnLaunch',
   );
@@ -3155,6 +3170,7 @@ class $SettingsRecordsTable extends SettingsRecords
     setupComplete,
     automaticSync,
     launchWithWindows,
+    startMinimized,
     syncOnLaunch,
     backgroundMobileSync,
     notificationsEnabled,
@@ -3233,6 +3249,15 @@ class $SettingsRecordsTable extends SettingsRecords
       );
     } else if (isInserting) {
       context.missing(_launchWithWindowsMeta);
+    }
+    if (data.containsKey('start_minimized')) {
+      context.handle(
+        _startMinimizedMeta,
+        startMinimized.isAcceptableOrUnknown(
+          data['start_minimized']!,
+          _startMinimizedMeta,
+        ),
+      );
     }
     if (data.containsKey('sync_on_launch')) {
       context.handle(
@@ -3482,6 +3507,10 @@ class $SettingsRecordsTable extends SettingsRecords
         DriftSqlType.bool,
         data['${effectivePrefix}launch_with_windows'],
       )!,
+      startMinimized: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}start_minimized'],
+      )!,
       syncOnLaunch: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}sync_on_launch'],
@@ -3581,6 +3610,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
   final bool setupComplete;
   final bool automaticSync;
   final bool launchWithWindows;
+  final bool startMinimized;
   final bool syncOnLaunch;
   final bool backgroundMobileSync;
   final bool notificationsEnabled;
@@ -3608,6 +3638,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     required this.setupComplete,
     required this.automaticSync,
     required this.launchWithWindows,
+    required this.startMinimized,
     required this.syncOnLaunch,
     required this.backgroundMobileSync,
     required this.notificationsEnabled,
@@ -3638,6 +3669,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     map['setup_complete'] = Variable<bool>(setupComplete);
     map['automatic_sync'] = Variable<bool>(automaticSync);
     map['launch_with_windows'] = Variable<bool>(launchWithWindows);
+    map['start_minimized'] = Variable<bool>(startMinimized);
     map['sync_on_launch'] = Variable<bool>(syncOnLaunch);
     map['background_mobile_sync'] = Variable<bool>(backgroundMobileSync);
     map['notifications_enabled'] = Variable<bool>(notificationsEnabled);
@@ -3681,6 +3713,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       setupComplete: Value(setupComplete),
       automaticSync: Value(automaticSync),
       launchWithWindows: Value(launchWithWindows),
+      startMinimized: Value(startMinimized),
       syncOnLaunch: Value(syncOnLaunch),
       backgroundMobileSync: Value(backgroundMobileSync),
       notificationsEnabled: Value(notificationsEnabled),
@@ -3724,6 +3757,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       setupComplete: serializer.fromJson<bool>(json['setupComplete']),
       automaticSync: serializer.fromJson<bool>(json['automaticSync']),
       launchWithWindows: serializer.fromJson<bool>(json['launchWithWindows']),
+      startMinimized: serializer.fromJson<bool>(json['startMinimized']),
       syncOnLaunch: serializer.fromJson<bool>(json['syncOnLaunch']),
       backgroundMobileSync: serializer.fromJson<bool>(
         json['backgroundMobileSync'],
@@ -3778,6 +3812,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       'setupComplete': serializer.toJson<bool>(setupComplete),
       'automaticSync': serializer.toJson<bool>(automaticSync),
       'launchWithWindows': serializer.toJson<bool>(launchWithWindows),
+      'startMinimized': serializer.toJson<bool>(startMinimized),
       'syncOnLaunch': serializer.toJson<bool>(syncOnLaunch),
       'backgroundMobileSync': serializer.toJson<bool>(backgroundMobileSync),
       'notificationsEnabled': serializer.toJson<bool>(notificationsEnabled),
@@ -3816,6 +3851,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     bool? setupComplete,
     bool? automaticSync,
     bool? launchWithWindows,
+    bool? startMinimized,
     bool? syncOnLaunch,
     bool? backgroundMobileSync,
     bool? notificationsEnabled,
@@ -3843,6 +3879,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     setupComplete: setupComplete ?? this.setupComplete,
     automaticSync: automaticSync ?? this.automaticSync,
     launchWithWindows: launchWithWindows ?? this.launchWithWindows,
+    startMinimized: startMinimized ?? this.startMinimized,
     syncOnLaunch: syncOnLaunch ?? this.syncOnLaunch,
     backgroundMobileSync: backgroundMobileSync ?? this.backgroundMobileSync,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -3887,6 +3924,9 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
       launchWithWindows: data.launchWithWindows.present
           ? data.launchWithWindows.value
           : this.launchWithWindows,
+      startMinimized: data.startMinimized.present
+          ? data.startMinimized.value
+          : this.startMinimized,
       syncOnLaunch: data.syncOnLaunch.present
           ? data.syncOnLaunch.value
           : this.syncOnLaunch,
@@ -3961,6 +4001,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           ..write('setupComplete: $setupComplete, ')
           ..write('automaticSync: $automaticSync, ')
           ..write('launchWithWindows: $launchWithWindows, ')
+          ..write('startMinimized: $startMinimized, ')
           ..write('syncOnLaunch: $syncOnLaunch, ')
           ..write('backgroundMobileSync: $backgroundMobileSync, ')
           ..write('notificationsEnabled: $notificationsEnabled, ')
@@ -3993,6 +4034,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
     setupComplete,
     automaticSync,
     launchWithWindows,
+    startMinimized,
     syncOnLaunch,
     backgroundMobileSync,
     notificationsEnabled,
@@ -4024,6 +4066,7 @@ class SettingsRow extends DataClass implements Insertable<SettingsRow> {
           other.setupComplete == this.setupComplete &&
           other.automaticSync == this.automaticSync &&
           other.launchWithWindows == this.launchWithWindows &&
+          other.startMinimized == this.startMinimized &&
           other.syncOnLaunch == this.syncOnLaunch &&
           other.backgroundMobileSync == this.backgroundMobileSync &&
           other.notificationsEnabled == this.notificationsEnabled &&
@@ -4055,6 +4098,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
   final Value<bool> setupComplete;
   final Value<bool> automaticSync;
   final Value<bool> launchWithWindows;
+  final Value<bool> startMinimized;
   final Value<bool> syncOnLaunch;
   final Value<bool> backgroundMobileSync;
   final Value<bool> notificationsEnabled;
@@ -4082,6 +4126,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     this.setupComplete = const Value.absent(),
     this.automaticSync = const Value.absent(),
     this.launchWithWindows = const Value.absent(),
+    this.startMinimized = const Value.absent(),
     this.syncOnLaunch = const Value.absent(),
     this.backgroundMobileSync = const Value.absent(),
     this.notificationsEnabled = const Value.absent(),
@@ -4110,6 +4155,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     required bool setupComplete,
     required bool automaticSync,
     required bool launchWithWindows,
+    this.startMinimized = const Value.absent(),
     required bool syncOnLaunch,
     required bool backgroundMobileSync,
     this.notificationsEnabled = const Value.absent(),
@@ -4155,6 +4201,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Expression<bool>? setupComplete,
     Expression<bool>? automaticSync,
     Expression<bool>? launchWithWindows,
+    Expression<bool>? startMinimized,
     Expression<bool>? syncOnLaunch,
     Expression<bool>? backgroundMobileSync,
     Expression<bool>? notificationsEnabled,
@@ -4183,6 +4230,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
       if (setupComplete != null) 'setup_complete': setupComplete,
       if (automaticSync != null) 'automatic_sync': automaticSync,
       if (launchWithWindows != null) 'launch_with_windows': launchWithWindows,
+      if (startMinimized != null) 'start_minimized': startMinimized,
       if (syncOnLaunch != null) 'sync_on_launch': syncOnLaunch,
       if (backgroundMobileSync != null)
         'background_mobile_sync': backgroundMobileSync,
@@ -4224,6 +4272,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     Value<bool>? setupComplete,
     Value<bool>? automaticSync,
     Value<bool>? launchWithWindows,
+    Value<bool>? startMinimized,
     Value<bool>? syncOnLaunch,
     Value<bool>? backgroundMobileSync,
     Value<bool>? notificationsEnabled,
@@ -4252,6 +4301,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
       setupComplete: setupComplete ?? this.setupComplete,
       automaticSync: automaticSync ?? this.automaticSync,
       launchWithWindows: launchWithWindows ?? this.launchWithWindows,
+      startMinimized: startMinimized ?? this.startMinimized,
       syncOnLaunch: syncOnLaunch ?? this.syncOnLaunch,
       backgroundMobileSync: backgroundMobileSync ?? this.backgroundMobileSync,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -4300,6 +4350,9 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
     }
     if (launchWithWindows.present) {
       map['launch_with_windows'] = Variable<bool>(launchWithWindows.value);
+    }
+    if (startMinimized.present) {
+      map['start_minimized'] = Variable<bool>(startMinimized.value);
     }
     if (syncOnLaunch.present) {
       map['sync_on_launch'] = Variable<bool>(syncOnLaunch.value);
@@ -4391,6 +4444,7 @@ class SettingsRecordsCompanion extends UpdateCompanion<SettingsRow> {
           ..write('setupComplete: $setupComplete, ')
           ..write('automaticSync: $automaticSync, ')
           ..write('launchWithWindows: $launchWithWindows, ')
+          ..write('startMinimized: $startMinimized, ')
           ..write('syncOnLaunch: $syncOnLaunch, ')
           ..write('backgroundMobileSync: $backgroundMobileSync, ')
           ..write('notificationsEnabled: $notificationsEnabled, ')
@@ -7746,6 +7800,7 @@ typedef $$SettingsRecordsTableCreateCompanionBuilder =
       required bool setupComplete,
       required bool automaticSync,
       required bool launchWithWindows,
+      Value<bool> startMinimized,
       required bool syncOnLaunch,
       required bool backgroundMobileSync,
       Value<bool> notificationsEnabled,
@@ -7775,6 +7830,7 @@ typedef $$SettingsRecordsTableUpdateCompanionBuilder =
       Value<bool> setupComplete,
       Value<bool> automaticSync,
       Value<bool> launchWithWindows,
+      Value<bool> startMinimized,
       Value<bool> syncOnLaunch,
       Value<bool> backgroundMobileSync,
       Value<bool> notificationsEnabled,
@@ -7829,6 +7885,11 @@ class $$SettingsRecordsTableFilterComposer
 
   ColumnFilters<bool> get launchWithWindows => $composableBuilder(
     column: $table.launchWithWindows,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get startMinimized => $composableBuilder(
+    column: $table.startMinimized,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7972,6 +8033,11 @@ class $$SettingsRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get startMinimized => $composableBuilder(
+    column: $table.startMinimized,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get syncOnLaunch => $composableBuilder(
     column: $table.syncOnLaunch,
     builder: (column) => ColumnOrderings(column),
@@ -8107,6 +8173,11 @@ class $$SettingsRecordsTableAnnotationComposer
 
   GeneratedColumn<bool> get launchWithWindows => $composableBuilder(
     column: $table.launchWithWindows,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get startMinimized => $composableBuilder(
+    column: $table.startMinimized,
     builder: (column) => column,
   );
 
@@ -8258,6 +8329,7 @@ class $$SettingsRecordsTableTableManager
                 Value<bool> setupComplete = const Value.absent(),
                 Value<bool> automaticSync = const Value.absent(),
                 Value<bool> launchWithWindows = const Value.absent(),
+                Value<bool> startMinimized = const Value.absent(),
                 Value<bool> syncOnLaunch = const Value.absent(),
                 Value<bool> backgroundMobileSync = const Value.absent(),
                 Value<bool> notificationsEnabled = const Value.absent(),
@@ -8287,6 +8359,7 @@ class $$SettingsRecordsTableTableManager
                 setupComplete: setupComplete,
                 automaticSync: automaticSync,
                 launchWithWindows: launchWithWindows,
+                startMinimized: startMinimized,
                 syncOnLaunch: syncOnLaunch,
                 backgroundMobileSync: backgroundMobileSync,
                 notificationsEnabled: notificationsEnabled,
@@ -8316,6 +8389,7 @@ class $$SettingsRecordsTableTableManager
                 required bool setupComplete,
                 required bool automaticSync,
                 required bool launchWithWindows,
+                Value<bool> startMinimized = const Value.absent(),
                 required bool syncOnLaunch,
                 required bool backgroundMobileSync,
                 Value<bool> notificationsEnabled = const Value.absent(),
@@ -8345,6 +8419,7 @@ class $$SettingsRecordsTableTableManager
                 setupComplete: setupComplete,
                 automaticSync: automaticSync,
                 launchWithWindows: launchWithWindows,
+                startMinimized: startMinimized,
                 syncOnLaunch: syncOnLaunch,
                 backgroundMobileSync: backgroundMobileSync,
                 notificationsEnabled: notificationsEnabled,

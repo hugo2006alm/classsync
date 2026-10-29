@@ -97,11 +97,15 @@ class DesktopAutomationService with TrayListener, WindowListener {
       appName: 'ClassSync',
       appPath: Platform.resolvedExecutable,
       packageName: info.packageName,
-      args: const ['--background'],
+      args: const ['--startup'],
     );
-    final enabled = await launchAtStartup.isEnabled();
-    if (settings.launchWithWindows && !enabled) await launchAtStartup.enable();
-    if (!settings.launchWithWindows && enabled) await launchAtStartup.disable();
+    // Refresh existing entries too: older versions used --background and an
+    // upgrade may have moved the executable.
+    if (settings.launchWithWindows) {
+      await launchAtStartup.enable();
+    } else if (await launchAtStartup.isEnabled()) {
+      await launchAtStartup.disable();
+    }
   }
 
   void _configureTimer(AppSettings settings) {
@@ -117,6 +121,7 @@ class DesktopAutomationService with TrayListener, WindowListener {
   Future<void> _showWindow() async {
     await windowManager.show();
     await windowManager.setSkipTaskbar(false);
+    await windowManager.restore();
     await windowManager.focus();
   }
 

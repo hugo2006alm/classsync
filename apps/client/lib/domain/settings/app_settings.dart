@@ -77,6 +77,7 @@ class AppSettings {
     required this.setupComplete,
     required this.automaticSync,
     required this.launchWithWindows,
+    this.startMinimized = true,
     required this.syncOnLaunch,
     required this.backgroundMobileSync,
     required this.notificationsEnabled,
@@ -130,6 +131,7 @@ class AppSettings {
   final bool setupComplete;
   final bool automaticSync;
   final bool launchWithWindows;
+  final bool startMinimized;
   final bool syncOnLaunch;
   final bool backgroundMobileSync;
   final bool notificationsEnabled;
@@ -157,6 +159,7 @@ class AppSettings {
     bool? setupComplete,
     bool? automaticSync,
     bool? launchWithWindows,
+    bool? startMinimized,
     bool? syncOnLaunch,
     bool? backgroundMobileSync,
     bool? notificationsEnabled,
@@ -183,6 +186,7 @@ class AppSettings {
     setupComplete: setupComplete ?? this.setupComplete,
     automaticSync: automaticSync ?? this.automaticSync,
     launchWithWindows: launchWithWindows ?? this.launchWithWindows,
+    startMinimized: startMinimized ?? this.startMinimized,
     syncOnLaunch: syncOnLaunch ?? this.syncOnLaunch,
     backgroundMobileSync: backgroundMobileSync ?? this.backgroundMobileSync,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,

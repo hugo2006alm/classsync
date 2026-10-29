@@ -54,6 +54,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
   var _addMetadata = true;
   var _notifications = true;
   var _launchWithWindows = true;
+  var _startMinimized = true;
   var _backgroundMobile = true;
   var _academicIntegrationsEnabled = false;
   var _joinAccount = false;
@@ -868,7 +869,15 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
               onChanged: (value) => setState(() => _launchWithWindows = value),
               title: const Text('Launch with Windows'),
               subtitle: const Text(
-                'Start hidden in the system tray after login.',
+                'Open ClassSync after signing in to this PC.',
+              ),
+            ),
+            SwitchListTile.adaptive(
+              value: _startMinimized,
+              onChanged: (value) => setState(() => _startMinimized = value),
+              title: const Text('Start minimized'),
+              subtitle: const Text(
+                'Stay in the system tray at Windows sign-in.',
               ),
             ),
           ],
@@ -1152,6 +1161,7 @@ class _SetupWizardState extends ConsumerState<SetupWizard> {
           : _accountNameController.text.trim(),
       setupComplete: true,
       launchWithWindows: _launchWithWindows,
+      startMinimized: _startMinimized,
       backgroundMobileSync: _backgroundMobile,
       notificationsEnabled: _notifications,
       academicIntegrationsEnabled: _joinedExistingAccount
