@@ -9,7 +9,8 @@ them with Gemini, and publishes structured study notes to Notion.
 ## What is included
 
 - Flutter client for Windows and Android; macOS receives compile coverage but
-  remains preview-only. iOS automation is not configured.
+  remains preview-only. The [iOS SideStore preview](docs/ios.md) uses a
+  macOS-built device IPA with foreground sync and local notifications.
 - Durable Drift/SQLite queue with retries, review states, local cache, manual
   transcript import, and per-job timelines.
 - Multiple named Fireflies GraphQL connections with independent pagination,

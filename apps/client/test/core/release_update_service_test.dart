@@ -54,6 +54,30 @@ void main() {
     await expectLater(service.check(), throwsFormatException);
   });
 
+  test('iOS selects the device IPA and its trusted release page', () async {
+    final service = ReleaseUpdateService(
+      dio: Dio()
+        ..httpClientAdapter = _ReleaseAdapter(assetName: 'ClassSync-iOS.ipa'),
+      currentVersion: '0.3.23',
+      platform: ReleasePlatform.ios,
+    );
+    final update = await service.check();
+    expect(update?.assetName, 'ClassSync-iOS.ipa');
+    expect(
+      update?.releasePage.toString(),
+      'https://github.com/hugo2006alm/classsync/releases/tag/v0.3.24',
+    );
+  });
+
+  test('iOS skips releases made before the IPA was available', () async {
+    final service = ReleaseUpdateService(
+      dio: Dio()..httpClientAdapter = _ReleaseAdapter(),
+      currentVersion: '0.3.23',
+      platform: ReleasePlatform.ios,
+    );
+    expect(await service.check(), isNull);
+  });
+
   test('compares numeric release components', () {
     expect(compareVersions('0.3.24', '0.3.23'), greaterThan(0));
     expect(compareVersions('0.10.0', '0.9.99'), greaterThan(0));
@@ -78,10 +102,12 @@ void main() {
 
 class _ReleaseAdapter implements HttpClientAdapter {
   _ReleaseAdapter({
+    this.assetName = 'ClassSync-Setup-0.3.24.exe',
     this.assetUrl =
         'https://api.github.com/repos/hugo2006alm/classsync/releases/assets/1',
   });
 
+  final String assetName;
   final String assetUrl;
   String? authorization;
 
@@ -95,12 +121,7 @@ class _ReleaseAdapter implements HttpClientAdapter {
     final json = jsonEncode({
       'tag_name': 'v0.3.24',
       'assets': [
-        {
-          'name': 'ClassSync-Setup-0.3.24.exe',
-          'size': 123,
-          'id': 1,
-          'url': assetUrl,
-        },
+        {'name': assetName, 'size': 123, 'id': 1, 'url': assetUrl},
         {
           'name': 'SHA256SUMS.txt',
           'size': 64,

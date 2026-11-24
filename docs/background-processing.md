@@ -25,9 +25,11 @@ FCM token remains registered whenever background automation is
 enabled, independently from the preference for visible ClassSync alerts.
 Android may defer/stop work, so app-resume recovery continues unfinished jobs.
 The optional Android home-screen widget receives a bounded snapshot of cached
-timetable slots when the app opens or its cache changes. Android redraws it at
-most every 30 minutes, selecting the next class in the same four-day window as
-Overview. It does not contact Portal or the relay from the widget process.
+timetable slots when the app opens or its cache changes. The widget prioritises
+ongoing lessons and offers navigation to the first future class in the same
+four-day window as Overview. An inexact Android alarm requests a redraw at the
+next start or end, with the normal launcher refresh as a fallback. The widget
+reads its cache offline.
 Foreground-service promotion is not yet implemented; oversized transcripts are
 rejected and AI work is bounded to reduce execution risk.
 
@@ -40,5 +42,7 @@ while the app is foregrounded; otherwise the durable retry plan continues.
 ## iOS and macOS
 
 macOS has network-client entitlement and CI compile coverage, but remains
-preview-only. iOS Firebase/background modes are not configured. No iOS
-background-automation claim is made.
+preview-only. The iOS SideStore configuration uses the existing launch and resume
+pipeline and local notifications. It does not request APNs or background modes.
+The separate App Group configuration adds a WidgetKit timeline for cached
+timetable data. See [iOS distribution](ios.md).

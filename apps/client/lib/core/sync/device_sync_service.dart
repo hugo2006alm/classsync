@@ -200,7 +200,9 @@ class DeviceSyncService {
     }
     final localJobs = await _database.readJobs();
     final merged = <String, SyncJob>{};
-    for (final job in [...remoteJobs, ...localJobs]) {
+    // An equally recent local row can include publication fields preserved
+    // while importing a partial remote snapshot.
+    for (final job in [...localJobs, ...remoteJobs]) {
       final current = merged[job.firefliesId];
       if (current == null || job.updatedAt.isAfter(current.updatedAt)) {
         merged[job.firefliesId] = job;
