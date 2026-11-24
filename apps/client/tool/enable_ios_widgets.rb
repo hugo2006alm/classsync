@@ -12,14 +12,18 @@ widget.add_file_references([group.new_file('ClassSyncTimetableWidget.swift')])
 group.new_file('Info.plist')
 group.new_file('AppGroup.entitlements')
 
+flutter_config = project.files.find { |file| file.path == 'Flutter/Generated.xcconfig' }
+abort 'Flutter/Generated.xcconfig reference is missing' unless flutter_config
+
 widget.build_configurations.each do |configuration|
-  configuration.base_configuration_reference =
-    project.files.find { |file| file.path == 'Flutter/Generated.xcconfig' }
+  configuration.base_configuration_reference = flutter_config
   configuration.build_settings.merge!(
     'PRODUCT_NAME' => 'ClassSyncWidget',
     'PRODUCT_BUNDLE_IDENTIFIER' => 'app.classsync.classsync.widgets',
     'INFOPLIST_FILE' => 'ClassSyncWidget/Info.plist',
-    'GENERATE_INFOPLIST_FILE' => 'YES',
+    'GENERATE_INFOPLIST_FILE' => 'NO',
+    'MARKETING_VERSION' => '$(FLUTTER_BUILD_NAME)',
+    'CURRENT_PROJECT_VERSION' => '$(FLUTTER_BUILD_NUMBER)',
     'CODE_SIGN_ENTITLEMENTS' => 'ClassSyncWidget/AppGroup.entitlements',
     'SWIFT_VERSION' => '5.0',
     'SKIP_INSTALL' => 'YES',

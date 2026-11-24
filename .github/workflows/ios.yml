@@ -54,10 +54,18 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$widget/Info.plist")" = app.classsync.classsync.widgets
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$widget/Info.plist")" = 'XPC!'
           for key in CFBundleShortVersionString CFBundleVersion; do
-            app_version=$(/usr/libexec/PlistBuddy -c "Print $key" "$app/Info.plist")
-            widget_version=$(/usr/libexec/PlistBuddy -c "Print $key" "$widget/Info.plist")
-            test -n "$app_version"
-            test "$widget_version" = "$app_version"
+            for bundle in "$app" "$widget"; do
+              if ! version=$(/usr/libexec/PlistBuddy -c "Print $key" "$bundle/Info.plist") || [[ -z "$version" ]]; then
+                echo "::error::$key is missing or empty in $bundle/Info.plist"
+                exit 1
+              fi
+              if [[ "$bundle" = "$app" ]]; then
+                app_version="$version"
+              elif [[ "$version" != "$app_version" ]]; then
+                echo "::error::$key differs between Runner ($app_version) and ClassSyncWidget ($version)"
+                exit 1
+              fi
+            done
           done
       - name: Launch simulator smoke test
         if: github.event_name == 'pull_request'
