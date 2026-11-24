@@ -47,7 +47,18 @@ jobs:
         run: |
           ruby tool/enable_ios_widgets.rb
           flutter build ios --simulator --debug
-          test -d build/ios/iphonesimulator/Runner.app/PlugIns/ClassSyncWidget.appex
+          app=build/ios/iphonesimulator/Runner.app
+          widget="$app/PlugIns/ClassSyncWidget.appex"
+          test -x "$widget/ClassSyncWidget"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$widget/Info.plist")" = ClassSyncWidget
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$widget/Info.plist")" = app.classsync.classsync.widgets
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$widget/Info.plist")" = 'XPC!'
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            app_version=$(/usr/libexec/PlistBuddy -c "Print $key" "$app/Info.plist")
+            widget_version=$(/usr/libexec/PlistBuddy -c "Print $key" "$widget/Info.plist")
+            test -n "$app_version"
+            test "$widget_version" = "$app_version"
+          done
       - name: Launch simulator smoke test
         if: github.event_name == 'pull_request'
         run: |
