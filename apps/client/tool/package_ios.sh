@@ -63,7 +63,7 @@ if [[ "$mode" != stable ]]; then
     else
       codesign --force --sign - "$bundle"
     fi
-    codesign -d --entitlements - "$bundle" > "$stage/entitlements.plist"
+    codesign -d --entitlements - --xml "$bundle" > "$stage/entitlements.plist"
     python3 - "$mode" "$stage/entitlements.plist" <<'PY'
 import plistlib
 import sys
