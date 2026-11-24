@@ -39,6 +39,11 @@ segments are deliberately excluded, so transcript evidence stays local even
 when the task is available on every paired device. Conflicts use the newest
 task update timestamp, matching bounded job-metadata merge behavior.
 
+When a recording is ignored, the client omits its derived tasks from the
+merged snapshot and clears existing local copies. The merge resolves both
+the local and incoming job IDs through the stable recording identity. This
+prevents an older snapshot from restoring tasks removed by discard.
+
 ## Trade-offs
 
 - No paid identity provider is required and Windows/Android share one flow.
