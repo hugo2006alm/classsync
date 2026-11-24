@@ -79,7 +79,7 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen>
     final slots = currentAndUpcomingClasses(academicRecords, now);
     final current = slots.takeWhile((slot) => !slot.start.isAfter(now));
     final next = slots.skip(current.length).firstOrNull;
-    final choices = [...current, if (next != null) next];
+    final choices = [...current, ?next];
     final selectedIndex = choices.indexWhere(
       (slot) => slot.externalId == _selectedClassId,
     );

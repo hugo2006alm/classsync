@@ -87,7 +87,6 @@ class ReleaseUpdateService {
       ReleasePlatform.android => 'ClassSync-Android.apk',
       ReleasePlatform.windows => 'ClassSync-Setup-$version.exe',
       ReleasePlatform.ios => 'ClassSync-iOS.ipa',
-      null => throw StateError('Missing release platform.'),
     };
     if (_platform == ReleasePlatform.ios &&
         !assets.any((item) => item is Map && item['name'] == wanted)) {

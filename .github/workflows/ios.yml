@@ -48,3 +48,28 @@ jobs:
           ruby tool/enable_ios_widgets.rb
           flutter build ios --simulator --debug
           test -d build/ios/iphonesimulator/Runner.app/PlugIns/ClassSyncWidget.appex
+      - name: Launch simulator smoke test
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j |
+            jq -er '[.devices[] | .[] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl status_bar "$device" override --time "9:41"
+          xcrun simctl install "$device" build/ios/iphonesimulator/Runner.app
+          xcrun simctl launch "$device" app.classsync.classsync
+          mkdir -p build/ios/smoke
+          sleep 6
+          xcrun simctl spawn "$device" launchctl list > build/ios/smoke/processes.txt
+          grep -E '^[0-9]+[[:space:]].*app.classsync.classsync' build/ios/smoke/processes.txt
+          xcrun simctl ui "$device" appearance light
+          xcrun simctl io "$device" screenshot build/ios/smoke/setup-light.png
+          xcrun simctl ui "$device" appearance dark
+          sleep 2
+          xcrun simctl io "$device" screenshot build/ios/smoke/setup-dark.png
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: github.event_name == 'pull_request'
+        with:
+          name: ClassSync-iOS-simulator
+          path: apps/client/build/ios/smoke/*.png
