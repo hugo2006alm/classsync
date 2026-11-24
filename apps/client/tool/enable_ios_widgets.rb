@@ -60,7 +60,7 @@ runner.add_dependency(widget)
 embed = runner.new_copy_files_build_phase('Embed App Extensions')
 embed.dst_subfolder_spec = '13'
 embed.add_file_reference(widget.product_reference).settings = {
-  'ATTRIBUTES' => ['RemoveHeadersOnCopy', 'CodeSignOnCopy']
+  'ATTRIBUTES' => ['RemoveHeadersOnCopy']
 }
 runner.build_phases.delete(embed)
 runner.build_phases.insert(runner.build_phases.index { |phase| phase.display_name == 'Thin Binary' }, embed)
