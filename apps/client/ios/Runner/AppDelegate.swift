@@ -47,30 +47,20 @@ import WidgetKit
         result(FlutterMethodNotImplemented)
         return
       }
-      guard let slots = call.arguments as? [[String: Any]],
-            slots.count <= 120,
-            let container = FileManager.default.containerURL(
-              forSecurityApplicationGroupIdentifier: "group.app.classsync.classsync"
-            ) else {
-        result(FlutterError(code: "widget_unavailable", message: nil, details: nil))
+      guard let slots = call.arguments as? [[String: Any]], slots.count <= 120 else {
+        result(FlutterError(code: "widget_cache_invalid", message: nil, details: nil))
         return
       }
       do {
-        let cache: [String: Any] = [
-          "savedAt": Int64(Date().timeIntervalSince1970 * 1000),
-          "slots": slots,
-        ]
-        let data = try JSONSerialization.data(withJSONObject: cache)
-        guard data.count <= 128_000 else {
-          result(FlutterError(code: "widget_cache_size", message: nil, details: nil))
-          return
-        }
-        try data.write(
-          to: container.appendingPathComponent("timetable.json"),
-          options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
-        )
+        #if CLASSSYNC_WIDGET_GROUP_TEST
+        try TimetableWidgetStorage.write(slots: slots, demoIfEmpty: true)
+        #else
+        try TimetableWidgetStorage.write(slots: slots)
+        #endif
         WidgetCenter.shared.reloadTimelines(ofKind: "ClassSyncTimetable")
         result(nil)
+      } catch TimetableWidgetStorage.Failure.containerUnavailable {
+        result(FlutterError(code: "widget_container_unavailable", message: nil, details: nil))
       } catch {
         result(FlutterError(code: "widget_cache_write", message: nil, details: nil))
       }

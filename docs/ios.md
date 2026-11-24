@@ -107,3 +107,123 @@ References: [Flutter on iOS](https://docs.flutter.dev/deployment/ios),
 [Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/liquid-glass),
 [Apple capabilities](https://developer.apple.com/help/account/reference/supported-capabilities-ios/),
 and [SideStore sources](https://docs.sidestore.io/docs/advanced/app-sources).
+
+## Native WidgetKit experiments for Personal Teams
+
+The **iOS package** Actions run builds two separate test artifacts. Each ZIP
+contains an ARM64 device IPA and its SHA-256 file. The regular
+`ClassSync-iOS` artifact remains the fallback and is the release input.
+The experiments require iOS 17 or later for the extension.
+
+| Artifact | What a physical test can establish |
+| --- | --- |
+| `ClassSync-iOS-widget-demo` | WidgetKit registration, extension execution, timeline changes, refresh and reboot without shared storage. The numbered **Demo class** changes on two-minute boundaries when iOS delivers the timeline. |
+| `ClassSync-iOS-widget-app-group-test` | The same extension reads a snapshot written by ClassSync. With no upcoming classes, the app writes a marked **Snapshot test** fixture. With classes, it writes the real timetable. |
+
+### Install and verify in order
+
+1. Record iOS and SideStore versions, the Apple Account used for the current
+   install and the reported remaining App IDs. Save the ClassSync recovery
+   code and preserve any local-only data you need before experimenting.
+   Confirm the current app opens and its timetable and settings are present.
+2. Use a currently supported SideStore build. The release notes flag broken
+   sign-in on 0.6.4 and earlier. Update SideStore first if needed. Keep the
+   same signing account and installation method for the first comparison.
+3. Extract the demo ZIP, verify SHA-256 with `Get-FileHash` as above and move
+   its IPA to Files. Start LocalDevVPN. In SideStore **My Apps → +**, pick
+   the demo IPA and install it over ClassSync. Keep the same app identity.
+   When prompted, choose **Keep App Extensions (Register App ID for Each
+   Extension)**. Some versions show an extension selection screen. Keep
+   `ClassSyncWidget` and use its individual profile. If SideStore proposes
+   a different identity or asks you to delete ClassSync, cancel the test.
+4. Open ClassSync and verify existing settings and timetable access. On the
+   Home Screen, hold an empty area, choose **Edit → Add Widget**, search
+   **ClassSync**, and add Small, Medium and Large. On the Lock Screen, hold
+   the wallpaper, choose **Customise → Lock Screen** and add ClassSync
+   Rectangular below the clock and Inline above it. Record separately
+   whether ClassSync appears, a numbered demo lesson renders, and the lesson
+   changes after a boundary. Tap a widget to test the timetable deep link.
+5. In SideStore **My Apps**, tap the days-left badge for ClassSync. Confirm
+   the date resets and the widget still renders and advances. Restart the
+   iPhone, unlock once, and check again. Repeat with light, dark and, where
+   available on your iOS version, tinted and clear appearances. Check
+   redaction with your Lock Screen privacy settings. WidgetKit controls
+   update timing, so note the actual transition times.
+6. Only after the demo renders, repeat steps 3–5 with the App Group IPA.
+   Open ClassSync to publish a snapshot. Check that actual lesson details
+   or **Snapshot test** appear instead of the demo counter. Sync a changed
+   timetable, or reopen ClassSync with an empty timetable and compare the
+   fixture time. Test again after refresh and restart, and in airplane mode
+   after one successful sync. **Widget container unavailable** means no
+   candidate passed the extension's container lookup. **Open ClassSync to
+   sync timetable** means the extension found a container but could not
+   read a valid snapshot. Report status and versions without sharing your
+   timetable, Apple Account details, profile or certificate.
+7. To roll back, install the regular **ClassSync-iOS** IPA over the same app
+   with the same account and identity. The fallback has no embedded
+   extension. If a sideloader offers only a fresh install, stop before
+   deleting the installed app.
+
+### Signing diagnosis and next options
+
+Apple's Personal Team has seven-day provisioning, up to three test apps
+per device and up to ten App IDs at a time, subject to what the account
+already uses. An individual extension profile requires an extra App ID.
+Both variants reuse `app.classsync.classsync` and
+`app.classsync.classsync.widgets` before signing. The two builds are
+sequential updates, so they need one extension ID between them per account
+and signing identity. An App Group is a separate portal resource.
+[Apple membership limits](https://developer.apple.com/help/account/membership/programs-overview/)
+
+Apple's capability table describes supported program capabilities. It does
+not guarantee that third-party Personal Team provisioning can grant App
+Groups. SideStore's portal code attempts to register the requested group
+with a team suffix and assign it to each App ID. The resolver tries the
+matching `ALTAppGroups` hints, the suffix inferred from the rewritten
+bundle ID, and the original group used for official signing. It accepts a
+hint only when iOS returns a container URL. The app writes an atomic,
+size-limited snapshot protected until first unlock and the extension must
+successfully read it. The host and extension receive explicit ad-hoc
+signatures during packaging so the requested entitlements are available
+to the sideloader. Device provisioning and final signing happen in
+SideStore.
+[Apple capabilities](https://developer.apple.com/help/account/reference/supported-capabilities-ios/) ·
+[SideStore App Group provisioning](https://github.com/SideStore/SideStore/blob/main/SideStore/Core/Operations/PipelineOperations/FetchProvisioningProfilesOperation.swift)
+
+SideStore #1437 reports a WidgetKit App Group read failure even after the
+author retried with 0.6.3. #1462 reports a Share Extension that registered
+but did not execute on a free account with a 0.6.4 build. The reporter
+observed different executable signing flags with iLoader, where the same
+extension ran. That report also found that reusing the host profile left
+the signed application identifier mismatched with the extension's
+rewritten bundle ID. Issue closure alone does not establish behaviour
+in the SideStore build installed on your phone.
+[SideStore #1437](https://github.com/SideStore/SideStore/issues/1437) ·
+[SideStore #1462](https://github.com/SideStore/SideStore/issues/1462) ·
+[SideStore releases](https://github.com/SideStore/SideStore/releases) ·
+[iLoader releases](https://github.com/nab138/iloader/releases)
+
+When a sideloader supports exporting the re-signed IPA, keep it private.
+On macOS, inspect both bundles with `codesign -d --entitlements - <bundle>`
+and decode both `embedded.mobileprovision` files with
+`security cms -D -i <profile>`. Compare each signed
+`application-identifier` with its own profile and final
+`CFBundleIdentifier`, and compare the authorized and signed
+`com.apple.security.application-groups` on both binaries. The Actions
+checks cover the original ad-hoc IPA. Successful snapshot display on
+device provides the functional check for access after re-signing.
+
+If demo runs but sharing fails, the next local test is a dedicated
+`keychain-access-groups` value permitted by both profiles, queried with
+`kSecAttrAccessGroup`. Use a separate group from ClassSync credentials
+and test a small versioned payload with
+`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` through refresh and reboot.
+If demo fails to render with valid per-extension provisioning, compare
+iLoader and AltStore Classic while preserving the original installation.
+A relay fallback would require a separate encrypted widget enrolment and
+revocation design, including how the extension obtains its own enrolment
+credential, and a revised relay data decision. The experiments use local
+storage and leave the Worker and D1 untouched.
+[AltStore extension provisioning](https://github.com/altstoreio/AltStore/blob/develop/AltStore/Operations/FetchProvisioningProfilesOperation.swift) ·
+[Keychain access groups](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps) ·
+[Relay ADR](architecture/adr-002-d1-relay.md)

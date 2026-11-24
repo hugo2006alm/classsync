@@ -3,6 +3,11 @@ name: iOS package
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      widget_experiments:
+        type: boolean
+        default: true
+        description: Build experimental WidgetKit IPAs
   pull_request:
     paths:
       - 'apps/client/**'
@@ -45,6 +50,9 @@ jobs:
       - name: Compile WidgetKit configuration for iOS Simulator
         if: github.event_name == 'pull_request'
         run: |
+          swiftc ios/ClassSyncWidget/TimetableWidget{Schedule,Storage}.swift \
+            tool/test_ios_widgets.swift -o "$RUNNER_TEMP/test-ios-widgets"
+          "$RUNNER_TEMP/test-ios-widgets"
           ruby tool/enable_ios_widgets.rb
           flutter build ios --simulator --debug
           app=build/ios/iphonesimulator/Runner.app
@@ -92,3 +100,38 @@ jobs:
         with:
           name: ClassSync-iOS-simulator
           path: apps/client/build/ios/smoke/*.png
+
+  ios-widget-experiment:
+    if: github.event_name == 'pull_request' || inputs.widget_experiments == true
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [demo, app-group-test]
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.44.9'
+          cache: true
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+      - run: flutter pub get
+      - name: Configure WidgetKit variant
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: ruby tool/enable_ios_widgets.rb "$VARIANT"
+      - run: flutter build ios --release --no-codesign
+      - name: Package and verify experimental IPA
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: bash tool/package_ios.sh "$VARIANT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS-widget-${{ matrix.variant }}
+          path: apps/client/build/ios/dist/ClassSync-iOS-widget-${{ matrix.variant }}.ipa*
+          if-no-files-found: error

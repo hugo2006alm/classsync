@@ -1,56 +1,36 @@
+import OSLog
 import SwiftUI
 import WidgetKit
 
-private struct Lesson: Decodable, Identifiable {
-    let start: Int64
-    let end: Int64
-    let subject: String
-    let type: String
-    let room: String
-    let teacher: String
-    let group: String
-
-    enum CodingKeys: String, CodingKey {
-        case start, end, subject, type, room, teacher
-        case group = "class"
-    }
-
-    var id: String { "\(start)-\(subject)-\(room)-\(group)" }
-    var begins: Date { Date(timeIntervalSince1970: Double(start) / 1000) }
-    var ends: Date { Date(timeIntervalSince1970: Double(end) / 1000) }
-}
-
-private struct Schedule: Decodable {
-    let savedAt: Int64
-    let slots: [Lesson]
-    var expires: Date { Date(timeIntervalSince1970: Double(savedAt) / 1000 + 7 * 86400) }
-}
-
-private struct TimetableEntry: TimelineEntry {
-    let date: Date
-    let schedule: Schedule?
-
-    var lessons: [Lesson] {
-        guard let schedule, date < schedule.expires else { return [] }
-        return schedule.slots.filter {
-            $0.ends > date && $0.ends > $0.begins && $0.begins < date.addingTimeInterval(4 * 86400)
-        }
-    }
-
-    var current: [Lesson] { lessons.filter { $0.begins <= date } }
-    var next: Lesson? { lessons.first { $0.begins > date } }
-    var today: [Lesson] {
-        lessons.filter { Calendar.current.isDate($0.begins, inSameDayAs: date) }
-    }
-}
+extension TimetableEntry: TimelineEntry {}
 
 private struct TimetableProvider: TimelineProvider {
-    private func readSchedule() -> Schedule? {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "group.app.classsync.classsync"
-        ), let data = try? Data(contentsOf: container.appendingPathComponent("timetable.json")),
-        data.count <= 128_000 else { return nil }
-        return try? JSONDecoder().decode(Schedule.self, from: data)
+    private let log = Logger(subsystem: "app.classsync.classsync", category: "WidgetTimeline")
+
+    private func load(at now: Date) -> (Schedule?, String?) {
+        #if CLASSSYNC_WIDGET_DEMO
+        let seconds = Int64(now.timeIntervalSince1970)
+        let first = (seconds - seconds % 120) * 1000
+        let slots = (0..<12).map { index in
+            let start = first + Int64(index) * 120_000
+            return Lesson(
+                start: start, end: start + 90_000, subject: "Demo class \((start / 120_000) % 100)",
+                type: "Lab", room: "A.101", teacher: "Demo teacher", group: "T1"
+            )
+        }
+        return (Schedule(savedAt: seconds * 1000, fixture: true, slots: slots), nil)
+        #else
+        do {
+            let schedule = try JSONDecoder().decode(Schedule.self, from: TimetableWidgetStorage.read())
+            guard schedule.slots.count <= 120 else { return (nil, "Invalid timetable") }
+            return (schedule, nil)
+        } catch TimetableWidgetStorage.Failure.containerUnavailable {
+            return (nil, "Widget container unavailable")
+        } catch {
+            log.notice("Timetable snapshot unavailable or invalid")
+            return (nil, "Open ClassSync to sync timetable")
+        }
+        #endif
     }
 
     func placeholder(in context: Context) -> TimetableEntry {
@@ -58,21 +38,23 @@ private struct TimetableProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TimetableEntry) -> Void) {
-        completion(TimetableEntry(date: .now, schedule: readSchedule()))
+        let now = Date.now
+        let (schedule, status) = load(at: now)
+        completion(TimetableEntry(date: now, schedule: schedule, status: status))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TimetableEntry>) -> Void) {
         let now = Date.now
-        let schedule = readSchedule()
-        let calendar = Calendar.current
-        let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
-        let extraDates = [nextDay, schedule?.expires].compactMap { $0 }
-        let boundaries = (schedule?.slots ?? []).flatMap { [$0.begins, $0.ends] }
-        let dates = Set(boundaries + extraDates)
-            .filter { $0 > now && $0 <= now.addingTimeInterval(24 * 3600) }
-            .sorted()
-        let entries = ([now] + dates).map { TimetableEntry(date: $0, schedule: schedule) }
-        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(24 * 3600))))
+        let (schedule, status) = load(at: now)
+        let entries = TimetableEntry.dates(from: now, schedule: schedule).map {
+            TimetableEntry(date: $0, schedule: schedule, status: status)
+        }
+        #if CLASSSYNC_WIDGET_DEMO
+        let refresh = now.addingTimeInterval(20 * 60)
+        #else
+        let refresh = now.addingTimeInterval(24 * 3600)
+        #endif
+        completion(Timeline(entries: entries, policy: .after(refresh)))
     }
 }
 
@@ -84,6 +66,7 @@ private struct TimetableView: View {
     private var primary: Lesson? { entry.current.first ?? entry.next }
     private var title: String { entry.current.isEmpty ? "Next class" : "Current class" }
     private var emptyLabel: String {
+        if let status = entry.status { return status }
         guard let schedule = entry.schedule, entry.date < schedule.expires else {
             return "Open ClassSync to refresh"
         }
@@ -105,13 +88,20 @@ private struct TimetableView: View {
         switch family {
         case .accessoryInline:
             if let lesson = primary {
-                Label(lesson.room.isEmpty ? lesson.subject : lesson.room, systemImage: "calendar")
+                Label([lesson.subject, lesson.room].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "calendar")
+                    .privacySensitive()
             } else {
                 Text(emptyLabel)
             }
         case .accessoryRectangular:
             if let lesson = primary {
-                lessonRow(lesson, title: title, detailed: false)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(lesson.subject).font(.headline).lineLimit(1)
+                    (Text(lesson.begins, style: .time) + Text(lesson.room.isEmpty ? "" : " · " + lesson.room))
+                        .font(.caption).lineLimit(1)
+                    Text(lesson.teacher).font(.caption2).lineLimit(1)
+                }
+                .privacySensitive()
             } else {
                 Text(emptyLabel)
             }
@@ -173,6 +163,7 @@ private struct TimetableView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .privacySensitive()
     }
 }
 
