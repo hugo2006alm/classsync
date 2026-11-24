@@ -16,6 +16,7 @@ widget.build_configurations.each do |configuration|
   configuration.base_configuration_reference =
     project.files.find { |file| file.path == 'Flutter/Generated.xcconfig' }
   configuration.build_settings.merge!(
+    'PRODUCT_NAME' => 'ClassSyncWidget',
     'PRODUCT_BUNDLE_IDENTIFIER' => 'app.classsync.classsync.widgets',
     'INFOPLIST_FILE' => 'ClassSyncWidget/Info.plist',
     'GENERATE_INFOPLIST_FILE' => 'YES',
