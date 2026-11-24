@@ -264,6 +264,19 @@ class SyncJob {
   final DateTime? leaseExpiresAt;
   final String? summaryPartialsJson;
 
+  bool get hasPublishedSummary =>
+      notionPageId != null ||
+      notionUrl != null ||
+      status == SyncJobStatus.success ||
+      status == SyncJobStatus.duplicate;
+
+  bool isBusyAt(DateTime now) =>
+      status.isProcessing ||
+      (leaseOwner != null && leaseExpiresAt?.isAfter(now) == true);
+
+  bool canDiscardAt(DateTime now) =>
+      !hasPublishedSummary && status != SyncJobStatus.ignored && !isBusyAt(now);
+
   String? get summaryLanguageOverride {
     final encoded = summaryPartialsJson;
     if (encoded == null || encoded.isEmpty) return null;

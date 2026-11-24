@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,11 +14,38 @@ import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
 
-class OverviewScreen extends ConsumerWidget {
+class OverviewScreen extends ConsumerStatefulWidget {
   const OverviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OverviewScreen> createState() => _OverviewScreenState();
+}
+
+class _OverviewScreenState extends ConsumerState<OverviewScreen>
+    with WidgetsBindingObserver {
+  Timer? _boundaryTimer;
+  String? _selectedClassId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _boundaryTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final subjects = ref.watch(activeSubjectsProvider).valueOrNull ?? const [];
     final jobs = ref.watch(syncJobsProvider).valueOrNull ?? const [];
     final academicRecords =
@@ -46,7 +75,23 @@ class OverviewScreen extends ConsumerWidget {
         .where((job) => job.status == SyncJobStatus.success)
         .take(5)
         .toList();
-    final nextClass = nextUpcomingClass(academicRecords, DateTime.now());
+    final now = DateTime.now();
+    final slots = currentAndUpcomingClasses(academicRecords, now);
+    final current = slots.takeWhile((slot) => !slot.start.isAfter(now));
+    final next = slots.skip(current.length).firstOrNull;
+    final choices = [...current, if (next != null) next];
+    final selectedIndex = choices.indexWhere(
+      (slot) => slot.externalId == _selectedClassId,
+    );
+    final index = selectedIndex < 0 ? 0 : selectedIndex;
+    DateTime? boundary = next?.start;
+    for (final slot in current) {
+      if (boundary == null || slot.end.isBefore(boundary)) boundary = slot.end;
+    }
+    _boundaryTimer?.cancel();
+    _boundaryTimer = boundary == null
+        ? null
+        : Timer(boundary.difference(now), () => setState(() {}));
     final showSyncHealth =
         attention + failures > 0 || syncState.isLoading || syncState.hasError;
 
@@ -73,8 +118,22 @@ class OverviewScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (nextClass != null) ...[
-            _NextClassCard(slot: nextClass),
+          if (choices.isNotEmpty) ...[
+            _NextClassCard(
+              slot: choices[index],
+              isCurrent: !choices[index].start.isAfter(now),
+              onPrevious: index > 0
+                  ? () => setState(
+                      () => _selectedClassId = choices[index - 1].externalId,
+                    )
+                  : null,
+              onNext: index + 1 < choices.length
+                  ? () => setState(
+                      () => _selectedClassId = choices[index + 1].externalId,
+                    )
+                  : null,
+              showNavigation: choices.length > 1,
+            ),
             const SizedBox(height: 20),
           ],
           if (showSyncHealth) ...[
@@ -164,9 +223,19 @@ class _SyncHealthCard extends StatelessWidget {
 }
 
 class _NextClassCard extends StatelessWidget {
-  const _NextClassCard({required this.slot});
+  const _NextClassCard({
+    required this.slot,
+    required this.isCurrent,
+    required this.onPrevious,
+    required this.onNext,
+    required this.showNavigation,
+  });
 
   final TimetableSlot slot;
+  final bool isCurrent;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final bool showNavigation;
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +262,7 @@ class _NextClassCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Next class',
+                      isCurrent ? 'Current class' : 'Next class',
                       style: Theme.of(context).textTheme.labelLarge,
                     ),
                     const SizedBox(height: 4),
@@ -209,6 +278,21 @@ class _NextClassCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(details.join(' · ')),
                     ],
+                    if (showNavigation)
+                      Wrap(
+                        children: [
+                          IconButton(
+                            tooltip: 'Previous class',
+                            onPressed: onPrevious,
+                            icon: const Icon(Icons.chevron_left),
+                          ),
+                          IconButton(
+                            tooltip: 'Following class',
+                            onPressed: onNext,
+                            icon: const Icon(Icons.chevron_right),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),

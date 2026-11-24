@@ -260,6 +260,59 @@ void main() {
     },
   );
 
+  test('discard rechecks publication and lease after selection', () async {
+    Future<void> discover(String id) async {
+      await database.discoverJob(
+        id: id,
+        firefliesId: id,
+        title: 'Lecture',
+        meetingDate: DateTime.utc(2026),
+      );
+      expect(
+        (await database.readJob(id))!.canDiscardAt(DateTime.now()),
+        isTrue,
+      );
+    }
+
+    await discover('publishing');
+    await database.saveNotionPage('publishing', 'published-page', null);
+    await expectLater(
+      coordinator.discardJob('publishing'),
+      throwsA(
+        isA<IntegrationException>().having(
+          (error) => error.code,
+          'code',
+          'published_job',
+        ),
+      ),
+    );
+    expect(
+      (await database.readJob('publishing'))!.notionPageId,
+      'published-page',
+    );
+
+    await discover('busy');
+    await database.claimJob(id: 'busy', owner: 'active-worker');
+    await expectLater(
+      coordinator.discardJob('busy'),
+      throwsA(
+        isA<IntegrationException>().having(
+          (error) => error.code,
+          'code',
+          'job_busy',
+        ),
+      ),
+    );
+    expect((await database.readJob('busy'))!.leaseOwner, 'active-worker');
+
+    await discover('discardable');
+    await coordinator.discardJob('discardable');
+    expect(
+      (await database.readJob('discardable'))!.status,
+      SyncJobStatus.ignored,
+    );
+  });
+
   test('rediscovery revives legacy automatic non-lecture ignores', () async {
     await database.discoverJob(
       id: 'legacy-auto-ignore',

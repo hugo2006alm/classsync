@@ -37,6 +37,29 @@ void main() {
     );
   });
 
+  test('keeps current and overlapping classes until their exact end', () {
+    final day = DateTime(2026, 9, 29);
+    DateTime at(int hour, [int minute = 0]) =>
+        day.add(Duration(hours: hour, minutes: minute));
+    final records = [
+      record('first', at(10)),
+      record('overlap', at(10, 20)),
+      record('second', at(11, 50)),
+    ];
+    List<String> visibleAt(DateTime instant) => currentAndUpcomingClasses(
+      records,
+      instant,
+    ).map((slot) => slot.externalId).toList();
+
+    expect(visibleAt(at(9, 55)), ['first', 'overlap', 'second']);
+    expect(visibleAt(at(10, 7)), ['first', 'overlap', 'second']);
+    expect(nextUpcomingClass(records, at(10, 7))?.externalId, 'overlap');
+    expect(visibleAt(at(11, 30)), ['overlap', 'second']);
+    expect(visibleAt(at(11, 50)), ['second']);
+    expect(nextUpcomingClass(records, at(11, 50)), isNull);
+    expect(visibleAt(at(13, 20)), isEmpty);
+  });
+
   test('skips malformed cached timetable entries', () {
     final good = record('good', now.add(const Duration(hours: 1)));
     final bad = good.copyWith(payload: {'start': 42});

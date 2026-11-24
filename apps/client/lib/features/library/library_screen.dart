@@ -9,6 +9,7 @@ import '../../core/providers.dart';
 import '../../core/security/trusted_url_launcher.dart';
 import '../../domain/academic/academic_models.dart';
 import '../shared/page_frame.dart';
+import 'library_location.dart';
 
 final Set<String> _trustedNotionContentHosts = {
   ...trustedNotionHosts,
@@ -353,8 +354,11 @@ class LibraryDetailScreen extends ConsumerWidget {
                         child: OutlinedButton.icon(
                           onPressed: neighbours.previous == null
                               ? null
-                              : () =>
-                                    _openSummary(context, neighbours.previous!),
+                              : () => _openSummary(
+                                  context,
+                                  neighbours.previous!,
+                                  replace: true,
+                                ),
                           icon: const Icon(Icons.arrow_back_rounded),
                           label: const Text('Previous'),
                         ),
@@ -364,7 +368,11 @@ class LibraryDetailScreen extends ConsumerWidget {
                         child: FilledButton.icon(
                           onPressed: neighbours.next == null
                               ? null
-                              : () => _openSummary(context, neighbours.next!),
+                              : () => _openSummary(
+                                  context,
+                                  neighbours.next!,
+                                  replace: true,
+                                ),
                           icon: const Icon(Icons.arrow_forward_rounded),
                           label: const Text('Next'),
                         ),
@@ -378,16 +386,21 @@ class LibraryDetailScreen extends ConsumerWidget {
   }
 }
 
-void _openSummary(BuildContext context, NotionSummaryRecord summary) {
-  context.go(
-    Uri(
-      path: '/library/${Uri.encodeComponent(summary.id)}',
-      queryParameters: {
-        'title': summary.title,
-        if (summary.url != null) 'url': summary.url!,
-      },
-    ).toString(),
+void _openSummary(
+  BuildContext context,
+  NotionSummaryRecord summary, {
+  bool replace = false,
+}) {
+  final location = libraryLocation(
+    summary.id,
+    title: summary.title,
+    url: summary.url,
   );
+  if (replace) {
+    context.pushReplacement(location);
+  } else {
+    context.go(location);
+  }
 }
 
 _SummaryNeighbours _summaryNeighbours(
