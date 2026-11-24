@@ -37,6 +37,9 @@ widget.build_configurations.each do |configuration|
     'GENERATE_INFOPLIST_FILE' => 'NO',
     'MARKETING_VERSION' => '$(FLUTTER_BUILD_NAME)',
     'CURRENT_PROJECT_VERSION' => '$(FLUTTER_BUILD_NUMBER)',
+    # Xcode 26.5's build service crashes while scanning the WidgetKit target
+    # with explicit modules on both the device and simulator SDKs.
+    'SWIFT_ENABLE_EXPLICIT_MODULES' => 'NO',
     'SWIFT_VERSION' => '5.0',
     'SKIP_INSTALL' => 'YES',
     'TARGETED_DEVICE_FAMILY' => '1,2',
