@@ -1,0 +1,159 @@
+name: iOS package
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      widget_experiments:
+        type: boolean
+        default: true
+        description: Build experimental WidgetKit IPAs
+  pull_request:
+    paths:
+      - 'apps/client/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.44.9'
+          cache: true
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.5.app
+          xcodebuild -version
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: Verify device bundle and package for SideStore
+        run: bash tool/package_ios.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS
+          path: apps/client/build/ios/dist/ClassSync-iOS.ipa
+      - name: Upload test checksum
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS-checksum
+          path: apps/client/build/ios/dist/ClassSync-iOS.ipa.sha256
+      - name: Compile WidgetKit configuration for iOS Simulator
+        if: github.event_name == 'pull_request'
+        run: |
+          swiftc ios/ClassSyncWidget/TimetableWidget{Schedule,Storage}.swift \
+            tool/test_ios_widgets.swift -o "$RUNNER_TEMP/test-ios-widgets"
+          "$RUNNER_TEMP/test-ios-widgets"
+          ruby tool/enable_ios_widgets.rb
+          flutter build ios --simulator --debug
+          app=build/ios/iphonesimulator/Runner.app
+          widget="$app/PlugIns/ClassSyncWidget.appex"
+          test -x "$widget/ClassSyncWidget"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$widget/Info.plist")" = ClassSyncWidget
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$widget/Info.plist")" = app.classsync.classsync.widgets
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundlePackageType' "$widget/Info.plist")" = 'XPC!'
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            for bundle in "$app" "$widget"; do
+              if ! version=$(/usr/libexec/PlistBuddy -c "Print $key" "$bundle/Info.plist") || [[ -z "$version" ]]; then
+                echo "::error::$key is missing or empty in $bundle/Info.plist"
+                exit 1
+              fi
+              if [[ "$bundle" = "$app" ]]; then
+                app_version="$version"
+              elif [[ "$version" != "$app_version" ]]; then
+                echo "::error::$key differs between Runner ($app_version) and ClassSyncWidget ($version)"
+                exit 1
+              fi
+            done
+          done
+      - name: Launch simulator smoke test
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j |
+            jq -er '[.devices[] | .[] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl status_bar "$device" override --time "9:41"
+          xcrun simctl install "$device" build/ios/iphonesimulator/Runner.app
+          xcrun simctl launch "$device" app.classsync.classsync
+          mkdir -p build/ios/smoke
+          sleep 6
+          xcrun simctl spawn "$device" launchctl list > build/ios/smoke/processes.txt
+          grep -E '^[0-9]+[[:space:]].*app.classsync.classsync' build/ios/smoke/processes.txt
+          xcrun simctl ui "$device" appearance light
+          xcrun simctl io "$device" screenshot build/ios/smoke/setup-light.png
+          xcrun simctl ui "$device" appearance dark
+          sleep 2
+          xcrun simctl io "$device" screenshot build/ios/smoke/setup-dark.png
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: github.event_name == 'pull_request'
+        with:
+          name: ClassSync-iOS-simulator
+          path: apps/client/build/ios/smoke/*.png
+
+  ios-widget-experiment:
+    if: github.event_name == 'pull_request' || inputs.widget_experiments == true
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [demo, app-group-test]
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.44.9'
+          cache: true
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+      - run: flutter pub get
+      - name: Prepare Flutter's device build and Swift packages
+        run: flutter build ios --release --no-codesign
+      - name: Configure WidgetKit variant
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: ruby tool/enable_ios_widgets.rb "$VARIANT"
+      - name: Build device app with WidgetKit
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/widget-flutter-build.log"
+          if flutter build ios --release --no-codesign 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          if grep -Fq 'The Xcode build system has crashed' "$log"; then
+            flutter build ios --release --no-codesign --verbose > "$RUNNER_TEMP/widget-flutter-retry.log" 2>&1 || {
+              tail -n 120 "$RUNNER_TEMP/widget-flutter-retry.log"
+              exit 1
+            }
+          else
+            exit 1
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: failure()
+        with:
+          name: ClassSync-iOS-widget-${{ matrix.variant }}-build-logs
+          path: ${{ runner.temp }}/widget-flutter*.log
+          if-no-files-found: ignore
+      - name: Package and verify experimental IPA
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: bash tool/package_ios.sh "$VARIANT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS-widget-${{ matrix.variant }}
+          path: apps/client/build/ios/dist/ClassSync-iOS-widget-${{ matrix.variant }}.ipa*
+          if-no-files-found: error

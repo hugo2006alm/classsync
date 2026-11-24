@@ -79,10 +79,16 @@ class SyncCoordinator extends base.SyncCoordinator {
       final job = await _database.readJob(jobId);
       if (job == null) return;
       final now = DateTime.now().toUtc();
-      final busy =
-          job.status.isProcessing ||
-          (job.leaseOwner != null && job.leaseExpiresAt?.isAfter(now) == true);
-      if (busy) {
+      if (job.hasPublishedSummary) {
+        throw const IntegrationException(
+          integration: 'ClassSync',
+          code: 'published_job',
+          userMessage: 'This recording already has a published summary.',
+          retryable: false,
+        );
+      }
+      if (job.status == SyncJobStatus.ignored) return;
+      if (job.isBusyAt(now)) {
         throw const IntegrationException(
           integration: 'ClassSync',
           code: 'job_busy',
@@ -95,9 +101,7 @@ class SyncCoordinator extends base.SyncCoordinator {
       await _database.setJobStatus(
         jobId,
         SyncJobStatus.ignored,
-        job.notionPageId == null
-            ? 'Transcript discarded by user'
-            : 'Sync record discarded; published summary retained',
+        'Transcript discarded by user',
         terminal: true,
       );
       await _database.clearTranscriptPayload(jobId);

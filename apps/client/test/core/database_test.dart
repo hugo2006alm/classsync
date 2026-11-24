@@ -108,6 +108,39 @@ void main() {
     },
   );
 
+  test('incomplete remote snapshot retains the published page link', () async {
+    final date = DateTime.utc(2026);
+    SyncJob snapshot(DateTime updatedAt, {String? pageId, String? url}) =>
+        SyncJob(
+          id: 'published',
+          firefliesId: 'meeting-with-note',
+          title: 'Lecture',
+          meetingDate: date,
+          status: SyncJobStatus.duplicate,
+          sourceType: 'fireflies',
+          attemptCount: 0,
+          discoveredAt: date,
+          updatedAt: updatedAt,
+          notionPageId: pageId,
+          notionUrl: url,
+        );
+
+    await database.mergeSyncedJob(
+      snapshot(date, pageId: 'first-page', url: 'https://notion.so/first'),
+    );
+    await database.mergeSyncedJob(snapshot(date.add(const Duration(days: 1))));
+    final retained = (await database.readJob('published'))!;
+    expect(retained.notionPageId, 'first-page');
+    expect(retained.notionUrl, 'https://notion.so/first');
+
+    await database.mergeSyncedJob(
+      snapshot(date.add(const Duration(days: 2)), pageId: 'second-page'),
+    );
+    final replaced = (await database.readJob('published'))!;
+    expect(replaced.notionPageId, 'second-page');
+    expect(replaced.notionUrl, isNull);
+  });
+
   test('remote snapshot cannot erase an active local lease', () async {
     await database.discoverJob(
       id: 'local',

@@ -32,7 +32,7 @@ class NextClassWidget {
 
   static Future<void> _publish(List<AcademicRecord> records) async {
     final slots =
-        upcomingClasses(
+        currentAndUpcomingClasses(
               records,
               DateTime.now(),
               horizon: const Duration(days: 35),
@@ -52,6 +52,8 @@ class NextClassWidget {
             .toList();
     try {
       await _channel.invokeMethod<void>('save', slots);
+    } on MissingPluginException {
+      // SideStore builds omit the widget extension and App Group channel.
     } on PlatformException {
       // Widget is optional; never interrupt academic sync.
     }

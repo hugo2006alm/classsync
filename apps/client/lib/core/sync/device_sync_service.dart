@@ -172,55 +172,87 @@ class DeviceSyncService {
         .map(_taskRecordFromJson)
         .whereType<AcademicRecord>()
         .toList();
-    for (final job in remoteJobs) {
-      await _database.mergeSyncedJob(job);
-    }
-    final localTasks = await _database.readAcademicRecords(
-      source: AcademicSource.manual,
-      kind: AcademicRecordKind.lectureTask,
-    );
-    final mergedTasks = <String, AcademicRecord>{};
-    for (final task in [...remoteTasks, ...localTasks]) {
-      final current = mergedTasks[task.key];
-      mergedTasks[task.key] = current == null
-          ? task
-          : _mergeTaskRecords(current, task);
-    }
     var tasksChanged = false;
-    final localTasksByKey = {for (final task in localTasks) task.key: task};
-    for (final task in mergedTasks.values) {
-      final local = localTasksByKey[task.key];
-      final resolved = _mergeTaskEvidence(local, task);
-      if (local == null ||
-          _canonical(_taskRecordToJson(local)) !=
-              _canonical(_taskRecordToJson(resolved))) {
-        await _database.upsertAcademicRecord(resolved);
-        tasksChanged = true;
+    final payload = await _database.transaction(() async {
+      for (final job in remoteJobs) {
+        await _database.mergeSyncedJob(job);
       }
-    }
-    final localJobs = await _database.readJobs();
-    final merged = <String, SyncJob>{};
-    for (final job in [...remoteJobs, ...localJobs]) {
-      final current = merged[job.firefliesId];
-      if (current == null || job.updatedAt.isAfter(current.updatedAt)) {
-        merged[job.firefliesId] = job;
+      final localJobs = await _database.readJobs();
+      final ignoredFirefliesIds = {
+        for (final job in localJobs)
+          if (job.status == SyncJobStatus.ignored) job.firefliesId,
+      };
+      final ignoredJobIds = {
+        for (final job in [...remoteJobs, ...localJobs])
+          if (ignoredFirefliesIds.contains(job.firefliesId)) job.id,
+      };
+      final localTasks = await _database.readAcademicRecords(
+        source: AcademicSource.manual,
+        kind: AcademicRecordKind.lectureTask,
+      );
+      final mergedTasks = <String, AcademicRecord>{};
+      final localTasksByKey = {for (final task in localTasks) task.key: task};
+      for (final task in [...remoteTasks, ...localTasks]) {
+        if (ignoredJobIds.contains(task.payload['sourceLectureId'])) continue;
+        final current = mergedTasks[task.key];
+        mergedTasks[task.key] = current == null
+            ? task
+            : _mergeTaskRecords(current, task);
       }
-    }
-    final payload = {
-      'schemaVersion': 2,
-      'jobs':
-          (merged.values.toList()
-                ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)))
-              .take(500)
-              .map(_jobToJson)
-              .toList(),
-      'tasks':
-          (mergedTasks.values.toList()
-                ..sort((a, b) => b.syncedAt.compareTo(a.syncedAt)))
-              .take(500)
-              .map(_taskRecordToJson)
-              .toList(),
-    };
+      for (final task in localTasks) {
+        if (ignoredJobIds.contains(task.payload['sourceLectureId'])) {
+          await _database.deleteAcademicRecord(task.key);
+          tasksChanged = true;
+        }
+      }
+      for (final task in mergedTasks.values) {
+        final local = localTasksByKey[task.key];
+        final resolved = _mergeTaskEvidence(local, task);
+        if (local == null ||
+            _canonical(_taskRecordToJson(local)) !=
+                _canonical(_taskRecordToJson(resolved))) {
+          await _database.upsertAcademicRecord(resolved);
+          tasksChanged = true;
+        }
+      }
+      final merged = <String, SyncJob>{};
+      for (final job in [...remoteJobs, ...localJobs]) {
+        final current = merged[job.firefliesId];
+        if (current == null || job.updatedAt.isAfter(current.updatedAt)) {
+          merged[job.firefliesId] = job;
+        }
+      }
+      final localByFirefliesId = {
+        for (final job in localJobs) job.firefliesId: job,
+      };
+      return {
+        'schemaVersion': 2,
+        'jobs':
+            (merged.values.toList()
+                  ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)))
+                .take(500)
+                .map((job) {
+                  final local = localByFirefliesId[job.firefliesId];
+                  final json = _jobToJson(job);
+                  if (local == null || local.updatedAt != job.updatedAt) {
+                    return json;
+                  }
+                  // Keep the snapshot job ID used by derived tasks.
+                  json['notionPageId'] ??= local.notionPageId;
+                  if (json['notionPageId'] == local.notionPageId) {
+                    json['notionUrl'] ??= local.notionUrl;
+                  }
+                  return json;
+                })
+                .toList(),
+        'tasks':
+            (mergedTasks.values.toList()
+                  ..sort((a, b) => b.syncedAt.compareTo(a.syncedAt)))
+                .take(500)
+                .map(_taskRecordToJson)
+                .toList(),
+      };
+    });
     final changed = _canonical(payload) != _canonical(remotePayload);
     if (changed) {
       final revision = await _client.writeSnapshot(

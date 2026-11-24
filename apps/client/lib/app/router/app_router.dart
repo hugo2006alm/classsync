@@ -19,6 +19,17 @@ final routerProvider = Provider<GoRouter>(
   (ref) => GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/overview',
+    redirect: (context, state) {
+      final uri = state.uri;
+      if (uri.scheme != 'classsync') return null;
+      if (uri.host == 'timetable' &&
+          uri.userInfo.isEmpty &&
+          !uri.hasPort &&
+          uri.path == '/academic') {
+        return '/academic?section=0';
+      }
+      return '/overview';
+    },
     routes: [
       ShellRoute(
         navigatorKey: _shellNavigatorKey,

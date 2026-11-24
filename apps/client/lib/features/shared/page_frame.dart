@@ -78,7 +78,17 @@ class PageFrame extends StatelessWidget {
                         Expanded(child: heading),
                         if (actions.isNotEmpty) ...[
                           const SizedBox(width: 16),
-                          Wrap(spacing: 8, runSpacing: 8, children: actions),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: constraints.maxWidth * 0.46,
+                            ),
+                            child: Wrap(
+                              alignment: WrapAlignment.end,
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: actions,
+                            ),
+                          ),
                         ],
                       ],
                     ),

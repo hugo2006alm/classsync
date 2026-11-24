@@ -9,6 +9,7 @@ import '../../domain/academic/academic_models.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
+import 'recording_actions.dart';
 
 enum _JobFilter { all, pending, processing, review, completed, failed }
 
@@ -306,10 +307,10 @@ class _JobRow extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
-            if (job.notionPageId != null) ...[
+            if (recordingLibraryLocation(job) != null) ...[
               IconButton.filledTonal(
                 tooltip: 'Read summary in Library',
-                onPressed: () => context.go(_libraryLocation(job)),
+                onPressed: () => context.push(recordingLibraryLocation(job)!),
                 icon: const Icon(Icons.auto_stories_rounded),
               ),
               const SizedBox(width: 4),
@@ -319,7 +320,7 @@ class _JobRow extends ConsumerWidget {
               onSelected: (action) =>
                   _handleAction(context, ref, subjects, action),
               itemBuilder: (context) => [
-                if (job.notionPageId != null)
+                if (recordingLibraryLocation(job) != null)
                   const PopupMenuItem(
                     value: _JobAction.openSummary,
                     child: ListTile(
@@ -346,14 +347,10 @@ class _JobRow extends ConsumerWidget {
                     title: Text('Summary language'),
                   ),
                 ),
-                if (_canDiscard(job))
-                  const PopupMenuItem(
+                if (job.canDiscardAt(DateTime.now()))
+                  PopupMenuItem(
                     value: _JobAction.discard,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.delete_outline_rounded),
-                      title: Text('Discard transcript'),
-                    ),
+                    child: discardRecordingLabel(context),
                   ),
               ],
             ),
@@ -375,13 +372,15 @@ class _JobRow extends ConsumerWidget {
   ) async {
     switch (action) {
       case _JobAction.openSummary:
-        if (job.notionPageId != null) context.go(_libraryLocation(job));
+        if (recordingLibraryLocation(job) case final location?) {
+          context.push(location);
+        }
       case _JobAction.changeSubject:
         await _chooseSubject(context, ref, subjects);
       case _JobAction.language:
         await _chooseLanguage(context, ref);
       case _JobAction.discard:
-        await _discard(context, ref);
+        await confirmDiscardRecording(context, ref, job);
     }
   }
 
@@ -571,58 +570,11 @@ class _JobRow extends ConsumerWidget {
       ).showSnackBar(SnackBar(content: Text(error.userMessage)));
     }
   }
-
-  Future<void> _discard(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard transcript?'),
-        content: Text(
-          job.notionPageId == null
-              ? '“${job.title}” will be removed from Sync and will not be processed again if Fireflies rediscovers it.'
-              : '“${job.title}” will be removed from Sync. Its published summary stays in Library/Notion, and lecture tasks derived from this transcript are removed.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Discard'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-    try {
-      await ref.read(syncCoordinatorProvider).discardJob(job.id);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Transcript discarded.')));
-    } on IntegrationException catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.userMessage)));
-    }
-  }
 }
-
-bool _canDiscard(SyncJob job) => !job.status.isProcessing;
 
 void _openJob(BuildContext context, SyncJob job) {
   context.go('/sync/${job.id}');
 }
-
-String _libraryLocation(SyncJob job) => Uri(
-  path: '/library/${Uri.encodeComponent(job.notionPageId!)}',
-  queryParameters: {
-    'title': job.summaryTitle ?? job.title,
-    if (job.notionUrl != null) 'url': job.notionUrl!,
-  },
-).toString();
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;

@@ -1,3 +1,4 @@
+import 'package:classsync/domain/sync/sync_models.dart';
 import 'package:classsync/core/database/classsync_database.dart';
 import 'package:classsync/core/integrations/integration_exception.dart';
 import 'package:classsync/core/integrations/relay/account_sync_client.dart';
@@ -363,6 +364,72 @@ void main() {
     );
     expect(result.jobsChanged, isTrue);
   });
+
+  test(
+    'stale synced tasks do not return after their recording is ignored',
+    () async {
+      final date = DateTime.utc(2026, 9, 22);
+      await database.discoverJob(
+        id: 'local-job',
+        firefliesId: 'shared-meeting',
+        title: 'Discarded lecture',
+        meetingDate: date,
+      );
+      await database.setJobStatus(
+        'local-job',
+        SyncJobStatus.ignored,
+        'Transcript discarded by user',
+        terminal: true,
+      );
+      final client = _SnapshotAccountClient(
+        remoteJobs: {
+          'schemaVersion': 2,
+          'jobs': [
+            {
+              'id': 'remote-job',
+              'firefliesId': 'shared-meeting',
+              'meetingDate': date.toIso8601String(),
+              'discoveredAt': date.toIso8601String(),
+              'updatedAt': date.toIso8601String(),
+              'status': 'needs_review',
+            },
+          ],
+          'tasks': [
+            {
+              'key': 'manual:lectureTask:stale-task',
+              'externalId': 'stale-task',
+              'title': 'Old task',
+              'syncedAt': date.toIso8601String(),
+              'task': {
+                'id': 'stale-task',
+                'title': 'Old task',
+                'description': 'Old task description',
+                'sourceLectureId': 'remote-job',
+                'sourceLectureTitle': 'Discarded lecture',
+                'confidence': 'certain',
+                'supportingSegment': '',
+                'status': 'pending',
+              },
+            },
+          ],
+        },
+      );
+
+      await DeviceSyncService(
+        database: database,
+        credentials: credentials,
+        client: client,
+      ).synchronize();
+
+      expect(
+        await database.readAcademicRecords(
+          kind: AcademicRecordKind.lectureTask,
+        ),
+        isEmpty,
+      );
+      expect(client.writes['jobs']!['tasks'], isEmpty);
+    },
+  );
 
   test(
     'explicit task state beats a fresher regenerated pending record',

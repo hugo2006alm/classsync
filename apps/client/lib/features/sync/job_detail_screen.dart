@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
@@ -11,6 +12,7 @@ import '../../domain/academic/academic_models.dart';
 import '../../domain/sync/sync_models.dart';
 import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
+import 'recording_actions.dart';
 
 class JobDetailScreen extends ConsumerWidget {
   const JobDetailScreen({required this.jobId, super.key});
@@ -38,6 +40,9 @@ class JobDetailScreen extends ConsumerWidget {
             ),
           );
         }
+        final canDiscard = job.canDiscardAt(DateTime.now());
+        final canReprocess =
+            job.notionPageId != null && !job.isBusyAt(DateTime.now());
         final effectiveTimeline = _effectiveTimeline(job, timeline);
         return PageFrame(
           title: job.title,
@@ -53,11 +58,17 @@ class JobDetailScreen extends ConsumerWidget {
                   'Fireflies',
           ].join(' · '),
           actions: [
-            if (job.notionUrl case final url?)
+            if (recordingLibraryLocation(job) case final location?)
               FilledButton.icon(
+                onPressed: () => context.push(location),
+                icon: const Icon(Icons.auto_stories_rounded),
+                label: const Text('Read in Library'),
+              ),
+            if (job.notionUrl case final url?)
+              OutlinedButton.icon(
                 onPressed: () => _openUrl(context, url, trustedNotionHosts),
                 icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('Open summary in Notion'),
+                label: const Text('Open in Notion'),
               ),
             if (job.firefliesUrl case final url?)
               OutlinedButton.icon(
@@ -74,24 +85,41 @@ class JobDetailScreen extends ConsumerWidget {
                 icon: const Icon(Icons.replay_rounded),
                 label: Text(_isStaleProcessing(job) ? 'Recover' : 'Retry'),
               ),
-            if (job.notionPageId != null)
-              PopupMenuButton<_ReprocessAction>(
-                tooltip: 'Reprocess',
-                onSelected: (action) =>
-                    _confirmReprocess(context, ref, job, action),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _ReprocessAction.regenerate,
-                    child: Text('Regenerate summary'),
-                  ),
-                  PopupMenuItem(
-                    value: _ReprocessAction.reclassify,
-                    child: Text('Reclassify subject'),
-                  ),
-                  PopupMenuItem(
-                    value: _ReprocessAction.republish,
-                    child: Text('Republish to Notion'),
-                  ),
+            if (canReprocess || canDiscard)
+              PopupMenuButton<_RecordingAction>(
+                tooltip: 'Recording actions',
+                onSelected: (action) async {
+                  if (action == _RecordingAction.discard) {
+                    final discarded = await confirmDiscardRecording(
+                      context,
+                      ref,
+                      job,
+                    );
+                    if (discarded && context.mounted) context.go('/sync');
+                  } else {
+                    await _confirmReprocess(context, ref, job, action);
+                  }
+                },
+                itemBuilder: (context) => [
+                  if (canReprocess) ...const [
+                    PopupMenuItem(
+                      value: _RecordingAction.regenerate,
+                      child: Text('Regenerate summary'),
+                    ),
+                    PopupMenuItem(
+                      value: _RecordingAction.reclassify,
+                      child: Text('Reclassify subject'),
+                    ),
+                    PopupMenuItem(
+                      value: _RecordingAction.republish,
+                      child: Text('Republish to Notion'),
+                    ),
+                  ],
+                  if (canDiscard)
+                    PopupMenuItem(
+                      value: _RecordingAction.discard,
+                      child: discardRecordingLabel(context),
+                    ),
                 ],
                 icon: const Icon(Icons.more_vert_rounded),
               ),
@@ -766,18 +794,19 @@ extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-enum _ReprocessAction { regenerate, reclassify, republish }
+enum _RecordingAction { regenerate, reclassify, republish, discard }
 
 Future<void> _confirmReprocess(
   BuildContext context,
   WidgetRef ref,
   SyncJob job,
-  _ReprocessAction action,
+  _RecordingAction action,
 ) async {
   final label = switch (action) {
-    _ReprocessAction.regenerate => 'regenerate this summary',
-    _ReprocessAction.reclassify => 'reclassify this lecture',
-    _ReprocessAction.republish => 'republish this summary',
+    _RecordingAction.regenerate => 'regenerate this summary',
+    _RecordingAction.reclassify => 'reclassify this lecture',
+    _RecordingAction.republish => 'republish this summary',
+    _RecordingAction.discard => throw ArgumentError.value(action),
   };
   final confirmed = await showDialog<bool>(
     context: context,
@@ -803,12 +832,14 @@ Future<void> _confirmReprocess(
   final coordinator = ref.read(syncCoordinatorProvider);
   try {
     switch (action) {
-      case _ReprocessAction.regenerate:
+      case _RecordingAction.regenerate:
         await coordinator.regenerateSummary(job.id);
-      case _ReprocessAction.reclassify:
+      case _RecordingAction.reclassify:
         await coordinator.reclassifyJob(job.id);
-      case _ReprocessAction.republish:
+      case _RecordingAction.republish:
         await coordinator.republishJob(job.id);
+      case _RecordingAction.discard:
+        throw ArgumentError.value(action);
     }
   } catch (error) {
     if (context.mounted) {

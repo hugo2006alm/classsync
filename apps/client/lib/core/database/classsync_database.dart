@@ -655,8 +655,13 @@ class ClassSyncDatabase extends _$ClassSyncDatabase {
         subjectName: Value(remote.subjectName),
         classificationConfidence: Value(remote.classificationConfidence),
         summaryTitle: Value(remote.summaryTitle),
-        notionPageId: Value(remote.notionPageId),
-        notionUrl: Value(remote.notionUrl),
+        notionPageId: Value(remote.notionPageId ?? local.notionPageId),
+        notionUrl: Value(
+          remote.notionPageId == null ||
+                  remote.notionPageId == local.notionPageId
+              ? remote.notionUrl ?? local.notionUrl
+              : remote.notionUrl,
+        ),
         attemptCount: Value(remote.attemptCount),
         nextRetryAt: Value(remote.nextRetryAt),
         lastErrorType: Value(clearRemoteError ? null : remote.lastErrorType),
