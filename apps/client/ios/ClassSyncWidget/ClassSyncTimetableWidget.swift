@@ -88,7 +88,7 @@ private struct TimetableView: View {
         switch family {
         case .accessoryInline:
             if let lesson = primary {
-                Label([lesson.subject, lesson.room].filter { !$0.isEmpty }.joined(separator: " � "), systemImage: "calendar")
+                Label([lesson.subject, lesson.room].filter { !$0.isEmpty }.joined(separator: " · "), systemImage: "calendar")
                     .privacySensitive()
             } else {
                 Text(emptyLabel)
@@ -97,7 +97,7 @@ private struct TimetableView: View {
             if let lesson = primary {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(lesson.subject).font(.headline).lineLimit(1)
-                    (Text(lesson.begins, style: .time) + Text(lesson.room.isEmpty ? "" : " � " + lesson.room))
+                    (Text(lesson.begins, style: .time) + Text(lesson.room.isEmpty ? "" : " · " + lesson.room))
                         .font(.caption).lineLimit(1)
                     Text(lesson.teacher).font(.caption2).lineLimit(1)
                 }
@@ -145,14 +145,14 @@ private struct TimetableView: View {
         VStack(alignment: .leading, spacing: 3) {
             if let title { Text(title).font(.caption.weight(.semibold)).widgetAccentable() }
             Text(lesson.subject).font(.subheadline.weight(.semibold)).lineLimit(2)
-            (Text(lesson.begins, style: .time) + Text("–") + Text(lesson.ends, style: .time))
+            (Text(lesson.begins, style: .time) + Text("â€“") + Text(lesson.ends, style: .time))
                 .font(.caption)
                 .lineLimit(1)
             if !lesson.room.isEmpty {
                 Text(lesson.room).font(.caption.weight(.semibold)).lineLimit(1)
             }
             if detailed {
-                Text([lesson.group, lesson.type, lesson.teacher].filter { !$0.isEmpty }.joined(separator: " · "))
+                Text([lesson.group, lesson.type, lesson.teacher].filter { !$0.isEmpty }.joined(separator: " Â· "))
                     .font(.caption2)
                     .lineLimit(2)
                 if family == .systemMedium {
