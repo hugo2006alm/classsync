@@ -83,6 +83,63 @@ void main() {
     await _disposeApp(tester);
   });
 
+  testWidgets('overview retains manual choice and redraws at boundaries', (
+    tester,
+  ) async {
+    _usePhoneViewport(tester);
+    final firstStart = DateTime(2026, 11, 24, 10);
+    var clock = firstStart.subtract(const Duration(minutes: 5));
+    final firstEnd = firstStart.add(const Duration(minutes: 110));
+    final secondStart = firstStart.add(const Duration(hours: 2));
+    await _saveTimetableSlot(
+      database,
+      TimetableSlot(
+        externalId: 'first',
+        subjectCode: 'CS',
+        subjectName: 'First lesson',
+        start: firstStart,
+        end: firstEnd,
+        room: 'B301',
+      ),
+    );
+    await _saveTimetableSlot(
+      database,
+      TimetableSlot(
+        externalId: 'second',
+        subjectCode: 'CS',
+        subjectName: 'Second lesson',
+        start: secondStart,
+        end: secondStart.add(const Duration(hours: 1)),
+      ),
+    );
+
+    await tester.pumpWidget(_app(database, OverviewScreen(clock: () => clock)));
+    await tester.pumpAndSettle();
+    expect(find.text('Next class'), findsOneWidget);
+    expect(find.text('First lesson'), findsOneWidget);
+
+    clock = firstStart;
+    await tester.pump(const Duration(minutes: 5));
+    expect(find.text('Current class'), findsOneWidget);
+    expect(find.text('Room B301'), findsOneWidget);
+    await tester.tap(find.byTooltip('Following class'));
+    await tester.pumpAndSettle();
+    expect(find.text('Second lesson'), findsOneWidget);
+    expect(find.text('Next class'), findsOneWidget);
+
+    clock = firstEnd;
+    await tester.pump(const Duration(minutes: 110));
+    expect(find.text('Second lesson'), findsOneWidget);
+    expect(find.text('Next class'), findsOneWidget);
+    expect(find.text('Current class'), findsNothing);
+
+    clock = secondStart;
+    await tester.pump(const Duration(minutes: 10));
+    expect(find.text('Second lesson'), findsOneWidget);
+    expect(find.text('Current class'), findsOneWidget);
+    await _disposeApp(tester);
+  });
+
   testWidgets('overview hides class four or more days away', (tester) async {
     _usePhoneViewport(tester);
     final start = DateTime.now().add(const Duration(days: 4, minutes: 1));

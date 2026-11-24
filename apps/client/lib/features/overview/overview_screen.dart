@@ -15,7 +15,9 @@ import '../shared/page_frame.dart';
 import '../shared/status_badge.dart';
 
 class OverviewScreen extends ConsumerStatefulWidget {
-  const OverviewScreen({super.key});
+  const OverviewScreen({super.key, this.clock = DateTime.now});
+
+  final DateTime Function() clock;
 
   @override
   ConsumerState<OverviewScreen> createState() => _OverviewScreenState();
@@ -75,7 +77,7 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen>
         .where((job) => job.status == SyncJobStatus.success)
         .take(5)
         .toList();
-    final now = DateTime.now();
+    final now = widget.clock();
     final slots = currentAndUpcomingClasses(academicRecords, now);
     final current = slots.takeWhile((slot) => !slot.start.isAfter(now));
     final next = slots.skip(current.length).firstOrNull;

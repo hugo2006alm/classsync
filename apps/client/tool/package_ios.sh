@@ -12,12 +12,13 @@ test "$(value CFBundleShortVersionString)" = "${version%+*}"
 test "$(value CFBundleVersion)" = "${version#*+}"
 test "$(value CFBundleSupportedPlatforms:0)" = iPhoneOS
 test ! -e "$app/embedded.mobileprovision"
+test "$(value MinimumOSVersion)" = 15.0
 test -z "$(find "$app" -name '*.appex' -print)"
 executable="$app/$(value CFBundleExecutable)"
 test "$(lipo -archs "$executable")" = arm64
 xcrun vtool -show-build "$executable" | grep -Eq 'platform IOS$'
 for executable in "$app"/Frameworks/App.framework/App "$app"/Frameworks/Flutter.framework/Flutter; do
-  lipo -verify_arch arm64 "$executable"
+  lipo "$executable" -verify_arch arm64
   xcrun vtool -show-build "$executable" | grep -Eq 'platform IOS$'
 done
 

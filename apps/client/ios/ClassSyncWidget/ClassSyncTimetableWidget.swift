@@ -64,10 +64,11 @@ private struct TimetableProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<TimetableEntry>) -> Void) {
         let now = Date.now
         let schedule = readSchedule()
-        let midnight = Calendar.current.startOfDay(for: now).addingTimeInterval(36 * 3600)
-        let nextDay = Calendar.current.startOfDay(for: midnight)
+        let calendar = Calendar.current
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
+        let extraDates = [nextDay, schedule?.expires].compactMap { $0 }
         let boundaries = (schedule?.slots ?? []).flatMap { [$0.begins, $0.ends] }
-        let dates = Set(boundaries + [nextDay, schedule?.expires ?? now])
+        let dates = Set(boundaries + extraDates)
             .filter { $0 > now && $0 <= now.addingTimeInterval(24 * 3600) }
             .sorted()
         let entries = ([now] + dates).map { TimetableEntry(date: $0, schedule: schedule) }
@@ -164,6 +165,11 @@ private struct TimetableView: View {
                 Text([lesson.group, lesson.type, lesson.teacher].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.caption2)
                     .lineLimit(2)
+                if family == .systemMedium {
+                    let deadline = lesson.begins > entry.date ? lesson.begins : lesson.ends
+                    Text(timerInterval: entry.date...deadline, countsDown: true)
+                        .font(.caption.monospacedDigit())
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
