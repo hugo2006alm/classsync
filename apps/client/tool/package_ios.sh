@@ -57,12 +57,12 @@ if [[ "$mode" != stable ]]; then
     codesign --force --sign - "$framework"
   done < <(find "$host" -depth -name '*.framework' -type d -print0)
 
-  entitlement_args=()
-  if [[ "$mode" == app-group-test ]]; then
-    entitlement_args=(--entitlements ios/ClassSyncWidget/AppGroup.entitlements)
-  fi
   for bundle in "$widget" "$host"; do
-    codesign --force --sign - "${entitlement_args[@]}" "$bundle"
+    if [[ "$mode" == app-group-test ]]; then
+      codesign --force --sign - --entitlements ios/ClassSyncWidget/AppGroup.entitlements "$bundle"
+    else
+      codesign --force --sign - "$bundle"
+    fi
     codesign -d --entitlements - "$bundle" > "$stage/entitlements.plist"
     python3 - "$mode" "$stage/entitlements.plist" <<'PY'
 import plistlib
