@@ -1,0 +1,44 @@
+name: iOS package
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/client/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: apps/client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.50.1'
+          cache: true
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.5.app
+          xcodebuild -version
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build ios --release --no-codesign
+      - name: Verify device bundle and package for SideStore
+        run: bash tool/package_ios.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS
+          path: apps/client/build/ios/dist/ClassSync-iOS.ipa
+      - name: Upload test checksum
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ClassSync-iOS-checksum
+          path: apps/client/build/ios/dist/ClassSync-iOS.ipa.sha256

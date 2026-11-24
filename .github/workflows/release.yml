@@ -153,9 +153,13 @@ jobs:
           name: ClassSync-Windows
           path: dist/*.exe
 
+  ios:
+    needs: validate
+    uses: ./.github/workflows/ios.yml
+
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [android, windows]
+    needs: [android, windows, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
