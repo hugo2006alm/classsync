@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../security/secure_credential_store.dart';
+import '../security/trusted_url_launcher.dart';
 import 'release_update_service.dart';
 
 bool _checking = false;
@@ -32,6 +33,8 @@ Future<void> checkForUpdates(
         content: Text(
           Platform.isAndroid
               ? 'Download the verified APK and open Android’s installer? Android will ask you to confirm the update.'
+              : Platform.isIOS
+              ? 'Download the IPA from GitHub and import it into SideStore with the same Apple Account.'
               : 'Download the verified Windows installer and start the update? ClassSync may close and reopen during installation.',
         ),
         actions: [
@@ -41,12 +44,24 @@ Future<void> checkForUpdates(
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Download and update'),
+            child: Text(
+              Platform.isIOS ? 'Open GitHub release' : 'Download and update',
+            ),
           ),
         ],
       ),
     );
     if (install != true || !context.mounted) return;
+    if (Platform.isIOS) {
+      final opened = await launchTrustedUrl(
+        update.releasePage.toString(),
+        allowedHosts: const {'github.com'},
+      );
+      if (!opened && context.mounted) {
+        _message(context, 'Could not open the GitHub release.');
+      }
+      return;
+    }
     final progress = ValueNotifier<double>(0);
     unawaited(
       showDialog<void>(

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../app/theme/appearance.dart';
 import '../../core/logging/redactor.dart';
 import '../../core/providers.dart';
 import '../../core/security/secure_credential_store.dart';
@@ -53,12 +54,12 @@ enum _SettingsCategory {
   diagnostics,
 }
 
-class _SettingsBody extends StatelessWidget {
+class _SettingsBody extends ConsumerWidget {
   const _SettingsBody({required this.settings});
   final AppSettings settings;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final destinations =
         <
           ({
@@ -86,12 +87,16 @@ class _SettingsBody extends StatelessWidget {
             title: 'Automation',
             subtitle: _automationSubtitle(Theme.of(context).platform),
           ),
-          if (Platform.isWindows || Platform.isAndroid)
+          if (Platform.isWindows || Platform.isAndroid || Platform.isIOS)
             (
               category: _SettingsCategory.updates,
               icon: Icons.system_update_rounded,
-              title: 'App updates & widget',
-              subtitle: 'Check releases and add the Android next-class widget',
+              title: Platform.isAndroid
+                  ? 'App updates & widget'
+                  : 'App updates',
+              subtitle: Platform.isAndroid
+                  ? 'Check releases and add the timetable widget'
+                  : 'Check for new versions on GitHub',
             ),
           (
             category: _SettingsCategory.ai,
@@ -122,6 +127,44 @@ class _SettingsBody extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
+          if (Platform.isIOS) ...[
+            ListTile(
+              minTileHeight: 72,
+              leading: const CircleAvatar(
+                child: Icon(Icons.brightness_6_rounded),
+              ),
+              title: const Text('Appearance'),
+              trailing: DropdownButton<ThemeMode>(
+                value: ref.watch(appearanceProvider).value ?? ThemeMode.system,
+                items: const [
+                  DropdownMenuItem(
+                    value: ThemeMode.system,
+                    child: Text('System'),
+                  ),
+                  DropdownMenuItem(
+                    value: ThemeMode.light,
+                    child: Text('Light'),
+                  ),
+                  DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                ],
+                onChanged: (mode) async {
+                  if (mode == null) return;
+                  try {
+                    await ref.read(appearanceProvider.notifier).save(mode);
+                  } on PlatformException {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not save appearance.'),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+            const Divider(height: 1),
+          ],
           for (var index = 0; index < destinations.length; index++) ...[
             ListTile(
               minTileHeight: 72,
@@ -180,7 +223,8 @@ String _categoryTitle(_SettingsCategory category) => switch (category) {
   _SettingsCategory.connections => 'Connections',
   _SettingsCategory.deviceSync => 'Account & device sync',
   _SettingsCategory.automation => 'Automation',
-  _SettingsCategory.updates => 'App updates & widget',
+  _SettingsCategory.updates =>
+    Platform.isAndroid ? 'App updates & widget' : 'App updates',
   _SettingsCategory.ai => 'AI & summaries',
   _SettingsCategory.notion => 'Notion workspace',
   _SettingsCategory.storage => 'Storage & privacy',
@@ -535,8 +579,10 @@ class _SettingsDetailBody extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.system_update_rounded),
                   title: const Text('Check for updates'),
-                  subtitle: const Text(
-                    'Download and verify the release before installing.',
+                  subtitle: Text(
+                    Platform.isIOS
+                        ? 'Open the GitHub IPA release to update with SideStore.'
+                        : 'Download and verify the release before installing.',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => checkForUpdates(

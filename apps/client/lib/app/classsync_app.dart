@@ -9,6 +9,7 @@ import '../domain/settings/app_settings.dart';
 import '../domain/sync/sync_models.dart';
 import '../features/setup/setup_wizard.dart';
 import 'router/app_router.dart';
+import 'theme/appearance.dart';
 import 'theme/classsync_theme.dart';
 
 class ClassSyncApp extends ConsumerStatefulWidget {
@@ -79,7 +80,7 @@ class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
           title: 'ClassSync',
           theme: ClassSyncTheme.light(),
           darkTheme: ClassSyncTheme.dark(),
-          themeMode: ThemeMode.system,
+          themeMode: ref.watch(appearanceProvider).value ?? ThemeMode.system,
           routerConfig: ref.watch(routerProvider),
         );
       },
@@ -153,7 +154,7 @@ class _ClassSyncAppState extends ConsumerState<ClassSyncApp>
     title: 'ClassSync',
     theme: ClassSyncTheme.light(),
     darkTheme: ClassSyncTheme.dark(),
-    themeMode: ThemeMode.system,
+    themeMode: ref.watch(appearanceProvider).value ?? ThemeMode.system,
     home: home,
   );
 }

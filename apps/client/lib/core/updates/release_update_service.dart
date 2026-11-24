@@ -11,7 +11,7 @@ const _latestRelease =
     'https://api.github.com/repos/$_repository/releases/latest';
 const _maxAssetBytes = 300 * 1024 * 1024;
 
-enum ReleasePlatform { windows, android }
+enum ReleasePlatform { windows, android, ios }
 
 class ReleaseUpdate {
   const ReleaseUpdate({
@@ -27,6 +27,9 @@ class ReleaseUpdate {
   final String assetName;
   final Uri checksumUrl;
   final int assetSize;
+
+  Uri get releasePage =>
+      Uri.https('github.com', '/$_repository/releases/tag/v$version');
 }
 
 class ReleaseUpdateService {
@@ -44,6 +47,8 @@ class ReleaseUpdateService {
                ? ReleasePlatform.android
                : Platform.isWindows
                ? ReleasePlatform.windows
+               : Platform.isIOS
+               ? ReleasePlatform.ios
                : null);
 
   final Dio _dio;
@@ -78,9 +83,16 @@ class ReleaseUpdateService {
     if (compareVersions(version, current) <= 0) return null;
     final assets = release['assets'];
     if (assets is! List) throw const FormatException('Missing release assets.');
-    final wanted = _platform == ReleasePlatform.android
-        ? 'ClassSync-Android.apk'
-        : 'ClassSync-Setup-$version.exe';
+    final wanted = switch (_platform) {
+      ReleasePlatform.android => 'ClassSync-Android.apk',
+      ReleasePlatform.windows => 'ClassSync-Setup-$version.exe',
+      ReleasePlatform.ios => 'ClassSync-iOS.ipa',
+      null => throw StateError('Missing release platform.'),
+    };
+    if (_platform == ReleasePlatform.ios &&
+        !assets.any((item) => item is Map && item['name'] == wanted)) {
+      return null;
+    }
     final asset = _asset(assets, wanted);
     final checksum = _asset(assets, 'SHA256SUMS.txt');
     final size = asset['size'];

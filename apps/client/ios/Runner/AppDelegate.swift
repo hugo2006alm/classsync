@@ -17,6 +17,26 @@ import WidgetKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let appearance = FlutterMethodChannel(
+      name: "classsync/appearance",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    appearance.setMethodCallHandler { call, result in
+      switch call.method {
+      case "read":
+        result(UserDefaults.standard.string(forKey: "classsyncAppearance"))
+      case "write":
+        guard let value = call.arguments as? String,
+              ["system", "light", "dark"].contains(value) else {
+          result(FlutterError(code: "invalid_appearance", message: nil, details: nil))
+          return
+        }
+        UserDefaults.standard.set(value, forKey: "classsyncAppearance")
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
     #if CLASSSYNC_WIDGETS
     let channel = FlutterMethodChannel(
       name: "classsync/widget",
