@@ -22,13 +22,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          flutter-version: '3.50.1'
+          flutter-version: '3.44.9'
           cache: true
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_26.5.app
           xcodebuild -version
-      - run: flutter pub get --enforce-lockfile
+      - run: flutter pub get
       - run: flutter build ios --release --no-codesign
       - name: Verify device bundle and package for SideStore
         run: bash tool/package_ios.sh
@@ -42,3 +42,9 @@ jobs:
         with:
           name: ClassSync-iOS-checksum
           path: apps/client/build/ios/dist/ClassSync-iOS.ipa.sha256
+      - name: Compile WidgetKit configuration for iOS Simulator
+        if: github.event_name == 'pull_request'
+        run: |
+          ruby tool/enable_ios_widgets.rb
+          flutter build ios --simulator --debug
+          test -d build/ios/iphonesimulator/Runner.app/PlugIns/ClassSyncWidget.appex

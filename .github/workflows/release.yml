@@ -29,7 +29,7 @@ jobs:
           cache: pnpm
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          channel: stable
+          flutter-version: '3.44.9'
           cache: true
       - run: pnpm install --frozen-lockfile
       - name: Verify tag matches app version
@@ -59,7 +59,7 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          channel: stable
+          flutter-version: '3.44.9'
           cache: true
       - name: Use the pinned JDK for Flutter Android builds
         run: flutter config --jdk-dir "$JAVA_HOME"
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          channel: stable
+          flutter-version: '3.44.9'
           cache: true
       - working-directory: apps/client
         run: flutter pub get

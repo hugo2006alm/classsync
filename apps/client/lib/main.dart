@@ -33,7 +33,9 @@ Future<void> main(List<String> arguments) async {
   final database = ClassSyncDatabase();
   await database.initialize();
   final settings = await database.readSettings();
-  if (Platform.isAndroid) NextClassWidget.observe(database);
+  if (Platform.isAndroid || Platform.isIOS) {
+    NextClassWidget.observe(database);
+  }
   final container = ProviderContainer(
     overrides: [databaseProvider.overrideWithValue(database)],
   );
